@@ -1,32 +1,65 @@
 # FAQ
 
-Frequently asked questions about OpenViking.
+## Basic Concepts
 
-## General
+### What is OpenViking? What problems does it solve?
 
-### What is OpenViking?
+OpenViking is an open-source context database designed specifically for AI Agents. It solves core pain points when building AI Agents:
 
-OpenViking is a context database for AI Agents. It follows the "Data in, Context out" philosophy - you add various data sources, and OpenViking provides optimized context for your AI applications.
+- **Fragmented Context**: Memories, resources, and skills are scattered everywhere, difficult to manage uniformly
+- **Poor Retrieval Effectiveness**: Traditional RAG's flat storage lacks global view, making it hard to understand complete context
+- **Unobservable Context**: Implicit retrieval chains are like black boxes, difficult to debug when errors occur
+- **Limited Memory Iteration**: Lacks Agent-related task memory and self-evolution capabilities
 
-### How is OpenViking different from vector databases?
+OpenViking unifies all context management through a filesystem paradigm, enabling tiered delivery and self-iteration.
 
-| Feature | Vector Database | OpenViking |
-|---------|-----------------|------------|
-| Storage | Vectors only | Content + Vectors |
-| Retrieval | Similarity search | Multi-layer context |
-| Output | Raw chunks | Structured context (L0/L1/L2) |
-| Memory | Not supported | Built-in memory management |
-| Sessions | Not supported | Conversation tracking |
+### What's the fundamental difference between OpenViking and traditional vector databases?
 
-### Is OpenViking open source?
+| Dimension | Traditional Vector DB | OpenViking |
+|-----------|----------------------|------------|
+| **Storage Model** | Flat vector storage | Hierarchical filesystem (AGFS) |
+| **Retrieval Method** | Single vector similarity search | Directory recursive retrieval + Intent analysis + Rerank |
+| **Output Format** | Raw chunks | Structured context (L0 Abstract/L1 Overview/L2 Details) |
+| **Memory Capability** | Not supported | Built-in 6 memory categories with auto-extraction and iteration |
+| **Observability** | Black box | Fully traceable retrieval trajectory |
+| **Context Types** | Documents only | Resource + Memory + Skill three types |
 
-Yes, OpenViking is fully open source under the Apache 2.0 license.
+### What is the L0/L1/L2 layered model? Why is it needed?
 
-## Installation
+L0/L1/L2 is OpenViking's progressive content loading mechanism, solving the problem of "stuffing massive context into prompts all at once":
 
-### What Python version is required?
+| Layer | Name | Token Limit | Purpose |
+|-------|------|-------------|---------|
+| **L0** | Abstract | ~100 tokens | Vector search recall, quick filtering, list display |
+| **L1** | Overview | ~2000 tokens | Rerank refinement, content navigation, decision reference |
+| **L2** | Details | Unlimited | Complete original content, on-demand deep loading |
 
-Python 3.10 or higher is required.
+This design allows Agents to browse abstracts for quick positioning, then load details on demand, significantly saving token consumption.
+
+### What is Viking URI? What's its purpose?
+
+Viking URI is OpenViking's unified resource identifier, formatted as `viking://{scope}/{path}`. It enables precise location of any context:
+
+```
+viking://
+├── resources/              # Knowledge base: documents, code, web pages, etc.
+│   └── my_project/
+├── user/                   # User context
+│   └── memories/           # User memories (preferences, entities, events)
+└── agent/                  # Agent context
+    ├── skills/             # Callable skills
+    └── memories/           # Agent memories (cases, patterns)
+```
+
+## Installation & Configuration
+
+### What are the environment requirements?
+
+- **Python Version**: 3.10 or higher
+- **Required Dependencies**: Embedding model (Volcengine Doubao recommended)
+- **Optional Dependencies**:
+  - VLM (Vision Language Model): For multimodal content processing and semantic extraction
+  - Rerank model: For improved retrieval precision
 
 ### How do I install OpenViking?
 
@@ -34,120 +67,317 @@ Python 3.10 or higher is required.
 pip install openviking
 ```
 
-### What are the required dependencies?
+### How do I configure OpenViking?
 
-OpenViking requires:
-- An embedding model (e.g., Volcengine Doubao)
-- Optional: VLM for multimodal content
-- Optional: Rerank model for improved retrieval
+Create an `ov.conf` configuration file in your project directory:
 
-## Usage
+```json
+{
+  "user": "default_user",
+  "embedding": {
+    "dense": {
+      "backend": "volcengine",
+      "api_key": "your-api-key",
+      "model": "doubao-embedding-vision-250615",
+      "dimension": 1024,
+      "input": "multimodal"
+    }
+  },
+  "vlm": {
+    "backend": "volcengine",
+    "api_key": "your-api-key",
+    "model": "doubao-seed-1-8-251228",
+    "api_base": "https://ark.cn-beijing.volces.com/api/v3"
+  },
+  "rerank": {
+    "backend": "volcengine",
+    "api_key": "your-api-key",
+    "model": "doubao-rerank-250615"
+  },
+  "storage": {
+    "agfs": { "backend": "local", "path": "./data" },
+    "vectordb": { "backend": "local", "path": "./data" }
+  }
+}
+```
 
-### How do I initialize OpenViking?
+Configuration priority: Constructor parameters > Config object > Config file > Environment variables > Default values
+
+### What Embedding backends are supported?
+
+| Backend | Description |
+|---------|-------------|
+| `volcengine` | Volcengine Embedding API (Recommended) |
+| `openai` | OpenAI Embedding API |
+| `vikingdb` | VikingDB Embedding API |
+
+Supports Dense, Sparse, and Hybrid embedding modes.
+
+## Usage Guide
+
+### How do I initialize the client?
 
 ```python
 import openviking as ov
 
+# Async client (recommended)
 client = ov.AsyncOpenViking(path="./my_data")
+await client.initialize()
+
+# Or use a config object
+from openviking.utils.config import OpenVikingConfig
+config = OpenVikingConfig(...)
+client = ov.AsyncOpenViking(config=config)
 await client.initialize()
 ```
 
 ### What file formats are supported?
 
-- **Text**: `.txt`, `.md`, `.json`, `.yaml`
-- **Code**: `.py`, `.js`, `.ts`, `.go`, `.java`, etc.
-- **Documents**: `.pdf`, `.docx`
-- **Images**: `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`
-- **Video**: `.mp4`, `.mov`, `.avi`
-- **Audio**: `.mp3`, `.wav`, `.m4a`
+| Type | Supported Formats |
+|------|-------------------|
+| **Text** | `.txt`, `.md`, `.json`, `.yaml` |
+| **Code** | `.py`, `.js`, `.ts`, `.go`, `.java`, `.cpp`, etc. |
+| **Documents** | `.pdf`, `.docx` |
+| **Images** | `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp` |
+| **Video** | `.mp4`, `.mov`, `.avi` |
+| **Audio** | `.mp3`, `.wav`, `.m4a` |
 
 ### How do I add resources?
 
 ```python
-# Single file
-await client.add_resource("./document.pdf")
+# Add single file
+await client.add_resource(
+    "./document.pdf",
+    reason="Project technical documentation",  # Describe resource purpose to improve retrieval quality
+    target="viking://resources/docs/"  # Specify storage location
+)
 
-# Directory
-await client.add_resource("./docs/", recursive=True)
+# Add web page
+await client.add_resource(
+    "https://example.com/api-docs",
+    reason="API reference documentation"
+)
 
-# URL
-await client.add_resource("https://example.com/page")
+# Wait for processing to complete
+await client.wait_processed()
 ```
 
-### What's the difference between `find` and `search`?
+### What's the difference between `find()` and `search()`? Which should I use?
 
-- `find`: Simple semantic search, returns matching contexts
-- `search`: Session-aware search with intent analysis and query rewriting
-
-### How do I use sessions?
+| Feature | `find()` | `search()` |
+|---------|----------|------------|
+| **Session Context** | Not required | Required |
+| **Intent Analysis** | Not used | Uses LLM to analyze and generate 0-5 queries |
+| **Latency** | Low | Higher |
+| **Use Case** | Simple semantic search | Complex tasks requiring context understanding |
 
 ```python
-session = client.session()
-await session.add_message("user", [{"type": "text", "text": "Hello"}])
-await session.add_message("assistant", [{"type": "text", "text": "Hi!"}])
-await session.commit()  # Extract memories
+# find(): Simple direct semantic search
+results = await client.find(
+    "OAuth authentication flow",
+    target_uri="viking://resources/"
+)
+
+# search(): Complex tasks requiring intent analysis
+results = await client.search(
+    "Help me implement user login functionality",
+    session_info=session
+)
 ```
 
-## Architecture
+**Selection Guide**:
+- Know exactly what you're looking for → Use `find()`
+- Complex tasks needing multiple context types → Use `search()`
 
-### What is the L0/L1/L2 model?
+### How do I use session management?
 
-- **L0 (Abstract)**: ~100 tokens, brief summary
-- **L1 (Overview)**: ~2000 tokens, detailed overview
-- **L2 (Content)**: Full original content
+Session management is a core capability of OpenViking, supporting conversation tracking and memory extraction:
 
-### What is a Viking URI?
+```python
+# Create session
+session = client.session()
 
-Viking URI is a unified resource identifier: `viking://{scope}/{path}`
+# Add conversation messages
+await session.add_message("user", [{"type": "text", "text": "Help me analyze performance issues in this code"}])
+await session.add_message("assistant", [{"type": "text", "text": "Let me analyze..."}])
 
-Scopes:
-- `resources/` - Knowledge base
-- `user/memories/` - User memories
-- `agent/memories/` - Agent memories
-- `skills/` - Available skills
+# Mark used context (for tracking)
+await session.used(["viking://resources/code/main.py"])
 
-### What is AGFS?
+# Commit session to trigger memory extraction
+await session.commit()
+```
 
-AGFS (Agent File System) is OpenViking's content storage layer that organizes data in a hierarchical structure with metadata.
+### What memory types does OpenViking support?
 
-## Performance
+OpenViking has 6 built-in memory categories, automatically extracted during session commit:
 
-### How much data can OpenViking handle?
+| Category | Belongs To | Description |
+|----------|------------|-------------|
+| **profile** | user | User basic info (name, role, etc.) |
+| **preferences** | user | User preferences (code style, tool choices, etc.) |
+| **entities** | user | Entity memories (people, projects, organizations, etc.) |
+| **events** | user | Event records (decisions, milestones, etc.) |
+| **cases** | agent | Cases learned by Agent |
+| **patterns** | agent | Patterns learned by Agent |
 
-OpenViking is designed to handle large knowledge bases. Performance depends on:
-- Hardware resources
-- Embedding model speed
-- Vector index configuration
+### How do I use Unix-like filesystem APIs?
+
+```python
+# List directory contents
+items = await client.ls("viking://resources/")
+
+# Read full content (L2)
+content = await client.read("viking://resources/doc.md")
+
+# Get abstract (L0)
+abstract = await client.abstract("viking://resources")
+
+# Get overview (L1)
+overview = await client.overview("viking://resources")
+```
+
+## Retrieval Optimization
 
 ### How do I improve retrieval quality?
 
-1. Use a rerank model
-2. Provide meaningful `reason` when adding resources
-3. Organize resources with appropriate `target` URIs
-4. Use sessions for context-aware search
+1. **Use Rerank model**: Configuring Rerank significantly improves ranking effectiveness
+2. **Provide meaningful `reason`**: Describe purpose when adding resources to help system understand resource value
+3. **Organize directory structure properly**: Use `target` parameter to group related resources together
+4. **Use session context**: `search()` leverages session history for intent analysis
+5. **Choose appropriate Embedding mode**: Use `multimodal` input for multimodal content
+
+### How is the retrieval result score calculated?
+
+OpenViking uses a score propagation mechanism:
+
+```
+Final Score = 0.5 × Embedding Similarity + 0.5 × Parent Directory Score
+```
+
+This design gives content under high-scoring directories a boost, reflecting the importance of "contextual environment".
+
+### What is directory recursive retrieval?
+
+Directory recursive retrieval is OpenViking's innovative retrieval strategy:
+
+1. **Intent Analysis**: Analyze query to generate multiple retrieval conditions
+2. **Initial Positioning**: Vector retrieval to locate high-scoring directories
+3. **Refined Exploration**: Secondary retrieval within high-scoring directories
+4. **Recursive Drill-down**: Layer-by-layer recursion until convergence
+5. **Result Aggregation**: Return the most relevant context
+
+This strategy finds semantically matching fragments while understanding the complete context of the information.
 
 ## Troubleshooting
 
-### Resources are not being indexed
+### Resources not being indexed after adding
 
-1. Check if `wait_processed()` was called
-2. Verify embedding model configuration
-3. Check logs for processing errors
+**Possible causes and solutions**:
 
-### Search returns no results
+1. **Didn't wait for processing to complete**
+   ```python
+   await client.add_resource("./doc.pdf")
+   await client.wait_processed()  # Must wait
+   ```
 
-1. Verify resources were added and processed
-2. Check the `target_uri` filter
-3. Try broader search terms
+2. **Embedding model configuration error**
+   - Check if `api_key` in `ov.conf` is correct
+   - Confirm model name and endpoint are configured correctly
+
+3. **Unsupported file format**
+   - Check if file extension is in the supported list
+   - Confirm file content is valid and not corrupted
+
+4. **View processing logs**
+   ```python
+   import logging
+   logging.basicConfig(level=logging.DEBUG)
+   ```
+
+### Search not returning expected results
+
+**Troubleshooting steps**:
+
+1. **Confirm resources have been processed**
+   ```python
+   # Check if resources exist
+   items = await client.ls("viking://resources/")
+   ```
+
+2. **Check `target_uri` filter condition**
+   - Ensure search scope includes target resources
+   - Try expanding search scope
+
+3. **Try different query approaches**
+   - Use more specific or broader keywords
+   - Compare effects of `find()` and `search()`
+
+4. **Check L0 abstract quality**
+   ```python
+   abstract = await client.abstract("viking://resources/your-doc")
+   print(abstract)  # Confirm abstract accurately reflects content
+   ```
 
 ### Memory extraction not working
 
-1. Ensure `session.commit()` was called
-2. Check LLM configuration for memory extraction
-3. Verify conversation has meaningful content
+**Troubleshooting steps**:
+
+1. **Ensure `commit()` was called**
+   ```python
+   await session.commit()  # Triggers memory extraction
+   ```
+
+2. **Check VLM configuration**
+   - Memory extraction requires VLM model
+   - Confirm `vlm` configuration is correct
+
+3. **Confirm conversation content is meaningful**
+   - Casual chat may not produce memories
+   - Needs to contain extractable information (preferences, entities, events, etc.)
+
+4. **View extracted memories**
+   ```python
+   memories = await client.find("", target_uri="viking://user/memories/")
+   ```
+
+### Performance issues
+
+**Optimization suggestions**:
+
+1. **Batch processing**: Adding multiple resources at once is more efficient than one by one
+2. **Set appropriate `batch_size`**: Adjust batch processing size in Embedding configuration
+3. **Use local storage**: Use `local` backend during development to reduce network latency
+4. **Async operations**: Fully utilize `AsyncOpenViking`'s async capabilities
+
+## Deployment
+
+### What's the difference between embedded mode and service mode?
+
+| Mode | Use Case | Characteristics |
+|------|----------|-----------------|
+| **Embedded** | Local development, single-process apps | Auto-starts AGFS subprocess, uses local vector index |
+| **Service Mode** | Production, distributed deployment | Connects to remote services, supports multi-instance concurrency, independently scalable |
+
+```python
+# Embedded mode
+client = ov.AsyncOpenViking(path="./data")
+
+# Service mode
+client = ov.AsyncOpenViking(
+    vectordb_url="http://vectordb:5000",
+    agfs_url="http://agfs:8080"
+)
+```
+
+### Is OpenViking open source?
+
+Yes, OpenViking is fully open source under the Apache 2.0 license.
 
 ## Related Documentation
 
-- [Introduction](getting-started/instruction.md)
-- [Quick Start](getting-started/quickstart.md)
-- [Architecture](concepts/01-architecture.md)
+- [Introduction](../getting-started/introduction.md) - Understand OpenViking's design philosophy
+- [Quick Start](../getting-started/quickstart.md) - 5-minute tutorial
+- [Architecture Overview](../concepts/01-architecture.md) - Deep dive into system design
+- [Retrieval Mechanism](../concepts/06-retrieval.md) - Detailed retrieval process
+- [Configuration Guide](../configuration/configuration.md) - Complete configuration reference
