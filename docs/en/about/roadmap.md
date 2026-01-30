@@ -43,35 +43,31 @@ This document outlines the development roadmap for OpenViking.
 
 ## Future Plans
 
+### Service Deployment
+- Service mode deployment
+- Distributed storage backend
+
 ### Multi-modal Support
 - Intelligent parsing and access for multi-modal resources (images, video, audio, etc.)
+- Directory storage structure for multi-modal resources
+
+### Context Management
+- Propagation updates when context is modified
+- Version management and rollback for context (git-like)
 
 ### Resource Node Access Control
 - Multi-Agent / Multi-User support
 - Role-based isolation design
 - Access control and permission design for resource directory nodes
 
-### Context Version Control
-- Version management and rollback for context
-
-### Integration
+### Ecosystem Integration
 - Popular Agent framework adapters
+- Plugin system for custom components
 
-### Distributed Architecture
-- Distributed storage backend
-- Horizontal scaling
-- Multi-node deployment
-- Cloud-native support
+We welcome suggestions and feedback in issues.
 
 ---
 
 ## Contributing
 
 We welcome contributions to help achieve these goals. See [Contributing](contributing.md) for guidelines.
-
-Priority areas for contribution:
-- Performance optimization
-- New format parsers
-- Integration adapters
-- Documentation improvements
-- Test coverage
