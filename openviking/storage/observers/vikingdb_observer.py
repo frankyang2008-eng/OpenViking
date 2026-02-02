@@ -6,9 +6,9 @@ VikingDBObserver: VikingDB storage observability tool.
 Provides methods to observe and report VikingDB collection status.
 """
 
-import asyncio
 from typing import Dict
 
+from openviking.storage.observers.async_utils import run_coroutine_sync
 from openviking.storage.observers.base_observer import BaseObserver
 from openviking.storage.vikingdb_manager import VikingDBManager
 from openviking.utils.logger import get_logger
@@ -26,14 +26,20 @@ class VikingDBObserver(BaseObserver):
     def __init__(self, vikingdb_manager: VikingDBManager):
         self._vikingdb_manager = vikingdb_manager
 
-    def get_status_table(self) -> str:
-        collection_names = asyncio.run(self._vikingdb_manager.list_collections())
+    async def get_status_table_async(self) -> str:
+        if not self._vikingdb_manager:
+            return "VikingDB manager not initialized."
+
+        collection_names = await self._vikingdb_manager.list_collections()
 
         if not collection_names:
             return "No collections found."
 
-        statuses = asyncio.run(self._get_collection_statuses(collection_names))
+        statuses = await self._get_collection_statuses(collection_names)
         return self._format_status_as_table(statuses)
+
+    def get_status_table(self) -> str:
+        return run_coroutine_sync(self.get_status_table_async)
 
     def __str__(self) -> str:
         return self.get_status_table()
@@ -72,8 +78,6 @@ class VikingDBObserver(BaseObserver):
         return statuses
 
     def _format_status_as_table(self, statuses: Dict[str, Dict]) -> str:
-        import pandas as pd
-
         data = []
         total_indexes = 0
         total_vectors = 0
@@ -86,8 +90,8 @@ class VikingDBObserver(BaseObserver):
             data.append(
                 {
                     "Collection": name,
-                    "Index Count": index_count,
-                    "Vector Count": vector_count,
+                    "Index Count": str(index_count),
+                    "Vector Count": str(vector_count),
                     "Status": "ERROR" if error else "OK",
                 }
             )
@@ -97,17 +101,41 @@ class VikingDBObserver(BaseObserver):
         if not data:
             return "No collections found."
 
-        df = pd.DataFrame(data)
+        # Add total row
+        data.append(
+            {
+                "Collection": "TOTAL",
+                "Index Count": str(total_indexes),
+                "Vector Count": str(total_vectors),
+                "Status": "",
+            }
+        )
 
-        total_row = {
-            "Collection": "TOTAL",
-            "Index Count": total_indexes,
-            "Vector Count": total_vectors,
-            "Status": "",
-        }
-        df = pd.concat([df, pd.DataFrame([total_row])], ignore_index=True)
+        # Simple table formatter
+        headers = ["Collection", "Index Count", "Vector Count", "Status"]
+        col_widths = {h: len(h) for h in headers}
 
-        return df.to_string(index=False)
+        for row in data:
+            for h in headers:
+                col_widths[h] = max(col_widths[h], len(str(row.get(h, ""))))
+
+        # Add padding
+        for h in headers:
+            col_widths[h] += 2
+
+        # Build string
+        lines = []
+
+        # Header
+        header_line = "".join(h.ljust(col_widths[h]) for h in headers)
+        lines.append(header_line)
+
+        # Rows
+        for row in data:
+            line = "".join(str(row.get(h, "")).ljust(col_widths[h]) for h in headers)
+            lines.append(line)
+
+        return "\n".join(lines)
 
     def is_healthy(self) -> bool:
         """
@@ -126,7 +154,9 @@ class VikingDBObserver(BaseObserver):
             True if errors exist, False otherwise
         """
         try:
-            asyncio.run(self._vikingdb_manager.health_check())
+            if not self._vikingdb_manager:
+                return True
+            run_coroutine_sync(self._vikingdb_manager.health_check)
             return False
         except Exception as e:
             logger.error(f"VikingDB health check failed: {e}")
