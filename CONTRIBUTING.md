@@ -140,17 +140,30 @@ We use the following tools to maintain code consistency:
 
 | Tool | Purpose | Config |
 |------|---------|--------|
-| **Black** | Code formatting | `pyproject.toml` |
-| **isort** | Import sorting | `pyproject.toml` |
-| **Ruff** | Linting | `pyproject.toml` |
+| **Ruff** | Linting, Formatting, Import sorting | `pyproject.toml` |
 | **mypy** | Type checking | `pyproject.toml` |
+
+### Automated Checks (Recommended)
+
+We use [pre-commit](https://pre-commit.com/) to automatically run these checks before every commit. This ensures your code always meets the standards without manual effort.
+
+1. **Install pre-commit**:
+   ```bash
+   pip install pre-commit
+   ```
+
+2. **Install the git hooks**:
+   ```bash
+   pre-commit install
+   ```
+
+Now, `ruff` (check & format) will run automatically when you run `git commit`. If any check fails, it may automatically fix the file. You just need to add the changes and commit again.
 
 ### Running Checks
 
 ```bash
 # Format code
-black openviking/
-isort openviking/
+ruff format openviking/
 
 # Lint
 ruff check openviking/
