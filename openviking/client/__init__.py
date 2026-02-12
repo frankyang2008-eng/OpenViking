@@ -5,11 +5,11 @@
 Provides client implementations for embedded (LocalClient) and HTTP (AsyncHTTPClient/SyncHTTPClient) modes.
 """
 
-from openviking.client.base import BaseClient
-from openviking.client.http import AsyncHTTPClient
 from openviking.client.local import LocalClient
 from openviking.client.session import Session
-from openviking.client.sync_http import SyncHTTPClient
+from openviking_cli.client.base import BaseClient
+from openviking_cli.client.http import AsyncHTTPClient
+from openviking_cli.client.sync_http import SyncHTTPClient
 
 __all__ = [
     "BaseClient",

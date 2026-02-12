@@ -11,17 +11,17 @@ import heapq
 from typing import Any, Dict, List, Optional, Tuple
 
 from openviking.models.embedder.base import EmbedResult
-from openviking.retrieve.types import (
+from openviking.storage import VikingDBInterface
+from openviking.storage.viking_fs import get_viking_fs
+from openviking_cli.retrieve.types import (
     ContextType,
     MatchedContext,
     QueryResult,
     RelatedContext,
     TypedQuery,
 )
-from openviking.storage import VikingDBInterface
-from openviking.storage.viking_fs import get_viking_fs
-from openviking.utils.config import RerankConfig
-from openviking.utils.logger import get_logger
+from openviking_cli.utils.config import RerankConfig
+from openviking_cli.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
