@@ -37,11 +37,11 @@ impl CliContext {
 #[command(arg_required_else_help = true)]
 struct Cli {
     /// Output format
-    #[arg(short, long, value_enum, default_value = "table")]
+    #[arg(short, long, value_enum, default_value = "table", global = true)]
     output: OutputFormat,
 
     /// Output compact JSON with {ok, result} wrapper (for scripts)
-    #[arg(long)]
+    #[arg(long, global = true)]
     json: bool,
 
     #[command(subcommand)]
