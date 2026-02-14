@@ -1,9 +1,9 @@
 [package]
-name = "openviking-cli"
+name = "ov_cli"
 version = "0.1.0"
 edition = "2021"
 authors = ["OpenViking Contributors"]
-description = "CLI client for OpenViking"
+description = "Rust CLI client for OpenViking"
 license = "MIT"
 
 [[bin]]

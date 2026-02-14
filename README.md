@@ -71,6 +71,18 @@ Before starting with OpenViking, please ensure your environment meets the follow
 pip install openviking
 ```
 
+#### Rust CLI (Optional)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/volcengine/OpenViking/main/crates/ov_cli/install.sh | bash
+```
+
+Or build from source:
+
+```bash
+cargo install --git https://github.com/volcengine/OpenViking ov_cli
+```
+
 ### 2. Model Preparation
 
 OpenViking requires the following model capabilities:
