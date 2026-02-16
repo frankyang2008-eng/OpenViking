@@ -125,6 +125,16 @@ enum Commands {
         #[arg(long)]
         no_vectorize: bool,
     },
+    /// Wait for queued async processing to complete
+    Wait {
+        /// Wait timeout in seconds
+        #[arg(long)]
+        timeout: Option<f64>,
+    },
+    /// Show OpenViking component status
+    Status,
+    /// Quick health check
+    Health,
     /// System utility commands
     System {
         #[command(subcommand)]
@@ -152,11 +162,29 @@ enum Commands {
         /// List all subdirectories recursively
         #[arg(short, long)]
         recursive: bool,
+        /// Abstract content limit (only for agent output)
+        #[arg(long = "abs-limit", short = 'l', default_value = "256")]
+        abs_limit: i32,
+        /// Show all hidden files
+        #[arg(short, long)]
+        all: bool,
+        /// Maximum number of nodes to list
+        #[arg(long = "node-limit", short = 'n', default_value = "1000")]
+        node_limit: i32,
     },
     /// Get directory tree
     Tree {
         /// Viking URI to get tree for
         uri: String,
+        /// Abstract content limit (only for agent output)
+        #[arg(long = "abs-limit", short = 'l', default_value = "128")]
+        abs_limit: i32,
+        /// Show all hidden files
+        #[arg(short, long)]
+        all: bool,
+        /// Maximum number of nodes to list
+        #[arg(long = "node-limit", short = 'n', default_value = "1000")]
+        node_limit: i32,
     },
     /// Create directory
     Mkdir {
@@ -363,14 +391,23 @@ async fn main() {
         Commands::Import { file_path, target_uri, force, no_vectorize } => {
             handle_import(file_path, target_uri, force, no_vectorize, ctx).await
         }
+        Commands::Wait { timeout } => {
+            let client = ctx.get_client();
+            commands::system::wait(&client, timeout, ctx.output_format, ctx.compact).await
+        },
+        Commands::Status => {
+            let client = ctx.get_client();
+            commands::observer::system(&client, ctx.output_format, ctx.compact).await
+        },
+        Commands::Health => handle_health(ctx).await,
         Commands::System { action } => handle_system(action, ctx).await,
         Commands::Observer { action } => handle_observer(action, ctx).await,
         Commands::Session { action } => handle_session(action, ctx).await,
-        Commands::Ls { uri, simple, recursive } => {
-            handle_ls(uri, simple, recursive, ctx).await
+        Commands::Ls { uri, simple, recursive, abs_limit, all, node_limit } => {
+            handle_ls(uri, simple, recursive, abs_limit, all, node_limit, ctx).await
         }
-        Commands::Tree { uri } => {
-            handle_tree(uri, ctx).await
+        Commands::Tree { uri, abs_limit, all, node_limit } => {
+            handle_tree(uri, abs_limit, all, node_limit, ctx).await
         }
         Commands::Mkdir { uri } => {
             handle_mkdir(uri, ctx).await
@@ -612,14 +649,16 @@ async fn handle_search(
     commands::search::search(&client, &query, &uri, session_id, limit, threshold, ctx.output_format, ctx.compact).await
 }
 
-async fn handle_ls(uri: String, simple: bool, recursive: bool, ctx: CliContext) -> Result<()> {
+async fn handle_ls(uri: String, simple: bool, recursive: bool, abs_limit: i32, show_all_hidden: bool, node_limit: i32, ctx: CliContext) -> Result<()> {
     let client = ctx.get_client();
-    commands::filesystem::ls(&client, &uri, simple, recursive, ctx.output_format, ctx.compact).await
+    let api_output = if ctx.compact { "agent" } else { "original" };
+    commands::filesystem::ls(&client, &uri, simple, recursive, api_output, abs_limit, show_all_hidden, node_limit, ctx.output_format, ctx.compact).await
 }
 
-async fn handle_tree(uri: String, ctx: CliContext) -> Result<()> {
+async fn handle_tree(uri: String, abs_limit: i32, show_all_hidden: bool, node_limit: i32, ctx: CliContext) -> Result<()> {
     let client = ctx.get_client();
-    commands::filesystem::tree(&client, &uri, ctx.output_format, ctx.compact).await
+    let api_output = if ctx.compact { "agent" } else { "original" };
+    commands::filesystem::tree(&client, &uri, api_output, abs_limit, show_all_hidden, node_limit, ctx.output_format, ctx.compact).await
 }
 
 async fn handle_mkdir(uri: String, ctx: CliContext) -> Result<()> {
@@ -650,4 +689,15 @@ async fn handle_grep(uri: String, pattern: String, ignore_case: bool, ctx: CliCo
 async fn handle_glob(pattern: String, uri: String, ctx: CliContext) -> Result<()> {
     let client = ctx.get_client();
     commands::search::glob(&client, &pattern, &uri, ctx.output_format, ctx.compact).await
+}
+
+async fn handle_health(ctx: CliContext) -> Result<()> {
+    let client = ctx.get_client();
+    let system_status: serde_json::Value = client.get("/api/v1/observer/system", &[]).await?;
+    let is_healthy = system_status.get("is_healthy").and_then(|v| v.as_bool()).unwrap_or(false);
+    output::output_success(&serde_json::json!({ "healthy": is_healthy }), ctx.output_format, ctx.compact);
+    if !is_healthy {
+        std::process::exit(1);
+    }
+    Ok(())
 }
