@@ -6,10 +6,10 @@
     "cors_origins": ["*"]
   },
   "storage": {
+    "workspace": "./data",
     "vectordb": {
       "name": "context",
       "backend": "local",
-      "path": "./data",
       "project": "default",
       "volcengine": {
         "region": "cn-beijing",
@@ -20,7 +20,6 @@
     "agfs": {
       "port": 1833,
       "log_level": "warn",
-      "path": "./data",
       "backend": "local",
       "timeout": 10,
       "retry_times": 3,
