@@ -69,6 +69,7 @@ def init_viking_fs(
     rerank_config: Optional["RerankConfig"] = None,
     vector_store: Optional["VikingDBInterface"] = None,
     timeout: int = 10,
+    enable_recorder: bool = False,
 ) -> "VikingFS":
     """Initialize VikingFS singleton.
 
@@ -78,6 +79,7 @@ def init_viking_fs(
         rerank_config: Rerank configuration
         vector_store: Vector store instance
         timeout: Request timeout in seconds
+        enable_recorder: Whether to enable IO recording
     """
     global _instance
     _instance = VikingFS(
@@ -87,7 +89,46 @@ def init_viking_fs(
         vector_store=vector_store,
         timeout=timeout,
     )
+
+    if enable_recorder:
+        _enable_viking_fs_recorder(_instance)
+
     return _instance
+
+
+def _enable_viking_fs_recorder(viking_fs: "VikingFS") -> None:
+    """
+    Enable recorder for a VikingFS instance.
+
+    This wraps the VikingFS instance with recording capabilities.
+    Called automatically when enable_recorder=True in init_viking_fs.
+
+    Args:
+        viking_fs: VikingFS instance to enable recording for
+    """
+    from openviking.eval.recorder import RecordingVikingFS, get_recorder
+
+    recorder = get_recorder()
+    if not recorder.enabled:
+        from openviking.eval.recorder import init_recorder
+        init_recorder(enabled=True)
+
+    global _instance
+    _instance = RecordingVikingFS(viking_fs)
+    logger.info("[VikingFS] IO Recorder enabled")
+
+
+def enable_viking_fs_recorder() -> None:
+    """
+    Enable recorder for the global VikingFS singleton.
+
+    This function wraps the existing VikingFS's AGFS client with recording.
+    Must be called after init_viking_fs().
+    """
+    global _instance
+    if _instance is None:
+        raise RuntimeError("VikingFS not initialized. Call init_viking_fs() first.")
+    _enable_viking_fs_recorder(_instance)
 
 
 def get_viking_fs() -> "VikingFS":
