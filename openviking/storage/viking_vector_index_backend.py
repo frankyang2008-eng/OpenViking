@@ -584,5 +584,10 @@ class VikingVectorIndexBackend:
             }
 
     @property
+    def is_closing(self) -> bool:
+        """Whether the backend is in shutdown flow. Always False for the base class."""
+        return False
+
+    @property
     def mode(self) -> str:
         return self._mode
