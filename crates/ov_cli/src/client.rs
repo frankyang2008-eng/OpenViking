@@ -369,13 +369,13 @@ impl HttpClient {
         &self,
         query: String,
         uri: String,
-        limit: i32,
+        node_limit: i32,
         threshold: Option<f64>,
     ) -> Result<serde_json::Value> {
         let body = serde_json::json!({
             "query": query,
             "target_uri": uri,
-            "limit": limit,
+            "limit": node_limit,
             "score_threshold": threshold,
         });
         self.post("/api/v1/search/find", &body).await
@@ -386,27 +386,29 @@ impl HttpClient {
         query: String,
         uri: String,
         session_id: Option<String>,
-        limit: i32,
+        node_limit: i32,
         threshold: Option<f64>,
     ) -> Result<serde_json::Value> {
         let body = serde_json::json!({
             "query": query,
             "target_uri": uri,
             "session_id": session_id,
-            "limit": limit,
+            "limit": node_limit,
             "score_threshold": threshold,
         });
         self.post("/api/v1/search/search", &body).await
     }
 
-    pub async fn grep(&self, uri: &str, pattern: &str, ignore_case: bool) -> Result<serde_json::Value> {
+    pub async fn grep(&self, uri: &str, pattern: &str, ignore_case: bool, node_limit: i32) -> Result<serde_json::Value> {
         let body = serde_json::json!({
             "uri": uri,
             "pattern": pattern,
             "case_insensitive": ignore_case,
+            "node_limit": node_limit,
         });
         self.post("/api/v1/search/grep", &body).await
     }
+
 
     pub async fn glob(&self, pattern: &str, uri: &str) -> Result<serde_json::Value> {
         let body = serde_json::json!({
