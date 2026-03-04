@@ -5,7 +5,6 @@
 import asyncio
 from typing import Any, Dict, List, Optional, Tuple
 
-from openviking.core.context import Context, ResourceContentType, Vectorize
 from openviking.parse.parsers.constants import (
     CODE_EXTENSIONS,
     DOCUMENTATION_EXTENSIONS,
@@ -54,6 +53,7 @@ class SemanticProcessor(DequeueHandlerBase):
         self.max_concurrent_llm = max_concurrent_llm
         self._dag_executor: Optional[SemanticDagExecutor] = None
         self._current_ctx = RequestContext(user=UserIdentifier.the_default_user(), role=Role.ROOT)
+        self._current_msg: Optional[SemanticMsg] = None
 
     @staticmethod
     def _owner_space_for_uri(uri: str, ctx: RequestContext) -> str:
@@ -164,6 +164,7 @@ class SemanticProcessor(DequeueHandlerBase):
             # data is guaranteed to be not None at this point
             assert data is not None
             msg = SemanticMsg.from_dict(data)
+            self._current_msg = msg
             self._current_ctx = self._ctx_from_semantic_msg(msg)
             logger.info(
                 f"Processing semantic generation for: {msg.uri} (recursive={msg.recursive})"
@@ -220,6 +221,8 @@ class SemanticProcessor(DequeueHandlerBase):
             logger.error(f"Failed to process semantic message: {e}", exc_info=True)
             self.report_error(str(e), data)
             return None
+        finally:
+            self._current_msg = None
 
     def get_dag_stats(self) -> Optional["DagStats"]:
         if not self._dag_executor:
@@ -573,4 +576,3 @@ class SemanticProcessor(DequeueHandlerBase):
             context_type=context_type,
             ctx=active_ctx,
         )
-
