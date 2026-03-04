@@ -29,12 +29,18 @@ class ContextBuilder:
         self,
         workspace: Path,
         sandbox_manager: SandboxManager | None = None,
+        sender_id: str = None,
+        is_group_chat: bool = False,
+        eval: bool = False,
     ):
         self.workspace = workspace
         self._templates_ensured = False
         self.sandbox_manager = sandbox_manager
         self._memory = None
         self._skills = None
+        self._sender_id = sender_id
+        self._is_group_chat = is_group_chat
+        self._eval = eval
 
     @property
     def memory(self):
@@ -72,7 +78,7 @@ class ContextBuilder:
         """
         # Ensure workspace templates exist only when first needed
         self._ensure_templates_once()
-        sandbox_key = self.sandbox_manager.to_sandbox_key(session_key)
+        workspace_id = self.sandbox_manager.to_workspace_id(session_key)
 
         parts = []
 
@@ -82,22 +88,29 @@ class ContextBuilder:
         # Sandbox environment info
         if self.sandbox_manager:
             sandbox_cwd = await self.sandbox_manager.get_sandbox_cwd(session_key)
-
             parts.append(
                 f"## Sandbox Environment\n\nYou are running in a sandboxed environment. All file operations and command execution are restricted to the sandbox directory.\nThe sandbox root directory is `{sandbox_cwd}` (use relative paths for all operations)."
             )
 
-        # Viking user profile
-        profile = await self.memory.get_viking_user_profile(sandbox_key=sandbox_key)
-        if profile:
-            parts.append(profile)
+        # Add group chat context if applicable
+        if self._is_group_chat:
+            parts.append(
+                f"\n\n## Group Chat Context\nThis is a group chat session. Multiple users can participate in this conversation. Each user message is prefixed with the user ID in brackets like @<user_id>. "
+                f"You should pay attention to who is speaking to understand the context. Current user ID: {self._sender_id}")
 
-        # Viking memory
+        # Viking user profile
+        profile = await self.memory.get_viking_user_profile(
+            workspace_id=workspace_id, user_id=self._sender_id
+        )
+        if profile:
+            parts.append(f"## Current user's information\n{profile}")
+
+        # Viking agent memory
         viking_memory = await self.memory.get_viking_memory_context(
-            current_message=current_message, sandbox_key=sandbox_key
+            current_message=current_message, workspace_id=workspace_id
         )
         if viking_memory:
-            parts.append(viking_memory)
+            parts.append(f"## Your memories. Using tools to read more details.\n{viking_memory}")
 
         # Bootstrap files
         bootstrap = self._load_bootstrap_files()
@@ -198,7 +211,6 @@ Always be helpful, accurate, and concise. When using tools, think step by step: 
         self,
         history: list[dict[str, Any]],
         current_message: str,
-        skill_names: list[str] | None = None,
         media: list[str] | None = None,
         session_key: SessionKey | None = None,
     ) -> list[dict[str, Any]]:
@@ -208,10 +220,8 @@ Always be helpful, accurate, and concise. When using tools, think step by step: 
         Args:
             history: Previous conversation messages.
             current_message: The new user message.
-            skill_names: Optional skills to include.
             media: Optional list of local file paths for images/media.
-            channel: Current channel (telegram, feishu, etc.).
-            chat_id: Current chat/user ID.
+            session_key: Optional session key.
 
         Returns:
             List of messages including system prompt.
@@ -220,13 +230,14 @@ Always be helpful, accurate, and concise. When using tools, think step by step: 
 
         # System prompt
         system_prompt = await self.build_system_prompt(session_key, current_message, history)
-        if session_key.channel_id and session_key.chat_id:
+        if session_key and session_key.channel_id and session_key.chat_id:
             system_prompt += f"\n\n## Current Session\nChannel: {session_key.type}:{session_key.channel_id}\nChat ID: {session_key.chat_id}"
         messages.append({"role": "system", "content": system_prompt})
         # logger.debug(f"system_prompt: {system_prompt}")
 
         # History
-        messages.extend(history)
+        if not self._eval:
+            messages.extend(history)
 
         # Current message (with optional image attachments)
         user_content = self._build_user_content(current_message, media)
