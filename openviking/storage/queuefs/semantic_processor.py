@@ -514,48 +514,20 @@ class SemanticProcessor(DequeueHandlerBase):
     ) -> None:
         """Create directory Context and enqueue to EmbeddingQueue."""
 
-        from openviking.storage.queuefs import get_queue_manager
-        from openviking.storage.queuefs.embedding_msg_converter import EmbeddingMsgConverter
+        if self._current_msg and getattr(self._current_msg, "skip_vectorization", False):
+            logger.info(f"Skipping vectorization for {uri} (requested via SemanticMsg)")
+            return
+
+        from openviking.utils.embedding_utils import vectorize_directory_meta
 
         active_ctx = ctx or self._current_ctx
-        queue_manager = get_queue_manager()
-        embedding_queue = queue_manager.get_queue(queue_manager.EMBEDDING)
-        owner_space = self._owner_space_for_uri(uri, active_ctx)
-        parent_uri = VikingURI(uri).parent.uri
-
-        # Vectorize L0: .abstract.md (abstract), level=0
-        context_abstract = Context(
+        await vectorize_directory_meta(
             uri=uri,
-            parent_uri=parent_uri,
-            is_leaf=False,
             abstract=abstract,
+            overview=overview,
             context_type=context_type,
-            level=0,
-            user=active_ctx.user,
-            account_id=active_ctx.account_id,
-            owner_space=owner_space,
+            ctx=active_ctx,
         )
-        context_abstract.set_vectorize(Vectorize(text=abstract))
-        embedding_msg_abstract = EmbeddingMsgConverter.from_context(context_abstract)
-        await embedding_queue.enqueue(embedding_msg_abstract)  # type: ignore
-        logger.debug(f"Enqueued directory L0 (abstract) for vectorization: {uri}")
-
-        # Vectorize L1: .overview.md (overview), level=1
-        context_overview = Context(
-            uri=uri,
-            parent_uri=parent_uri,
-            is_leaf=False,
-            abstract=abstract,
-            context_type=context_type,
-            level=1,
-            user=active_ctx.user,
-            account_id=active_ctx.account_id,
-            owner_space=owner_space,
-        )
-        context_overview.set_vectorize(Vectorize(text=overview))
-        embedding_msg_overview = EmbeddingMsgConverter.from_context(context_overview)
-        await embedding_queue.enqueue(embedding_msg_overview)  # type: ignore
-        logger.debug(f"Enqueued directory L1 (overview) for vectorization: {uri}")
 
     async def _vectorize_files(
         self,
@@ -591,72 +563,14 @@ class SemanticProcessor(DequeueHandlerBase):
         ctx: Optional[RequestContext] = None,
     ) -> None:
         """Vectorize a single file using its content or summary."""
-        from datetime import datetime
+        from openviking.utils.embedding_utils import vectorize_file
 
-        from openviking.storage.queuefs import get_queue_manager
-        from openviking.storage.queuefs.embedding_msg_converter import EmbeddingMsgConverter
+        active_ctx = ctx or self._current_ctx
+        await vectorize_file(
+            file_path=file_path,
+            summary_dict=summary_dict,
+            parent_uri=parent_uri,
+            context_type=context_type,
+            ctx=active_ctx,
+        )
 
-        try:
-            file_name = summary_dict.get("name") or file_path.split("/")[-1]
-            summary = summary_dict.get("summary", "")
-
-            if embedding_queue is None:
-                queue_manager = get_queue_manager()
-                embedding_queue = queue_manager.get_queue(queue_manager.EMBEDDING)
-
-            active_ctx = ctx or self._current_ctx
-            context = Context(
-                uri=file_path,
-                parent_uri=parent_uri,
-                is_leaf=True,
-                abstract=summary,
-                context_type=context_type,
-                created_at=datetime.now(),
-                user=active_ctx.user,
-                account_id=active_ctx.account_id,
-                owner_space=self._owner_space_for_uri(file_path, active_ctx),
-            )
-
-            if self.get_resource_content_type(file_name) == ResourceContentType.TEXT:
-                content = await get_viking_fs().read_file(file_path, ctx=active_ctx)
-                context.set_vectorize(Vectorize(text=content))
-            elif summary:
-                context.set_vectorize(Vectorize(text=summary))
-            else:
-                return
-
-            embedding_msg = EmbeddingMsgConverter.from_context(context)
-            if not embedding_msg:
-                return
-            await embedding_queue.enqueue(embedding_msg)  # type: ignore
-            logger.debug(f"Enqueued file for vectorization: {file_path}")
-        except Exception as e:
-            logger.error(f"Failed to vectorize file {file_path}: {e}", exc_info=True)
-
-    def get_resource_content_type(self, file_name: str) -> ResourceContentType:
-        def _is_image_file(file_name: str) -> bool:
-            image_extensions = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".svg", ".webp"}
-            return any(file_name.endswith(ext) for ext in image_extensions)
-
-        def _is_video_file(file_name: str) -> bool:
-            video_extensions = {".mp4", ".avi", ".mov", ".wmv", ".flv"}
-            return any(file_name.endswith(ext) for ext in video_extensions)
-
-        def _is_text_file(file_name: str) -> bool:
-            text_extensions = {".txt", ".md", ".csv", ".json", ".xml"}
-            return any(file_name.endswith(ext) for ext in text_extensions)
-
-        def _is_audio_file(file_name: str) -> bool:
-            audio_extensions = {".mp3", ".wav", ".aac", ".flac"}
-            return any(file_name.endswith(ext) for ext in audio_extensions)
-
-        if _is_text_file(file_name):
-            return ResourceContentType.TEXT
-        elif _is_image_file(file_name):
-            return ResourceContentType.IMAGE
-        elif _is_video_file(file_name):
-            return ResourceContentType.VIDEO
-        elif _is_audio_file(file_name):
-            return ResourceContentType.AUDIO
-
-        return ResourceContentType.BINARY
