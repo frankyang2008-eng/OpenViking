@@ -58,12 +58,12 @@ copy examples\openclaw-memory-plugin\skills\install-openviking-memory\SKILL.md ^
 | **Node.js** | >= 22 | OpenClaw 运行时 + 安装助手 | 是 |
 | **cmake** | — | 编译 C++ 扩展（OpenViking + OpenClaw 的 node-llama-cpp） | 是 |
 | **g++ (gcc-c++)** | — | C++ 编译器 | 是 |
-| **Go** | >= 1.25 | 编译 AGFS 服务端（仅 Linux 源码安装） | 源码安装必需 |
+| **Go** | >= 1.19 | 编译 AGFS 服务端（仅 Linux 源码安装） | 源码安装必需 |
 | **火山引擎 Ark API Key** | — | Embedding + VLM 模型调用 | 是 |
 
 > **PyPI 安装 vs 源码安装：**
 > - `pip install openviking --upgrade --force-reinstall`（PyPI 预编译包）：只需 Python、cmake、g++，**不需要 Go**
-> - `pip install -e . --force-reinstall`（源码安装）：需要 Python、cmake、g++ **以及 Go >= 1.25**（Linux 上编译 AGFS）
+> - `pip install -e . --force-reinstall`（源码安装）：需要 Python、cmake、g++ **以及 Go >= 1.19**（Linux 上编译 AGFS）
 > - **Windows** 用户可直接使用预编译 wheel 包，无需 Go
 
 ### 快速检查
@@ -329,7 +329,7 @@ npx ./examples/openclaw-memory-plugin/setup-helper
 3. **交互配置** — 提示输入以下信息：
    - 数据存储路径（默认为绝对路径，如 `/home/yourname/.openviking/data`）
    - 火山引擎 Ark API Key
-   - VLM 模型名称（默认 `doubao-seed-1-8-251228`）
+   - VLM 模型名称（默认 `doubao-seed-2-0-pro-260215`）
    - Embedding 模型名称（默认 `doubao-embedding-vision-250615`）
    - 服务端口（默认 1933 / 1833）
 4. **生成配置** — 创建 `~/.openviking/ov.conf`
@@ -433,7 +433,7 @@ call "%USERPROFILE%\.openclaw\openviking.env.bat" && openclaw gateway
   "vlm": {
     "backend": "volcengine",
     "api_key": "<your-api-key>",
-    "model": "doubao-seed-1-8-251228",
+    "model": "doubao-seed-2-0-pro-260215",
     "api_base": "https://ark.cn-beijing.volces.com/api/v3",
     "temperature": 0.1,
     "max_retries": 3
@@ -520,7 +520,7 @@ sudo apt install -y python3-dev     # 或 python3.11-dev
 Linux 源码安装**必须**安装 Go >= 1.25，参见 [3.4 安装 Go](#34-安装-go--125仅源码安装需要)。
 
 ```bash
-go version              # 确认 >= 1.25
+go version              # 确认 >= 1.19
 python3 -m pip install -e .
 ```
 
@@ -587,7 +587,7 @@ call "%USERPROFILE%\.openclaw\openviking.env.bat" && openclaw gateway
 
 - `embedding.dense.api_key` 为有效的火山引擎 Ark API Key
 - `vlm.api_key` 已设置（通常与 embedding 相同）
-- `vlm.model` 为模型名称（如 `doubao-seed-1-8-251228`），**不是** API Key
+- `vlm.model` 为模型名称（如 `doubao-seed-2-0-pro-260215`），**不是** API Key
 
 ### Python 版本问题
 
