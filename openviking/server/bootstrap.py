@@ -192,7 +192,7 @@ def _start_vikingbot_gateway(enable_logging: bool, log_dir: str) -> Optional[Bot
 
     if vikingbot_cmd is None:
         print("Warning: vikingbot not found. Please install vikingbot first.")
-        print("  cd bot && uv pip install -e '.[dev]'")
+        print("  uv pip install -e '.[bot,dev]'")
         return None
 
     # Prepare logging
