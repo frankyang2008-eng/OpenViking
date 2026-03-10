@@ -557,6 +557,9 @@ def chat(
     eval: bool = typer.Option(
         False, "--eval", "-e", help="Run evaluation mode, output JSON results"
     ),
+    config_path: str = typer.Option(
+        None, "--config", "-c", help="Path to ov.conf, default .openviking/ov.conf"
+    )
 ):
     """Interact with the agent directly."""
     if message is not None:
@@ -568,8 +571,10 @@ def chat(
     else:
         logger.disable("vikingbot")
 
+    path = Path(config_path).expanduser() if config_path is not None else None
+
     bus = MessageBus()
-    config = ensure_config()
+    config = ensure_config(path)
     _init_bot_data(config)
     session_manager = SessionManager(config.bot_data_path)
 
