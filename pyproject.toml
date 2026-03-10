@@ -132,17 +132,7 @@ bot-sandbox = [
 bot-fuse = ["fusepy>=3.0.1"]
 bot-opencode = ["opencode-ai>=0.1.0a0"]
 bot-full = [
-    "langfuse>=3.0.0",
-    "python-telegram-bot[socks]>=21.0",
-    "lark-oapi>=1.0.0",
-    "dingtalk-stream>=0.4.0",
-    "slack-sdk>=3.26.0",
-    "qq-botpy>=1.0.0",
-    "opensandbox>=0.1.0",
-    "opensandbox-server>=0.1.0",
-    "agent-sandbox>=0.0.23",
-    "fusepy>=3.0.1",
-    "opencode-ai>=0.1.0a0",
+    "openviking[bot,bot-langfuse,bot-telegram,bot-feishu,bot-dingtalk,bot-slack,bot-qq,bot-sandbox,bot-fuse,bot-opencode]",
 ]
 
 [project.urls]
