@@ -6,6 +6,9 @@
 from openviking import AsyncOpenViking
 from openviking.message import TextPart
 from openviking.session import Session
+from tests.utils.mock_context import make_test_ctx
+
+ctx = make_test_ctx()
 
 
 class TestCommit:
@@ -101,6 +104,7 @@ class TestCommit:
             account_id="default",
             uri=uri,
             limit=1,
+            ctx=ctx,
         )
         assert records_before, f"Resource not found for URI: {uri}"
         count_before = records_before[0].get("active_count") or 0
@@ -119,6 +123,7 @@ class TestCommit:
             account_id="default",
             uri=uri,
             limit=1,
+            ctx=ctx,
         )
         assert records_after, f"Record disappeared after commit for URI: {uri}"
         count_after = records_after[0].get("active_count") or 0
