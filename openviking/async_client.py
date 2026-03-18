@@ -190,6 +190,7 @@ class AsyncOpenViking:
         timeout: float = None,
         build_index: bool = True,
         summarize: bool = False,
+        watch_interval: float = 0,
         telemetry: TelemetryRequest = False,
         **kwargs,
     ) -> Dict[str, Any]:
@@ -223,8 +224,13 @@ class AsyncOpenViking:
             build_index=build_index,
             summarize=summarize,
             telemetry=telemetry,
+            watch_interval=watch_interval,
             **kwargs,
         )
+
+    @property
+    def _service(self):
+        return self._client.service
 
     async def wait_processed(self, timeout: float = None) -> Dict[str, Any]:
         """Wait for all queued processing to complete."""

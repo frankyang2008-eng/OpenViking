@@ -175,7 +175,6 @@ class ResourceProcessor:
         # - temp_dir_path: Temporary directory path (Parser wrote all files)
         # - source_path, source_format
 
-        # ============ Phase 2: Pass to and parent directly to TreeBuilder ============
         # ============ Phase 3: TreeBuilder finalizes from temp (scan + move to AGFS) ============
         try:
             finalize_start = time.perf_counter()
