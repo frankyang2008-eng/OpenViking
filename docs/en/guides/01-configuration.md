@@ -303,6 +303,7 @@ Vision Language Model for semantic extraction (L0/L1 generation).
 | `api_base` | str | API endpoint (optional) |
 | `thinking` | bool | Enable thinking mode for VolcEngine models (default: `false`) |
 | `max_concurrent` | int | Maximum concurrent semantic LLM calls (default: `100`) |
+| `extra_headers` | object | Custom HTTP headers (for OpenAI-compatible providers, optional) |
 
 **Available Models**
 
@@ -317,6 +318,30 @@ When resources are added, VLM generates:
 2. **L1 (Overview)**: ~2k token overview with navigation
 
 If VLM is not configured, L0/L1 will be generated from content directly (less semantic), and multimodal resources may have limited descriptions.
+
+**Custom HTTP Headers**
+
+For OpenAI-compatible providers (e.g., OpenRouter), you can add custom HTTP headers via `extra_headers`:
+
+```json
+{
+  "vlm": {
+    "provider": "openai",
+    "api_key": "your-api-key",
+    "model": "gpt-4o",
+    "api_base": "https://openrouter.ai/api/v1",
+    "extra_headers": {
+      "HTTP-Referer": "https://your-site.com",
+      "X-Title": "Your App Name"
+    }
+  }
+}
+```
+
+Common use cases:
+- **OpenRouter**: Requires `HTTP-Referer` and `X-Title` to identify your application
+- **Custom proxies**: Add authentication or tracing headers
+- **API gateways**: Add version or routing identifiers
 
 ### code
 
@@ -680,7 +705,8 @@ For details on the lock mechanism, see [Path Locks and Crash Recovery](../concep
     "model": "string",
     "api_base": "string",
     "thinking": false,
-    "max_concurrent": 100
+    "max_concurrent": 100,
+    "extra_headers": {}
   },
   "rerank": {
     "provider": "volcengine",
