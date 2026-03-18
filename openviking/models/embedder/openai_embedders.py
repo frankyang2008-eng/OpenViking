@@ -72,6 +72,7 @@ class OpenAIDenseEmbedder(DenseEmbedderBase):
         config: Optional[Dict[str, Any]] = None,
         max_tokens: Optional[int] = None,
         extra_headers: Optional[Dict[str, str]] = None,
+        input_type: Optional[str] = None,
     ):
         """Initialize OpenAI-Compatible Dense Embedder
 
@@ -115,7 +116,7 @@ class OpenAIDenseEmbedder(DenseEmbedderBase):
 
         # Allow missing api_key when api_base is set (e.g. local OpenAI-compatible servers)
         if not self.api_key and not self.api_base:
-            raise ValueError("api_key is required (or set api_base for local servers)")
+            raise ValueError("api_key is required")
 
         # Initialize OpenAI client
         # Use a placeholder api_key when not provided (for local OpenAI-compatible servers)
