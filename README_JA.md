@@ -469,7 +469,7 @@ ov chat
 👉 **[参照: サーバーデプロイ＆ECSセットアップガイド](./docs/en/getting-started/03-quickstart-server.md)**
 
 
-## OpenClawメモリプラグインの詳細
+## OpenClawコンテキストプラグインの詳細
 
 * テストデータセット: LoCoMo10（https://github.com/snap-research/locomo）の長距離対話に基づく効果テスト（ground truthのないcategory5を除いた合計1,540ケース）
 * 実験グループ: ユーザーがOpenVikingを使用する際にOpenClawのネイティブメモリを無効にしない可能性があるため、ネイティブメモリの有効/無効の実験グループを追加
@@ -489,7 +489,7 @@ OpenViking統合後：
 - ネイティブメモリ有効時: オリジナルOpenClawと比較して43%改善、入力トークンコスト91%削減。LanceDBと比較して15%改善、入力トークンコスト96%削減。
 - ネイティブメモリ無効時: オリジナルOpenClawと比較して49%改善、入力トークンコスト83%削減。LanceDBと比較して17%改善、入力トークンコスト92%削減。
 
-👉 **[参照: OpenClawメモリプラグイン](examples/openclaw-memory-plugin/README.md)**
+👉 **[参照: OpenClawコンテキストプラグイン](examples/openclaw-plugin/README.md)**
 
 👉 **[参照: OpenCodeメモリプラグインの例](examples/opencode-memory-plugin/README.md)**
 
