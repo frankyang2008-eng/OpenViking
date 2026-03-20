@@ -197,7 +197,7 @@ class OpenAIVLM(VLMBase):
             content = self._process_streaming_response(response)
         else:
             self._update_token_usage_from_response(response)
-            content = response.choices[0].message.content or ""
+            content = self._extract_content_from_response(response)
 
         return self._clean_response(content)
 
@@ -224,7 +224,7 @@ class OpenAIVLM(VLMBase):
                     content = await self._process_streaming_response_async(response)
                 else:
                     self._update_token_usage_from_response(response)
-                    content = response.choices[0].message.content or ""
+                    content = self._extract_content_from_response(response)
 
                 return self._clean_response(content)
             except Exception as e:
@@ -318,7 +318,7 @@ class OpenAIVLM(VLMBase):
             content = self._process_streaming_response(response)
         else:
             self._update_token_usage_from_response(response)
-            content = response.choices[0].message.content or ""
+            content = self._extract_content_from_response(response)
 
         return self._clean_response(content)
 
@@ -351,6 +351,6 @@ class OpenAIVLM(VLMBase):
             content = await self._process_streaming_response_async(response)
         else:
             self._update_token_usage_from_response(response)
-            content = response.choices[0].message.content or ""
+            content = self._extract_content_from_response(response)
 
         return self._clean_response(content)
