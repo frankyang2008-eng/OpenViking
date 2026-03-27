@@ -3,9 +3,9 @@ use serde::de::DeserializeOwned;
 use serde_json::Value;
 use std::fs::File;
 use std::path::Path;
-use tempfile::NamedTempFile;
-use zip::CompressionMethod;
+use tempfile::{Builder, NamedTempFile};
 use zip::write::FileOptions;
+use zip::CompressionMethod;
 
 use crate::error::{Error, Result};
 
@@ -54,7 +54,7 @@ impl HttpClient {
             )));
         }
 
-        let temp_file = NamedTempFile::new()?;
+        let temp_file = Builder::new().suffix(".zip").tempfile()?;
         let file = File::create(temp_file.path())?;
         let mut zip = zip::ZipWriter::new(file);
         let options: FileOptions<'_, ()> =
