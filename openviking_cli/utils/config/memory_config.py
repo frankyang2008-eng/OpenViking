@@ -20,6 +20,11 @@ class MemoryConfig(BaseModel):
         ),
     )
 
+    custom_templates_dir: str = Field(
+        default="",
+        description="Custom memory templates directory. If set, templates from this directory will be loaded in addition to built-in templates",
+    )
+
     model_config = {"extra": "forbid"}
 
     @field_validator("agent_scope_mode")

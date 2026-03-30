@@ -9,6 +9,7 @@ from openviking.session.memory.utils.content import (
     deserialize_full,
     deserialize_metadata,
     serialize_with_metadata,
+    truncate_content,
 )
 from openviking.session.memory.utils.language import (
     detect_language_from_conversation,
@@ -18,6 +19,7 @@ from openviking.session.memory.utils.messages import (
     pretty_print_messages,
 )
 from openviking.session.memory.utils.uri import (
+    ResolvedOperation,
     ResolvedOperations,
     collect_allowed_directories,
     collect_allowed_path_patterns,
@@ -35,7 +37,6 @@ from openviking.session.memory.utils.json_parser import (
     _get_arg_type,
     _get_origin_type,
     extract_json_content,
-    extract_json_from_markdown,
     parse_json_with_stability,
     parse_value_with_tolerance,
     remove_json_trailing_content,
@@ -52,6 +53,7 @@ __all__ = [
     "deserialize_content",
     "deserialize_metadata",
     "deserialize_full",
+    "truncate_content",
     # Language
     "detect_language_from_conversation",
     # Messages
@@ -66,6 +68,7 @@ __all__ = [
     "is_uri_allowed_for_schema",
     "extract_uri_fields_from_flat_model",
     "resolve_flat_model_uri",
+    "ResolvedOperation",
     "ResolvedOperations",
     "resolve_all_operations",
     "validate_operations_uris",
@@ -73,7 +76,6 @@ __all__ = [
     "extract_json_content",
     "remove_json_trailing_content",
     "parse_json_with_stability",
-    "extract_json_from_markdown",
     "value_fault_tolerance",
     "parse_value_with_tolerance",
     "_get_origin_type",

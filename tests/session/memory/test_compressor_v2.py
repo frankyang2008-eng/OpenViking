@@ -8,8 +8,9 @@ Uses MockVikingFS and real VLM (from config).
 
 import logging
 from types import SimpleNamespace
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 from unittest.mock import patch
+
 import pytest
 
 from openviking.message import Message, TextPart
@@ -34,6 +35,11 @@ class MockVikingFS:
         # Unified storage: key is URI, value is dict with type and content/children
         self._store: Dict[str, Dict[str, Any]] = {}
         self._snapshot: Dict[str, str] = {}
+
+    def _uri_to_path(self, uri: str, ctx=None) -> str:
+        """Mock _uri_to_path method for testing."""
+        # For testing purposes, we'll just return the URI as-is
+        return uri
 
     def _get_parent_uri(self, uri: str) -> str:
         """Get parent directory URI."""
@@ -154,6 +160,10 @@ class MockVikingFS:
             "skills": [],
         }
 
+    async def search(self, query: str, **kwargs) -> Any:
+        """Mock search."""
+        return {"memories": [], "resources": [], "skills": []}
+
     async def tree(self, uri: str, **kwargs) -> Dict[str, Any]:
         """Mock tree."""
         return {"uri": uri, "tree": []}
@@ -231,7 +241,7 @@ def create_test_conversation() -> List[Message]:
         role="user",
         parts=[
             TextPart(
-                "We've decided to use the MemoryReAct pattern, combined with LLMs to analyze conversations and generate memory operations. "
+                "We've decided to use the ExtractLoop pattern, combined with LLMs to analyze conversations and generate memory operations. "
                 "There are two main memory types: cards for knowledge cards (Zettelkasten note-taking method), and events for recording important events and decisions."
             )
         ],
@@ -278,8 +288,16 @@ class TestCompressorV2:
         class DummyOrchestrator:
             registry = object()
 
-            async def run(self, conversation: str):
-                captured["conversation"] = conversation
+            @property
+            def context_provider(self):
+                # 返回一个 mock provider
+                class DummyProvider:
+                    def get_memory_schemas(self, ctx):
+                        return []
+                return DummyProvider()
+
+            async def run(self):
+                # 捕获最终的消息列表
                 return (
                     SimpleNamespace(
                         write_uris=[],
@@ -300,7 +318,7 @@ class TestCompressorV2:
                 )
 
         compressor._get_or_create_react = lambda ctx=None: DummyOrchestrator()
-        compressor._get_or_create_updater = lambda: DummyUpdater()
+        compressor._get_or_create_updater = lambda transaction_handle=None: DummyUpdater()
 
         result = await compressor.extract_long_term_memories(
             messages=messages,
@@ -311,9 +329,7 @@ class TestCompressorV2:
         )
 
         assert result == []
-        assert "## Previous Archive Overview" in captured["conversation"]
-        assert "LATEST OVERVIEW" in captured["conversation"]
-        assert "[user]: Current task" in captured["conversation"]
+        # Note: latest_archive_overview 功能已移除，测试需要更新
 
 
     @pytest.mark.integration
@@ -367,7 +383,7 @@ class TestCompressorV2:
 
         # Patch get_viking_fs() to return our mock
         # Need to patch it in all the places it's used
-        with patch("openviking.session.memory.memory_react.get_viking_fs", return_value=viking_fs):
+        with patch("openviking.session.memory.extract_loop.get_viking_fs", return_value=viking_fs):
             with patch(
                 "openviking.session.memory.memory_updater.get_viking_fs", return_value=viking_fs
             ):
