@@ -15,7 +15,7 @@
  *
  * Environment variables:
  *   REPO, PLUGIN_VERSION (or BRANCH), OPENVIKING_INSTALL_YES, SKIP_OPENCLAW, SKIP_OPENVIKING
- *   OPENVIKING_VERSION       Pip install openviking==VERSION (omit for latest)
+ *   OPENVIKING_VERSION       Pip install openviking==VERSION (omit to follow release plugin version when possible)
  *   OPENVIKING_REPO          Repo path: source install (pip -e) + local plugin (default: off)
  *   NPM_REGISTRY, PIP_INDEX_URL
  *   OPENVIKING_VLM_API_KEY, OPENVIKING_EMBEDDING_API_KEY, OPENVIKING_ARK_API_KEY
@@ -37,7 +37,9 @@ const pluginVersionEnv = (process.env.PLUGIN_VERSION || process.env.BRANCH || ""
 let PLUGIN_VERSION = pluginVersionEnv;
 let pluginVersionExplicit = Boolean(pluginVersionEnv);
 const NPM_REGISTRY = process.env.NPM_REGISTRY || "https://registry.npmmirror.com";
-const PIP_INDEX_URL = process.env.PIP_INDEX_URL || "https://mirrors.volces.com/pypi/simple/";
+const DEFAULT_PIP_INDEX_URL = "https://mirrors.volces.com/pypi/simple/";
+const OFFICIAL_PIP_INDEX_URL = "https://pypi.org/simple/";
+const PIP_INDEX_URL = process.env.PIP_INDEX_URL || DEFAULT_PIP_INDEX_URL;
 
 const IS_WIN = process.platform === "win32";
 const HOME = process.env.HOME || process.env.USERPROFILE || "";
@@ -271,6 +273,33 @@ function normalizeCombinedVersion(version) {
   };
 }
 
+function deriveOpenvikingVersionFromPluginVersion(version) {
+  const value = (version || "").trim();
+  if (!isSemverLike(value)) {
+    return "";
+  }
+  return value.startsWith("v") ? value.slice(1) : value;
+}
+
+function syncOpenvikingVersionWithPluginVersion(reason = "") {
+  if (openvikingVersion) {
+    return;
+  }
+
+  const derivedVersion = deriveOpenvikingVersionFromPluginVersion(PLUGIN_VERSION);
+  if (!derivedVersion) {
+    return;
+  }
+
+  openvikingVersion = derivedVersion;
+  info(tr(
+    `No OpenViking version specified; syncing runtime version to plugin version ${PLUGIN_VERSION}${reason ? ` (${reason})` : ""}.`,
+    `未指定 OpenViking 版本；已将运行时版本同步为插件版本 ${PLUGIN_VERSION}${reason ? `（${reason}）` : ""}。`,
+  ));
+}
+
+syncOpenvikingVersionWithPluginVersion("requested plugin version");
+
 function printHelp() {
   console.log("Usage: node install.js [ OPTIONS ]");
   console.log("");
@@ -278,7 +307,7 @@ function printHelp() {
   console.log("  --github-repo=OWNER/REPO GitHub repository (default: volcengine/OpenViking)");
   console.log("  --version=V              Shorthand for --plugin-version=vV and --openviking-version=V");
   console.log("  --plugin-version=TAG     Plugin version (Git tag, e.g. v0.2.9, default: latest tag)");
-  console.log("  --openviking-version=V   OpenViking PyPI version (e.g. 0.2.9, default: latest)");
+  console.log("  --openviking-version=V   OpenViking PyPI version (e.g. 0.2.9, default: match plugin release version)");
   console.log("  --workdir PATH           OpenClaw config directory (default: ~/.openclaw)");
   console.log("  --current-version        Print installed plugin/OpenViking versions and exit");
   console.log("  --repo=PATH              Use local OpenViking repo at PATH (pip -e + local plugin)");
@@ -432,6 +461,34 @@ function runLiveCapture(cmd, args, opts = {}) {
       resolve({ code, out: out.trim(), err: errOut.trim() });
     });
   });
+}
+
+function shouldFallbackToOfficialPypi(output) {
+  if (process.env.PIP_INDEX_URL?.trim()) return false;
+  if (PIP_INDEX_URL !== DEFAULT_PIP_INDEX_URL) return false;
+
+  return /Could not find a version that satisfies the requirement|No matching distribution found|HTTP error 404|too many 502 error responses|Temporary failure in name resolution|Failed to establish a new connection|Connection (?:timed out|reset by peer)|Read timed out|ProxyError|SSLError|TLSV1_ALERT|Remote end closed connection/i.test(output);
+}
+
+async function runPipInstallWithFallback(py, pipArgs, opts = {}) {
+  const shell = opts.shell ?? false;
+  const primaryResult = await runLiveCapture(py, [...pipArgs, "-i", PIP_INDEX_URL], { shell });
+  if (primaryResult.code === 0) {
+    return { result: primaryResult, usedFallback: false };
+  }
+
+  const primaryOutput = `${primaryResult.out}\n${primaryResult.err}`;
+  if (!shouldFallbackToOfficialPypi(primaryOutput)) {
+    return { result: primaryResult, usedFallback: false };
+  }
+
+  warn(tr(
+    `Install from mirror failed. Retrying with official PyPI: ${OFFICIAL_PIP_INDEX_URL}`,
+    `镜像源安装失败，正在回退到官方 PyPI: ${OFFICIAL_PIP_INDEX_URL}`,
+  ));
+
+  const fallbackResult = await runLiveCapture(py, [...pipArgs, "-i", OFFICIAL_PIP_INDEX_URL], { shell });
+  return { result: fallbackResult, usedFallback: true, primaryResult, fallbackResult };
 }
 
 function question(prompt, defaultValue = "") {
@@ -762,6 +819,7 @@ async function resolveDefaultPluginVersion() {
         const latestTag = pickLatestPluginTag(payload.map((item) => item?.name || ""));
         if (latestTag) {
           PLUGIN_VERSION = latestTag;
+          syncOpenvikingVersionWithPluginVersion("latest plugin tag");
           info(tr(
             `Resolved default plugin version to latest tag: ${PLUGIN_VERSION}`,
             `已将默认插件版本解析为最新 tag: ${PLUGIN_VERSION}`,
@@ -786,6 +844,7 @@ async function resolveDefaultPluginVersion() {
     const latestTag = pickLatestPluginTag(parseGitLsRemoteTags(gitResult.out));
     if (latestTag) {
       PLUGIN_VERSION = latestTag;
+      syncOpenvikingVersionWithPluginVersion("latest plugin tag");
       info(tr(
         `Resolved default plugin version via git tags: ${PLUGIN_VERSION}`,
         `已通过 git tag 解析默认插件版本: ${PLUGIN_VERSION}`,
@@ -1013,9 +1072,9 @@ async function installOpenViking() {
 
   info(`Package: ${pkgSpec}`);
   await runCapture(py, ["-m", "pip", "install", "--upgrade", "pip", "-q", "-i", PIP_INDEX_URL], { shell: false });
-  const installResult = await runLiveCapture(
+  const { result: installResult } = await runPipInstallWithFallback(
     py,
-    ["-m", "pip", "install", "--upgrade", "--progress-bar", "on", pkgSpec, "-i", PIP_INDEX_URL],
+    ["-m", "pip", "install", "--upgrade", "--progress-bar", "on", pkgSpec],
     { shell: false },
   );
   if (installResult.code === 0) {
@@ -1033,11 +1092,16 @@ async function installOpenViking() {
     if (existsSync(venvPy)) {
       const reuseCheck = await runCapture(venvPy, ["-c", "import openviking"], { shell: false });
       if (reuseCheck.code === 0) {
-        await runLiveCapture(
+        const { result: venvReuseInstall } = await runPipInstallWithFallback(
           venvPy,
-          ["-m", "pip", "install", "--progress-bar", "on", "-U", pkgSpec, "-i", PIP_INDEX_URL],
+          ["-m", "pip", "install", "--progress-bar", "on", "-U", pkgSpec],
           { shell: false },
         );
+        if (venvReuseInstall.code !== 0) {
+          err(tr("OpenViking install failed in venv.", "在虚拟环境中安装 OpenViking 失败。"));
+          console.log(venvReuseInstall.err || venvReuseInstall.out);
+          process.exit(1);
+        }
         openvikingPythonPath = venvPy;
         info(tr("OpenViking installed ✓ (venv)", "OpenViking 安装完成 ✓（虚拟环境）"));
         return;
@@ -1069,9 +1133,9 @@ async function installOpenViking() {
     }
 
     await runCapture(venvPy, ["-m", "pip", "install", "--upgrade", "pip", "-q", "-i", PIP_INDEX_URL], { shell: false });
-    const venvInstall = await runLiveCapture(
+    const { result: venvInstall } = await runPipInstallWithFallback(
       venvPy,
-      ["-m", "pip", "install", "--upgrade", "--progress-bar", "on", pkgSpec, "-i", PIP_INDEX_URL],
+      ["-m", "pip", "install", "--upgrade", "--progress-bar", "on", pkgSpec],
       { shell: false },
     );
     if (venvInstall.code === 0) {
@@ -1086,9 +1150,9 @@ async function installOpenViking() {
   }
 
   if (process.env.OPENVIKING_ALLOW_BREAK_SYSTEM_PACKAGES === "1") {
-    const systemInstall = await runLiveCapture(
+    const { result: systemInstall } = await runPipInstallWithFallback(
       py,
-      ["-m", "pip", "install", "--upgrade", "--progress-bar", "on", "--break-system-packages", pkgSpec, "-i", PIP_INDEX_URL],
+      ["-m", "pip", "install", "--upgrade", "--progress-bar", "on", "--break-system-packages", pkgSpec],
       { shell: false },
     );
     if (systemInstall.code === 0) {
