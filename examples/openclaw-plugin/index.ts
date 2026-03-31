@@ -8,8 +8,10 @@ import { OpenVikingClient, localClientCache, localClientPendingPromises, isMemor
 import type { FindResultItem, PendingClientEntry, CommitSessionResult, OVMessage } from "./client.js";
 import { formatMessageFaithful } from "./context-engine.js";
 import {
+  compileSessionPatterns,
   isTranscriptLikeIngest,
   extractLatestUserText,
+  shouldSkipIngestReplyAssistSession,
 } from "./text-utils.js";
 import {
   clampScore,
@@ -273,6 +275,9 @@ const contextEnginePlugin = {
         ? (api.pluginConfig as Record<string, unknown>)
         : {};
     const cfg = memoryOpenVikingConfigSchema.parse(api.pluginConfig);
+    const ingestReplyAssistIgnoreSessionPatterns = compileSessionPatterns(
+      cfg.ingestReplyAssistIgnoreSessionPatterns,
+    );
     const rawAgentId = rawCfg.agentId;
     if (cfg.logFindRequests) {
       api.logger.info(
@@ -925,22 +930,28 @@ const contextEnginePlugin = {
       }
 
       if (cfg.ingestReplyAssist) {
-        const decision = isTranscriptLikeIngest(queryText, {
-          minSpeakerTurns: cfg.ingestReplyAssistMinSpeakerTurns,
-          minChars: cfg.ingestReplyAssistMinChars,
-        });
-        if (decision.shouldAssist) {
+        if (shouldSkipIngestReplyAssistSession(ctx ?? {}, ingestReplyAssistIgnoreSessionPatterns)) {
           verboseRoutingInfo(
-            `openviking: ingest-reply-assist applied (reason=${decision.reason}, speakerTurns=${decision.speakerTurns}, chars=${decision.chars})`,
+            `openviking: skipping ingest-reply-assist due to session pattern match (sessionKey=${ctx?.sessionKey ?? "none"}, sessionId=${ctx?.sessionId ?? "none"})`,
           );
-          prependContextParts.push(
-            "<ingest-reply-assist>\n" +
-              "The latest user input looks like a multi-speaker transcript used for memory ingestion.\n" +
-              "Reply with 1-2 concise sentences to acknowledge or summarize key points.\n" +
-              "Do not output NO_REPLY or an empty reply.\n" +
-              "Do not fabricate facts beyond the provided transcript and recalled memories.\n" +
-              "</ingest-reply-assist>",
-          );
+        } else {
+          const decision = isTranscriptLikeIngest(queryText, {
+            minSpeakerTurns: cfg.ingestReplyAssistMinSpeakerTurns,
+            minChars: cfg.ingestReplyAssistMinChars,
+          });
+          if (decision.shouldAssist) {
+            verboseRoutingInfo(
+              `openviking: ingest-reply-assist applied (reason=${decision.reason}, speakerTurns=${decision.speakerTurns}, chars=${decision.chars})`,
+            );
+            prependContextParts.push(
+              "<ingest-reply-assist>\n" +
+                "The latest user input looks like a multi-speaker transcript used for memory ingestion.\n" +
+                "Reply with 1-2 concise sentences to acknowledge or summarize key points.\n" +
+                "Do not output NO_REPLY or an empty reply.\n" +
+                "Do not fabricate facts beyond the provided transcript and recalled memories.\n" +
+                "</ingest-reply-assist>",
+            );
+          }
         }
       }
 
