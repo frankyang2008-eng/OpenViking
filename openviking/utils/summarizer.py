@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any, Dict, List
 from openviking.core.directories import get_context_type_for_uri
 from openviking.storage.queuefs import SemanticMsg, get_queue_manager
 from openviking.telemetry import get_current_telemetry
+from openviking.utils.tag_utils import parse_tags
 from openviking_cli.utils import get_logger
 
 if TYPE_CHECKING:
@@ -56,7 +57,7 @@ class Summarizer:
         enqueued_count = 0
 
         telemetry = get_current_telemetry()
-        for uri, temp_uri in zip(resource_uris, temp_uris):
+        for uri, temp_uri in zip(resource_uris, temp_uris, strict=True):
             # Determine context_type based on URI
             context_type = get_context_type_for_uri(uri)
 
@@ -72,6 +73,7 @@ class Summarizer:
                 target_uri=uri if uri != temp_uri else None,
                 lifecycle_lock_handle_id=lifecycle_lock_handle_id,
                 is_code_repo=kwargs.get("is_code_repo", False),
+                tags=parse_tags(kwargs.get("tags")),
             )
             await semantic_queue.enqueue(msg)
             enqueued_count += 1
