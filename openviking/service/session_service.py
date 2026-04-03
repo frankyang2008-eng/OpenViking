@@ -170,9 +170,13 @@ class SessionService:
         session = await self.get(session_id, ctx)
         return await session.commit_async()
 
-    async def get_commit_task(self, task_id: str) -> Optional[Dict[str, Any]]:
-        """Query background commit task status by task_id."""
-        task = get_task_tracker().get(task_id)
+    async def get_commit_task(self, task_id: str, ctx: RequestContext) -> Optional[Dict[str, Any]]:
+        """Query background commit task status by task_id for the calling owner."""
+        task = get_task_tracker().get(
+            task_id,
+            owner_account_id=ctx.account_id,
+            owner_user_id=ctx.user.user_id,
+        )
         return task.to_dict() if task else None
 
     async def extract(self, session_id: str, ctx: RequestContext) -> List[Any]:

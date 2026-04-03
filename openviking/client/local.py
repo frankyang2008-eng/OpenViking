@@ -415,7 +415,7 @@ class LocalClient(BaseClient):
 
     async def get_task(self, task_id: str) -> Optional[Dict[str, Any]]:
         """Query background task status."""
-        return await self._service.sessions.get_commit_task(task_id)
+        return await self._service.sessions.get_commit_task(task_id, self._ctx)
 
     async def add_message(
         self,
