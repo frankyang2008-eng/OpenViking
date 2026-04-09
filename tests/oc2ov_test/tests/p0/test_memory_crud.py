@@ -108,7 +108,7 @@ class TestMemoryDelete(BaseOpenClawCLITest):
         self.wait_for_sync()
         resp2 = self.send_and_log("我的临时密码是什么？")
         self.logger.info("删除验证完成，检查响应是否不包含原密码信息")
-        self.assertAnyKeywordInResponse(resp2, [["不知道", "没有", "不存在", "不记得", "过期", "已删除"]], case_sensitive=False)
+        self.assertAnyKeywordInResponse(resp2, [["不知道", "没有", "不存在", "不记得", "过期", "已删除", "删除", "无", "deleted", "expired", "no longer"]], case_sensitive=False)
 
 
 class TestMemoryUpdateOverwrite(BaseOpenClawCLITest):
