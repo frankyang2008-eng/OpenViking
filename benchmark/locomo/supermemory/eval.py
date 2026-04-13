@@ -1,31 +1,37 @@
 """
-Evaluate LoCoMo QA via mem0 + OpenClaw (agent mode).
+Evaluate LoCoMo QA via Supermemory + OpenClaw (agent mode).
 
-Questions are sent to an OpenClaw agent which calls mem0 internally.
-Before each request, ~/.openclaw/openclaw.json is updated so that the
-openclaw-mem0 plugin uses userId = sample_id, giving each conversation
-sample its own isolated memory namespace.
+Questions are sent to an OpenClaw agent which calls Supermemory internally.
+Before each sample, eval.py automatically:
+  1. Updates ~/.openclaw/openclaw.json to set openclaw-supermemory.config.containerTag = sample_id
+     (and switches plugins.slots.memory to "openclaw-supermemory")
+  2. Restarts the OpenClaw gateway to pick up the new config
+  3. Runs all questions for that sample concurrently
 
 Prerequisites:
-  - Conversations already ingested into mem0 via ingest.py (user_id = sample_id)
-  - OpenClaw running locally with the openclaw-mem0 plugin installed
+  - Conversations already ingested into Supermemory via ingest.py (containerTag = sanitize(sample_id))
+  - OpenClaw running locally with the openclaw-supermemory plugin installed
+  - ~/.openclaw/openclaw.json configured with openclaw-supermemory apiKey
 
 Usage:
-    # Run QA + auto-judge
-    python eval.py --openclaw-url http://127.0.0.1:18789 --openclaw-token xxx \\
-                   --judge --judge-token xxx
+    # Run QA + judge for all samples (6 concurrent threads)
+    python eval.py --threads 6 --judge
 
     # Single sample
-    python eval.py --sample conv-26 --openclaw-token xxx
+    python eval.py --sample conv-26 --threads 6 --judge
 
-    # Only judge an existing result CSV (skip QA)
-    python eval.py --judge-only --output result/qa_results.csv --judge-token xxx
+    # First 12 questions only
+    python eval.py --sample conv-26 --count 12 --threads 6 --judge
+
+    # Judge-only (grade existing responses in CSV)
+    python eval.py --judge-only
 """
 
 import argparse
 import csv
 import json
 import os
+import re
 import subprocess
 import sys
 import threading
@@ -46,26 +52,50 @@ DEFAULT_OPENCLAW_URL = "http://127.0.0.1:18789"
 DEFAULT_SESSION_KEY = "locomo-eval"
 OPENCLAW_CONFIG_PATH = Path.home() / ".openclaw" / "openclaw.json"
 
-# Serialize openclaw config updates across threads so each request sees the right userId
+# Serialize openclaw config updates across threads so each sample sees the right containerTag
 _openclaw_config_lock = threading.Lock()
+
+# ---------------------------------------------------------------------------
+# Tag sanitization (must match openclaw-supermemory's sanitizeTag logic)
+# ---------------------------------------------------------------------------
+
+def sanitize_tag(raw: str) -> str:
+    """Sanitize a tag string to match openclaw-supermemory convention.
+    e.g. 'conv-26' -> 'conv_26'
+    """
+    tag = re.sub(r"[^a-zA-Z0-9_]", "_", raw)
+    tag = re.sub(r"_+", "_", tag)
+    tag = tag.strip("_")
+    return tag
+
 
 # ---------------------------------------------------------------------------
 # openclaw.json config helpers
 # ---------------------------------------------------------------------------
 
-def _update_openclaw_mem0_user(sample_id: str) -> None:
+def _update_openclaw_supermemory_container(sample_id: str) -> None:
     """
-    Rewrite ~/.openclaw/openclaw.json so that openclaw-mem0 uses sample_id as userId.
-    Also ensures the plugin is enabled.
+    Rewrite ~/.openclaw/openclaw.json so that openclaw-supermemory uses
+    sanitize(sample_id) as containerTag. Also switches slots.memory to
+    'openclaw-supermemory' and disables autoCapture.
     Must be called while holding _openclaw_config_lock.
     """
+    container_tag = sanitize_tag(sample_id)
+
     with open(OPENCLAW_CONFIG_PATH, "r", encoding="utf-8") as f:
         config = json.load(f)
 
-    entries = config.setdefault("plugins", {}).setdefault("entries", {})
-    mem0_entry = entries.setdefault("openclaw-mem0", {})
-    mem0_entry["enabled"] = True
-    mem0_entry.setdefault("config", {})["userId"] = sample_id
+    plugins = config.setdefault("plugins", {})
+    entries = plugins.setdefault("entries", {})
+
+    sm_entry = entries.setdefault("openclaw-supermemory", {})
+    sm_entry["enabled"] = True
+    sm_entry.setdefault("config", {})["containerTag"] = container_tag
+    sm_entry["config"]["autoCapture"] = False
+    sm_entry["config"]["autoRecall"] = True
+
+    # Switch memory slot to supermemory
+    plugins.setdefault("slots", {})["memory"] = "openclaw-supermemory"
 
     tmp = str(OPENCLAW_CONFIG_PATH) + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
@@ -73,19 +103,17 @@ def _update_openclaw_mem0_user(sample_id: str) -> None:
     os.replace(tmp, str(OPENCLAW_CONFIG_PATH))
 
 
-def _restart_openclaw_gateway(base_url: str, sample_id: str, startup_timeout: int = 30) -> None:
+def _restart_openclaw_gateway(base_url: str, startup_timeout: int = 30) -> None:
     """
     Kill the running openclaw gateway process and restart it.
     Waits until the gateway is ready to accept requests.
     Must be called while holding _openclaw_config_lock.
     """
-    # Kill existing gateway
     try:
         subprocess.run(["pkill", "-f", "openclaw gateway"], capture_output=True)
     except Exception as e:
         print(f"    [gateway] pkill failed: {e}", file=sys.stderr)
 
-    # Start new gateway in background
     try:
         subprocess.Popen(
             ["openclaw", "gateway"],
@@ -95,7 +123,7 @@ def _restart_openclaw_gateway(base_url: str, sample_id: str, startup_timeout: in
     except Exception as e:
         raise RuntimeError(f"Failed to start openclaw gateway: {e}")
 
-    # Wait for process to fully start before checking health
+    # Wait for process to fully start
     time.sleep(5)
 
     # Wait until gateway is ready
@@ -105,67 +133,12 @@ def _restart_openclaw_gateway(base_url: str, sample_id: str, startup_timeout: in
         try:
             resp = requests.get(health_url, timeout=2)
             if resp.status_code < 500:
-                break
+                return
         except Exception:
             pass
         time.sleep(0.5)
-    else:
-        raise RuntimeError(f"openclaw gateway did not become ready within {startup_timeout}s")
 
-    # Verify the correct userId is active by sending a dummy request and checking session log
-    _verify_openclaw_user(base_url, sample_id, max_retries=3)
-
-
-def _verify_openclaw_user(base_url: str, expected_user: str, max_retries: int = 3) -> None:
-    """
-    Send a dummy request and check the session jsonl to confirm
-    openclaw-mem0 is searching with the correct userId.
-    Retries up to max_retries times with 3s interval.
-    """
-    verify_session_key = f"locomo-verify-{expected_user}-{int(time.time())}"
-    url = f"{base_url.rstrip('/')}/v1/responses"
-    headers = {
-        "Content-Type": "application/json",
-        "X-OpenClaw-Session-Key": verify_session_key,
-    }
-    payload = {
-        "model": "openclaw",
-        "input": "What did we talk about recently?",
-        "stream": False,
-    }
-
-    for attempt in range(max_retries):
-        try:
-            resp = requests.post(url, json=payload, headers=headers, timeout=120)
-            resp.raise_for_status()
-        except Exception as e:
-            print(f"    [verify] request failed: {e}", file=sys.stderr)
-            time.sleep(3)
-            continue
-
-        # Wait for session jsonl to be written
-        time.sleep(1)
-        session_id = get_openclaw_session_id(verify_session_key)
-        if not session_id:
-            time.sleep(3)
-            continue
-
-        # Check session log for the userId in the memories context
-        sessions_dir = os.path.expanduser("~/.openclaw/agents/main/sessions")
-        jsonl_path = os.path.join(sessions_dir, f"{session_id}.jsonl")
-        try:
-            with open(jsonl_path, "r", encoding="utf-8") as f:
-                content = f.read()
-            if f'user "{expected_user}"' in content or f'user \\"{expected_user}\\"' in content:
-                print(f"    [verify] userId confirmed: {expected_user}", file=sys.stderr)
-                return
-            else:
-                print(f"    [verify] userId mismatch, retrying in 3s...", file=sys.stderr)
-        except Exception:
-            pass
-        time.sleep(3)
-
-    raise RuntimeError(f"openclaw userId did not switch to {expected_user} after {max_retries} retries")
+    raise RuntimeError(f"openclaw gateway did not become ready within {startup_timeout}s")
 
 
 CATEGORY_NAMES = {
@@ -338,7 +311,6 @@ def extract_openclaw_text(body: dict) -> str:
 
 
 def get_openclaw_session_id(session_key: str) -> Optional[str]:
-    # main agent sessions
     sessions_file = os.path.expanduser("~/.openclaw/agents/main/sessions/sessions.json")
     try:
         with open(sessions_file, "r") as f:
@@ -348,8 +320,7 @@ def get_openclaw_session_id(session_key: str) -> Optional[str]:
         return None
 
 
-
-def parse_session_tokens(session_id: str, agent_id: str) -> dict:
+def parse_session_tokens(session_id: str, agent_id: str = "main") -> dict:
     """Sum up all LLM usage across all assistant messages in the session jsonl."""
     sessions_dir = os.path.expanduser(f"~/.openclaw/agents/{agent_id}/sessions")
     src = os.path.join(sessions_dir, f"{session_id}.jsonl")
@@ -380,24 +351,14 @@ def send_to_openclaw(
     sample_id: str,
     base_url: str,
     token: str,
-    question_time: Optional[str] = None,
     question_id: Optional[str] = None,
+    question_time: Optional[str] = None,
     retries: int = 2,
 ) -> tuple[str, dict, float]:
     """
     Send a question to an OpenClaw agent.
-
-    Before each request we update ~/.openclaw/openclaw.json to set the
-    openclaw-mem0 userId = sample_id, providing per-sample memory isolation.
-    A global lock serializes these config writes so concurrent threads don't
-    clobber each other's userId.
-
     Returns (response_text, usage, time_cost).
     """
-    # Send only the question as input so mem0 semantic search isn't polluted by the date prefix.
-    input_text = question
-
-    # Use a unique session key per question to avoid cross-thread session collision.
     session_key = f"{DEFAULT_SESSION_KEY}-{question_id}" if question_id else DEFAULT_SESSION_KEY
 
     url = f"{base_url.rstrip('/')}/v1/responses"
@@ -408,7 +369,9 @@ def send_to_openclaw(
     }
     payload = {
         "model": "openclaw",
-        "input": input_text,
+        # Force explicit search: the openclaw-supermemory plugin skips semantic search
+        # on the first turn of a session, so autoRecall alone is not enough here.
+        "input": f"Use supermemory_search to find relevant memories, then Answer the question directly: {question}",
         "stream": False,
         "user": sample_id,
     }
@@ -426,7 +389,7 @@ def send_to_openclaw(
             time.sleep(1)
             session_id = get_openclaw_session_id(session_key)
             if session_id:
-                usage = parse_session_tokens(session_id, "main")
+                usage = parse_session_tokens(session_id)
             else:
                 usage = {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
 
@@ -468,7 +431,6 @@ First, provide a short (one sentence) explanation of your reasoning, then finish
 Do NOT include both CORRECT and WRONG in your response, or it will break the evaluation script.
 
 Respond with JSON only: {{"reasoning": "your explanation", "is_correct": "CORRECT" or "WRONG"}}"""
-
 
 
 def judge_answer(
@@ -539,10 +501,7 @@ def run_qa(args: argparse.Namespace) -> None:
 
     judge_token = args.judge_token or os.environ.get("ARK_API_KEY", os.environ.get("OPENAI_API_KEY", ""))
     if args.judge and not judge_token:
-        print(
-            "Error: judge token required (--judge-token or OPENAI_API_KEY env var)",
-            file=sys.stderr,
-        )
+        print("Error: judge token required (--judge-token or ARK_API_KEY env var)", file=sys.stderr)
         sys.exit(1)
 
     data = load_locomo_data(args.input, args.sample)
@@ -597,8 +556,8 @@ def run_qa(args: argparse.Namespace) -> None:
                     qa["sample_id"],
                     args.openclaw_url,
                     openclaw_token,
-                    qa.get("question_time"),
                     qa["question_id"],
+                    qa.get("question_time"),
                 )
             except Exception as e:
                 response = f"[ERROR] {e}"
@@ -611,7 +570,7 @@ def run_qa(args: argparse.Namespace) -> None:
                     qa["question"],
                     qa["answer"],
                     response,
-                    args.judge_base_url or args.openclaw_url,
+                    args.judge_base_url,
                     judge_token,
                     args.judge_model,
                 )
@@ -639,12 +598,16 @@ def run_qa(args: argparse.Namespace) -> None:
             label_str = f"  → {result_label}" if result_label else ""
             print(f"  [{idx}/{total}] done {time_cost:.1f}s{label_str}", file=sys.stderr)
 
-        # Process sample by sample: restart gateway once per sample to pick up new userId
+        # Process sample by sample: restart gateway once per sample to pick up new containerTag
         for sample_id, qa_list in by_sample.items():
-            print(f"\n[INFO] Switching to sample {sample_id}, restarting openclaw gateway...", file=sys.stderr)
+            container_tag = sanitize_tag(sample_id)
+            print(
+                f"\n[INFO] Switching to sample {sample_id} (containerTag={container_tag}), restarting openclaw gateway...",
+                file=sys.stderr,
+            )
             with _openclaw_config_lock:
-                _update_openclaw_mem0_user(sample_id)
-                _restart_openclaw_gateway(args.openclaw_url, sample_id)
+                _update_openclaw_supermemory_container(sample_id)
+                _restart_openclaw_gateway(args.openclaw_url)
             print(f"[INFO] Gateway ready, running {len(qa_list)} questions for {sample_id}", file=sys.stderr)
 
             with ThreadPoolExecutor(max_workers=args.threads) as executor:
@@ -692,10 +655,7 @@ def run_judge_only(args: argparse.Namespace) -> None:
 
     judge_token = args.judge_token or os.environ.get("ARK_API_KEY", os.environ.get("OPENAI_API_KEY", ""))
     if not judge_token:
-        print(
-            "Error: judge token required (--judge-token or ARK_API_KEY env var)",
-            file=sys.stderr,
-        )
+        print("Error: judge token required (--judge-token or ARK_API_KEY env var)", file=sys.stderr)
         sys.exit(1)
 
     with open(args.output, "r", encoding="utf-8", newline="") as f:
@@ -715,7 +675,6 @@ def run_judge_only(args: argparse.Namespace) -> None:
         print_accuracy(rows)
         return
 
-    judge_base_url = args.judge_base_url or "https://ark.cn-beijing.volces.com/api/v3"
     file_lock = threading.Lock()
 
     def grade_one(idx: int) -> None:
@@ -724,7 +683,7 @@ def run_judge_only(args: argparse.Namespace) -> None:
             row.get("question", ""),
             row.get("answer", ""),
             row.get("response", ""),
-            judge_base_url,
+            args.judge_base_url,
             judge_token,
             args.judge_model,
         )
@@ -756,7 +715,7 @@ def run_judge_only(args: argparse.Namespace) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Evaluate LoCoMo QA via OpenClaw agent (mem0-backed)",
+        description="Evaluate LoCoMo QA via OpenClaw agent (Supermemory-backed)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
@@ -783,7 +742,7 @@ def main() -> None:
         default=True,
         help="Include category-5 adversarial questions (skipped by default).",
     )
-    parser.add_argument("--threads", type=int, default=10, help="Concurrent threads (default: 10)")
+    parser.add_argument("--threads", type=int, default=10, help="Concurrent threads per sample (default: 10)")
 
     # OpenClaw
     parser.add_argument(
@@ -796,6 +755,7 @@ def main() -> None:
         default=None,
         help="OpenClaw auth token (or OPENCLAW_GATEWAY_TOKEN env var)",
     )
+
     # Judge
     parser.add_argument(
         "--judge",
