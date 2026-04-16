@@ -14,9 +14,11 @@ from typing import Any
 from vaka_utils import (
     DEFAULT_CASE_SIZE,
     DEFAULT_INPUT,
+    DEFAULT_MEMORY_SESSIONS,
     choose_response,
     choose_response_without_refs,
     load_vaka_cases,
+    max_global_session_id,
     parse_session_selector,
     select_cases,
 )
@@ -27,6 +29,28 @@ DEFAULT_RESULT_DIR = SCRIPT_DIR / "result"
 DEFAULT_SUCCESS_CSV = str(DEFAULT_RESULT_DIR / "import_success.csv")
 DEFAULT_ERROR_LOG = str(DEFAULT_RESULT_DIR / "import_errors.log")
 DEFAULT_RECORD_PATH = str(DEFAULT_RESULT_DIR / ".ingest_record.json")
+DEFAULT_USER_ID = "default"
+DEFAULT_AGENT_ID = "default"
+
+SUCCESS_FIELDNAMES = [
+    "timestamp",
+    "account",
+    "user_id",
+    "agent_id",
+    "case_id",
+    "case_session_range",
+    "global_session_id",
+    "local_session_id",
+    "row_count",
+    "used_docs",
+    "embedding_tokens",
+    "vlm_tokens",
+    "llm_input_tokens",
+    "llm_output_tokens",
+    "total_tokens",
+    "task_id",
+    "trace_id",
+]
 
 
 def load_ingest_record(record_path: str) -> dict[str, Any]:
@@ -43,46 +67,93 @@ def save_ingest_record(record: dict[str, Any], record_path: str) -> None:
         json.dump(record, f, indent=2, ensure_ascii=False)
 
 
-def load_success_keys(success_csv: str) -> set[str]:
+def _identity_part(value: str | None) -> str:
+    return value or ""
+
+
+def ingest_key(
+    *,
+    account: str | None,
+    user_id: str | None,
+    agent_id: str | None,
+    global_session_id: int | str,
+) -> str:
+    return (
+        f"vaka:account={_identity_part(account)}:"
+        f"user={_identity_part(user_id)}:"
+        f"agent={_identity_part(agent_id)}:"
+        f"session={global_session_id}"
+    )
+
+
+def ensure_success_csv_schema(success_csv: str) -> None:
+    path = Path(success_csv)
+    if not path.exists() or path.stat().st_size == 0:
+        return
+
+    with path.open("r", encoding="utf-8", newline="") as f:
+        reader = csv.DictReader(f)
+        existing_fieldnames = list(reader.fieldnames or [])
+        if all(field in existing_fieldnames for field in SUCCESS_FIELDNAMES):
+            return
+        rows = list(reader)
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = path.with_suffix(f"{path.suffix}.tmp")
+    with temp_path.open("w", encoding="utf-8", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=SUCCESS_FIELDNAMES)
+        writer.writeheader()
+        for row in rows:
+            writer.writerow({field: row.get(field, "") for field in SUCCESS_FIELDNAMES})
+    temp_path.replace(path)
+
+
+def load_success_keys(
+    success_csv: str,
+    *,
+    account: str | None,
+    user_id: str | None,
+    agent_id: str | None,
+) -> set[str]:
     keys: set[str] = set()
     if not Path(success_csv).exists():
         return keys
+    ensure_success_csv_schema(success_csv)
     with open(success_csv, "r", encoding="utf-8", newline="") as f:
         reader = csv.DictReader(f)
         for row in reader:
-            case_id = row.get("case_id", "")
-            local_session_id = row.get("local_session_id", "")
-            if case_id and local_session_id:
-                keys.add(f"vaka:{case_id}:session_{local_session_id}")
+            global_session_id = row.get("global_session_id", "")
+            if (
+                global_session_id
+                and row.get("account", "") == _identity_part(account)
+                and row.get("user_id", "") == _identity_part(user_id)
+                and row.get("agent_id", "") == _identity_part(agent_id)
+            ):
+                keys.add(
+                    ingest_key(
+                        account=account,
+                        user_id=user_id,
+                        agent_id=agent_id,
+                        global_session_id=global_session_id,
+                    )
+                )
     return keys
 
 
 def write_success_record(record: dict[str, Any], success_csv: str) -> None:
     Path(success_csv).parent.mkdir(parents=True, exist_ok=True)
+    ensure_success_csv_schema(success_csv)
     file_exists = Path(success_csv).exists()
-    fieldnames = [
-        "timestamp",
-        "case_id",
-        "case_session_range",
-        "global_session_id",
-        "local_session_id",
-        "row_count",
-        "used_docs",
-        "embedding_tokens",
-        "vlm_tokens",
-        "llm_input_tokens",
-        "llm_output_tokens",
-        "total_tokens",
-        "task_id",
-        "trace_id",
-    ]
     with open(success_csv, "a", encoding="utf-8", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer = csv.DictWriter(f, fieldnames=SUCCESS_FIELDNAMES)
         if not file_exists:
             writer.writeheader()
         writer.writerow(
             {
                 "timestamp": record["timestamp"],
+                "account": record["account"],
+                "user_id": record["user_id"],
+                "agent_id": record["agent_id"],
                 "case_id": record["case_id"],
                 "case_session_range": record["case_session_range"],
                 "global_session_id": record["global_session_id"],
@@ -105,28 +176,43 @@ def write_error_record(record: dict[str, Any], error_log: str) -> None:
     with open(error_log, "a", encoding="utf-8") as f:
         f.write(
             f"[{record['timestamp']}] ERROR "
-            f"[{record['case_id']}/session_{record['local_session_id']}]: "
+            f"[session_id={record.get('global_session_id', '')} "
+            f"case={record['case_id']} local_session={record['local_session_id']}]: "
             f"{record['error']}\n"
         )
 
 
 def is_already_ingested(
-    case_id: str,
-    local_session_id: int,
+    account: str | None,
+    user_id: str | None,
+    agent_id: str | None,
+    global_session_id: int,
     record: dict[str, Any],
     success_keys: set[str],
 ) -> bool:
-    key = f"vaka:{case_id}:session_{local_session_id}"
+    key = ingest_key(
+        account=account,
+        user_id=user_id,
+        agent_id=agent_id,
+        global_session_id=global_session_id,
+    )
     return key in success_keys or bool(record.get(key, {}).get("success"))
 
 
 def mark_ingested(
-    case_id: str,
-    local_session_id: int,
+    account: str | None,
+    user_id: str | None,
+    agent_id: str | None,
+    global_session_id: int,
     record: dict[str, Any],
     meta: dict[str, Any],
 ) -> None:
-    key = f"vaka:{case_id}:session_{local_session_id}"
+    key = ingest_key(
+        account=account,
+        user_id=user_id,
+        agent_id=agent_id,
+        global_session_id=global_session_id,
+    )
     record[key] = {"success": True, "timestamp": int(time.time()), "meta": meta}
 
 
@@ -186,10 +272,16 @@ def build_case_sessions(
     keep_references: bool,
 ) -> list[dict[str, Any]]:
     sessions: list[dict[str, Any]] = []
-    for local_session_id in sorted(memory_sessions):
-        rows = [row for row in case["rows"] if row["_local_session_id"] == local_session_id]
+    global_session_ids = {
+        row["_global_session_id"]
+        for row in case["rows"]
+        if row["_global_session_id"] in memory_sessions
+    }
+    for global_session_id in sorted(global_session_ids):
+        rows = [row for row in case["rows"] if row["_global_session_id"] == global_session_id]
         if not rows:
             continue
+        local_session_id = rows[0]["_local_session_id"]
         messages = build_session_messages(
             rows,
             answer_column=answer_column,
@@ -205,7 +297,7 @@ def build_case_sessions(
                 "meta": {
                     "case_id": case["case_id"],
                     "case_session_range": case["session_range"],
-                    "global_session_id": rows[0]["_global_session_id"],
+                    "global_session_id": global_session_id,
                     "local_session_id": local_session_id,
                     "row_count": len(rows),
                     "used_docs": used_docs,
@@ -280,10 +372,11 @@ async def process_session(
 ) -> dict[str, Any]:
     meta = session["meta"]
     case_id = meta["case_id"]
+    global_session_id = meta["global_session_id"]
     local_session_id = meta["local_session_id"]
     try:
-        user_id = None if args.no_user_agent_id else case_id
-        agent_id = None if args.no_user_agent_id else case_id
+        user_id = None if args.no_user_agent_id else args.user_id
+        agent_id = None if args.no_user_agent_id else args.agent_id
         result = await viking_ingest(
             session["messages"],
             openviking_url=args.openviking_url,
@@ -294,9 +387,12 @@ async def process_session(
         token_usage = result["token_usage"]
         record = {
             "timestamp": run_time,
+            "account": _identity_part(args.account),
+            "user_id": _identity_part(user_id),
+            "agent_id": _identity_part(agent_id),
             "case_id": case_id,
             "case_session_range": meta["case_session_range"],
-            "global_session_id": meta["global_session_id"],
+            "global_session_id": global_session_id,
             "local_session_id": local_session_id,
             "row_count": meta["row_count"],
             "used_docs": meta["used_docs"],
@@ -305,10 +401,11 @@ async def process_session(
             "trace_id": result.get("trace_id", ""),
         }
         write_success_record(record, args.success_csv)
-        mark_ingested(case_id, local_session_id, ingest_record, meta)
+        mark_ingested(args.account, user_id, agent_id, global_session_id, ingest_record, meta)
         save_ingest_record(ingest_record, args.record_path)
         print(
-            f"    -> [COMPLETED] [{case_id}/session_{local_session_id}] "
+            f"    -> [COMPLETED] [session_id={global_session_id}] "
+            f"user={_identity_part(user_id)} agent={_identity_part(agent_id)} "
             f"rows={meta['row_count']} total_tokens={token_usage.get('total', 0)}",
             file=sys.stderr,
         )
@@ -319,6 +416,7 @@ async def process_session(
         record = {
             "timestamp": run_time,
             "case_id": case_id,
+            "global_session_id": global_session_id,
             "local_session_id": local_session_id,
             "status": "error",
             "error": str(exc),
@@ -328,9 +426,10 @@ async def process_session(
 
 
 async def run_import(args: argparse.Namespace) -> None:
-    memory_sessions = parse_session_selector(args.memory_sessions)
-    cases = load_vaka_cases(args.input, args.case_size)
-    cases = select_cases(cases, args.case)
+    all_cases = load_vaka_cases(args.input, args.case_size)
+    max_session = max_global_session_id(all_cases)
+    memory_sessions = parse_session_selector(args.memory_sessions, max_session_id=max_session)
+    cases = select_cases(all_cases, args.case)
 
     if args.clear_ingest_record:
         ingest_record: dict[str, Any] = {}
@@ -338,7 +437,18 @@ async def run_import(args: argparse.Namespace) -> None:
     else:
         ingest_record = load_ingest_record(args.record_path)
 
-    success_keys = set() if args.force_ingest else load_success_keys(args.success_csv)
+    user_id = None if args.no_user_agent_id else args.user_id
+    agent_id = None if args.no_user_agent_id else args.agent_id
+    success_keys = (
+        set()
+        if args.force_ingest
+        else load_success_keys(
+            args.success_csv,
+            account=args.account,
+            user_id=user_id,
+            agent_id=agent_id,
+        )
+    )
     run_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     async def process_case(case: dict[str, Any]) -> list[dict[str, Any]]:
@@ -353,17 +463,25 @@ async def run_import(args: argparse.Namespace) -> None:
             keep_references=args.keep_references,
         )
         print(f"    {len(sessions)} memory session(s) to import", file=sys.stderr)
+        print(
+            f"    target user={_identity_part(user_id)} agent={_identity_part(agent_id)}",
+            file=sys.stderr,
+        )
 
         results = []
         for session in sessions:
             meta = session["meta"]
-            case_id = meta["case_id"]
-            local_session_id = meta["local_session_id"]
+            global_session_id = meta["global_session_id"]
             if not args.force_ingest and is_already_ingested(
-                case_id, local_session_id, ingest_record, success_keys
+                args.account,
+                user_id,
+                agent_id,
+                global_session_id,
+                ingest_record,
+                success_keys,
             ):
                 print(
-                    f"    -> [SKIP] [{case_id}/session_{local_session_id}] already imported",
+                    f"    -> [SKIP] [session_id={global_session_id}] already imported",
                     file=sys.stderr,
                 )
                 results.append({"status": "skipped"})
@@ -421,8 +539,8 @@ def main() -> None:
     )
     parser.add_argument(
         "--memory-sessions",
-        default="1-7",
-        help="Local session IDs to import as memory, default: 1-7",
+        default=DEFAULT_MEMORY_SESSIONS,
+        help=f"Global session IDs to import as memory, default: {DEFAULT_MEMORY_SESSIONS}",
     )
     parser.add_argument(
         "--answer-column",
@@ -443,6 +561,16 @@ def main() -> None:
         "--account",
         default="default",
         help="OpenViking trusted-mode account header, default: default",
+    )
+    parser.add_argument(
+        "--user-id",
+        default=DEFAULT_USER_ID,
+        help=f"OpenViking user_id for all imported Vaka memory, default: {DEFAULT_USER_ID}",
+    )
+    parser.add_argument(
+        "--agent-id",
+        default=DEFAULT_AGENT_ID,
+        help=f"OpenViking agent_id for all imported Vaka memory, default: {DEFAULT_AGENT_ID}",
     )
     parser.add_argument(
         "--success-csv",
@@ -472,7 +600,7 @@ def main() -> None:
     parser.add_argument(
         "--no-user-agent-id",
         action="store_true",
-        help="Do not use case_id as OpenViking user_id and agent_id",
+        help="Do not set OpenViking user_id or agent_id on the client",
     )
     args = parser.parse_args()
 
