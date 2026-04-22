@@ -27,6 +27,8 @@
         "region": "cn-beijing",
         "ak": null,
         "sk": null,
+        "api_key": null,
+        "host": "api-vikingdb.vikingdb.cn-beijing.volces.com",
         "session_token": null
       }
     },
