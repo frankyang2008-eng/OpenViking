@@ -1968,8 +1968,8 @@ export type BuildMemoryLinesWithBudgetOptions = BuildMemoryLinesOptions & {
  *
  * The first memory is always included even if its token count exceeds the
  * remaining budget. This is intentional (spec Section 6.2): with
- * `recallMaxContentChars=500`, a single line is at most ~128 tokens — well
- * within the 2000-token default budget — so overshoot is bounded and
+ * `recallMaxContentChars=5000`, a single line is at most ~1250 tokens — well
+ * within the 8000-token default budget — so overshoot is bounded and
  * guarantees at least one memory is surfaced.
  */
 export async function buildMemoryLinesWithBudget(

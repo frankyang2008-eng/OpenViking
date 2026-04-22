@@ -20,11 +20,11 @@ describe("memoryOpenVikingConfigSchema.parse()", () => {
     expect(cfg.autoCapture).toBe(true);
     expect(cfg.autoRecall).toBe(true);
     expect(cfg.recallPreferAbstract).toBe(false);
-    expect(cfg.recallTokenBudget).toBe(2000);
+    expect(cfg.recallTokenBudget).toBe(8000);
     expect(cfg.commitTokenThreshold).toBe(20000);
     expect(cfg.captureMode).toBe("semantic");
     expect(cfg.captureMaxLength).toBe(24000);
-    expect(cfg.recallMaxContentChars).toBe(500);
+    expect(cfg.recallMaxContentChars).toBe(5000);
     expect(cfg.agentId).toBe("default");
     expect(cfg.serverAuthMode).toBe("api_key");
     expect(cfg.isolateUserScopeByAgent).toBe(false);
