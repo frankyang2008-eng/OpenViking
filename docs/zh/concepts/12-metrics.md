@@ -380,6 +380,8 @@ scrape_configs:
 - `server.observability.metrics.exporters.otel.protocol`：`"grpc"` 或 `"http"`
 - `server.observability.metrics.exporters.otel.tls.insecure`：仅对 OTLP/gRPC 生效；`true` 表示明文连接（无 TLS）
 - `server.observability.metrics.exporters.otel.endpoint`：OTLP 端点（gRPC 用 `host:4317`；HTTP 必须是完整 URL）
+- `server.observability.metrics.exporters.otel.service_name`：OTLP `service.name` 资源属性（默认 `"openviking-server"`）
+- `server.observability.metrics.exporters.otel.export_interval_ms`：OTLP 推送间隔，单位毫秒（默认 `10000`）
 
 示例：
 

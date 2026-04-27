@@ -377,6 +377,8 @@ Key fields:
 - `server.observability.metrics.exporters.otel.protocol`: `"grpc"` or `"http"`
 - `server.observability.metrics.exporters.otel.tls.insecure`: OTLP/gRPC only; `true` means plaintext (no TLS)
 - `server.observability.metrics.exporters.otel.endpoint`: OTLP endpoint (for gRPC, use `host:4317`; for HTTP, use a full URL)
+- `server.observability.metrics.exporters.otel.service_name`: OTLP `service.name` resource attribute (default `"openviking-server"`)
+- `server.observability.metrics.exporters.otel.export_interval_ms`: OTLP push interval in milliseconds (default `10000`)
 
 Example:
 
