@@ -864,6 +864,7 @@ viking://session/{session_id}/
     |   +-- messages.jsonl    # Phase 1 写入
     |   +-- .abstract.md      # Phase 2 写入（后台）
     |   +-- .overview.md      # Phase 2 写入（后台）
+    |   +-- memory_diff.json  # Phase 2 写入（后台，记忆变更时）
     |   +-- .done             # Phase 2 完成标记
     +-- archive_002/
 ```
