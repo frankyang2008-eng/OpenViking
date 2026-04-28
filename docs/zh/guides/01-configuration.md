@@ -745,9 +745,9 @@ RAGFS 默认使用 Rust binding 模式，通过 Rust 实现直接访问文件系
 | `region` | str | 存储桶所在的 AWS 区域（例如 us-east-1, cn-beijing） | null |
 | `access_key` | str | S3 访问密钥 ID | null |
 | `secret_key` | str | 与访问密钥 ID 对应的 S3 秘密访问密钥 | null |
-| `endpoint` | str | 自定义 S3 端点 URL，对于 MinIO 或 LocalStack 等 S3 兼容服务是必需的 | null |
+| `endpoint` | str | 自定义 S3 端点，对于 MinIO 或 LocalStack 等 S3 兼容服务是必需的。可以填完整 URL（`https://...` 或 `http://...`），也可以只填主机名；只填主机名时会根据 `use_ssl` 自动补 `https://` 或 `http://` | null |
 | `prefix` | str | 用于命名空间隔离的可选键前缀 | "" |
-| `use_ssl` | bool | 为 S3 连接启用/禁用 SSL（HTTPS） | true |
+| `use_ssl` | bool | 为 S3 连接启用/禁用 SSL（HTTPS）。也用于决定 `endpoint` 仅填主机名时自动补的协议前缀 | true |
 | `use_path_style` | bool | true 表示对 MinIO 和某些 S3 兼容服务使用 PathStyle；false 表示对 TOS 和某些 S3 兼容服务使用 VirtualHostStyle | true |
 | `directory_marker_mode` | str | 目录 marker 的持久化方式，可选 `none`、`empty`、`nonempty` | `"empty"` |
 | `normalize_encoding` | bool | 仅把 S3 object key 中 URL 保留字符或不安全字符转义为 `!HH` 十六进制字节，同时保留安全字符 | `true` |

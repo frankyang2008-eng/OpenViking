@@ -772,9 +772,9 @@ RAGFS uses Rust binding mode by default, directly accessing the file system thro
 | `region` | str | AWS region where the bucket is located (e.g., us-east-1, cn-beijing) | null |
 | `access_key` | str | S3 access key ID | null |
 | `secret_key` | str | S3 secret access key corresponding to the access key ID | null |
-| `endpoint` | str | Custom S3 endpoint URL, required for S3-compatible services like MinIO or LocalStack | null |
+| `endpoint` | str | Custom S3 endpoint, required for S3-compatible services like MinIO or LocalStack. Accepts a full URL (`https://...` or `http://...`) or a bare hostname; bare hostnames are auto-prefixed with `https://` or `http://` based on `use_ssl` | null |
 | `prefix` | str | Optional key prefix for namespace isolation | "" |
-| `use_ssl` | bool | Enable/disable SSL (HTTPS) for S3 connections | true |
+| `use_ssl` | bool | Enable/disable SSL (HTTPS) for S3 connections. Also controls the scheme auto-prefixed onto bare-hostname `endpoint` values | true |
 | `use_path_style` | bool | true for PathStyle used by MinIO and some S3-compatible services; false for VirtualHostStyle used by TOS and some S3-compatible services | true |
 | `directory_marker_mode` | str | How to persist directory markers: `none`, `empty`, or `nonempty` | `"empty"` |
 | `normalize_encoding` | bool | Escape only URL-reserved or URL-unsafe characters in S3 object keys as `!HH` hexadecimal bytes while preserving safe characters | `true` |
