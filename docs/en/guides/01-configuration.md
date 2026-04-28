@@ -1057,6 +1057,7 @@ Enable at-rest data encryption to ensure data security and isolation in multi-te
 |-----------|------|-------------|---------|
 | `enabled` | bool | Whether encryption is enabled | `false` |
 | `provider` | str | Key provider: `"local"`, `"vault"`, or `"volcengine_kms"` | - |
+| `api_key_hashing.enabled` | bool | Whether to apply Argon2id one-way hashing to API key values (independent of file-level `enabled`); see [Encryption Guide](./08-encryption.md) | `false` |
 
 ### Local (File)
 
