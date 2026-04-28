@@ -757,6 +757,7 @@ Storage configuration for context data, including file storage (RAGFS) and vecto
 |-----------|------|-------------|---------|
 | `backend` | str | `"local"`, `"s3"`, or `"memory"` | `"local"` |
 | `timeout` | float | Request timeout in seconds | `10.0` |
+| `queue_db_path` | str (optional) | Override path of the queuefs sqlite database file. Defaults to `{storage.workspace}/_system/queue/queue.db` when not set. Useful when the workspace volume does not support sqlite (e.g. some network filesystems) | `null` |
 | `s3` | object | S3 backend configuration (when backend is 's3') | - |
 
 **Configuration Examples**
