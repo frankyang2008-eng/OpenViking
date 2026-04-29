@@ -142,7 +142,7 @@ def test_otel_grpc_send_forwards_custom_metadata(registry):
         enabled=False,
         protocol="grpc",
         endpoint="apmplus-cn-beijing.ivolces.com:4317",
-        headers={"X-ByteAPM-AppKey": "metric-appkey"},
+        headers={"x-byteapm-appkey": "metric-appkey"},
     )
 
     class _FakeStub:
@@ -163,5 +163,5 @@ def test_otel_grpc_send_forwards_custom_metadata(registry):
 
     exporter._send_grpc_request(ExportMetricsServiceRequest())
 
-    assert exporter._grpc_stub.metadata == [("X-ByteAPM-AppKey", "metric-appkey")]
+    assert exporter._grpc_stub.metadata == [("x-byteapm-appkey", "metric-appkey")]
     assert exporter._grpc_stub.timeout == 5.0

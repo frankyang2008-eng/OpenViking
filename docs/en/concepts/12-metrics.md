@@ -380,6 +380,7 @@ Key fields:
 - `server.observability.metrics.exporters.otel.service_name`: OTLP `service.name` resource attribute (default `"openviking-server"`)
 - `server.observability.metrics.exporters.otel.export_interval_ms`: OTLP push interval in milliseconds (default `10000`)
 - `server.observability.metrics.exporters.otel.headers`: optional custom OTLP headers; sent as gRPC metadata for gRPC and HTTP headers for HTTP
+- When using gRPC, header keys in `headers` should be lowercase, for example `x-byteapm-appkey`; HTTP does not have this restriction
 
 Example:
 

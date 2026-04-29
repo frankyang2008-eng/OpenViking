@@ -282,13 +282,13 @@ def test_init_tracer_forwards_headers_to_grpc_exporter(monkeypatch):
         service_name="memorydb",
         protocol="grpc",
         insecure=True,
-        headers={"X-ByteAPM-AppKey": "trace-appkey"},
+        headers={"x-byteapm-appkey": "trace-appkey"},
         enabled=True,
     )
 
     assert captured["endpoint"] == "apmplus-cn-beijing.ivolces.com:4317"
     assert captured["insecure"] is True
-    assert captured["headers"] == {"X-ByteAPM-AppKey": "trace-appkey"}
+    assert captured["headers"] == {"x-byteapm-appkey": "trace-appkey"}
 
 
 def test_init_tracer_forwards_headers_to_http_exporter(monkeypatch):
@@ -389,14 +389,14 @@ def test_init_otel_log_handler_forwards_headers_to_grpc_exporter(monkeypatch):
         endpoint="apmplus-cn-beijing.ivolces.com:4317",
         service_name="memorydb",
         insecure=True,
-        headers={"X-ByteAPM-AppKey": "log-appkey"},
+        headers={"x-byteapm-appkey": "log-appkey"},
         enabled=True,
     )
 
     assert handler is not None
     assert captured["endpoint"] == "apmplus-cn-beijing.ivolces.com:4317"
     assert captured["insecure"] is True
-    assert captured["headers"] == {"X-ByteAPM-AppKey": "log-appkey"}
+    assert captured["headers"] == {"x-byteapm-appkey": "log-appkey"}
 
 
 def test_init_otel_log_handler_forwards_headers_to_http_exporter(monkeypatch):

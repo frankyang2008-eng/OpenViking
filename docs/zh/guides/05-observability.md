@@ -332,6 +332,7 @@ OpenViking 将信号级别的可观测性配置统一放在 `server.observabilit
 - `headers` 用于给 OTLP exporter 透传自定义请求头或 gRPC metadata。
 - 常见场景包括直连需要额外鉴权头的 OTLP 后端；请只配置 header key/value，不要把敏感值写入日志或截图中。
 - 对 `traces`、`logs` 和 `metrics.exporters.otel` 三条链路，`headers` 的配置方式保持一致。
+- 当 `protocol="grpc"` 时，`headers` 会作为 gRPC metadata 发送，key 需要使用小写形式，例如 `x-byteapm-appkey`；该限制不适用于 `protocol="http"`。
 
 完整字段、支持范围和更多示例见：
 
