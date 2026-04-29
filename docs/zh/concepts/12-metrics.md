@@ -382,6 +382,7 @@ scrape_configs:
 - `server.observability.metrics.exporters.otel.endpoint`：OTLP 端点（gRPC 用 `host:4317`；HTTP 必须是完整 URL）
 - `server.observability.metrics.exporters.otel.service_name`：OTLP `service.name` 资源属性（默认 `"openviking-server"`）
 - `server.observability.metrics.exporters.otel.export_interval_ms`：OTLP 推送间隔，单位毫秒（默认 `10000`）
+- `server.observability.metrics.exporters.otel.headers`：可选的自定义 OTLP 请求头；gRPC 会作为 metadata 发送，HTTP 会作为 headers 发送
 
 示例：
 
@@ -403,7 +404,8 @@ scrape_configs:
             },
             "endpoint": "otel-collector:4317",
             "service_name": "openviking-server",
-            "export_interval_ms": 10000
+            "export_interval_ms": 10000,
+            "headers": {}
           }
         }
       }
