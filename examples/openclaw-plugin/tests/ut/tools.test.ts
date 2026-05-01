@@ -223,6 +223,71 @@ describe("Tool: memory_store (behavioral)", () => {
     expect(body.role).toBe("user");
     expect(body.role_id).toBe("wx_user-01_abc");
   });
+
+  it("uses a temporary session by default instead of the current tool session", async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.endsWith("/api/v1/system/status")) {
+        return okResponse({ user: "default" });
+      }
+      if (url.includes("/messages")) {
+        return okResponse({ session_id: "sess-1" });
+      }
+      if (url.endsWith("/commit")) {
+        return okResponse({ status: "completed", archived: false, memories_extracted: {} });
+      }
+      return okResponse({});
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { factoryTools, api } = setupPlugin();
+    contextEnginePlugin.register(api as any);
+    const tool = factoryTools.get("memory_store")!({
+      sessionId: "runtime-session",
+      sessionKey: "agent:main:main",
+    });
+
+    await tool.execute("tc-memory-store", { text: "hello from tool" });
+
+    const messageCall = fetchMock.mock.calls.find(([url]) =>
+      String(url).includes("/api/v1/sessions/") && String(url).includes("/messages"),
+    );
+    expect(String(messageCall?.[0])).toContain("/api/v1/sessions/memory-store-");
+  });
+
+  it("normalizes explicit memory_store sessionId without using current sessionKey", async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.endsWith("/api/v1/system/status")) {
+        return okResponse({ user: "default" });
+      }
+      if (url.includes("/messages")) {
+        return okResponse({ session_id: "sess-1" });
+      }
+      if (url.endsWith("/commit")) {
+        return okResponse({ status: "completed", archived: false, memories_extracted: {} });
+      }
+      return okResponse({});
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { factoryTools, api } = setupPlugin();
+    contextEnginePlugin.register(api as any);
+    const tool = factoryTools.get("memory_store")!({
+      sessionId: "runtime-session",
+      sessionKey: "agent:main:main",
+    });
+
+    await tool.execute("tc-memory-store", {
+      text: "hello from tool",
+      sessionId: "C:\\Users\\test",
+    });
+
+    const messageCall = fetchMock.mock.calls.find(([url]) =>
+      String(url).includes("/api/v1/sessions/") && String(url).includes("/messages"),
+    );
+    expect(String(messageCall?.[0])).not.toContain("runtime-session");
+    expect(String(messageCall?.[0])).not.toContain("agent%3Amain%3Amain");
+    expect(String(messageCall?.[0])).toMatch(/\/api\/v1\/sessions\/[a-f0-9]{64}\/messages$/);
+  });
 });
 
 describe("Tool: memory_forget (behavioral)", () => {

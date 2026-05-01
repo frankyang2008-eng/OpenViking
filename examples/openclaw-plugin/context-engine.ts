@@ -95,6 +95,7 @@ type ContextEngine = {
   }) => Promise<AssembleResult>;
   compact: (params: {
     sessionId: string;
+    sessionKey?: string;
     sessionFile: string;
     tokenBudget?: number;
     force?: boolean;
@@ -107,7 +108,11 @@ type ContextEngine = {
 
 export type ContextEngineWithCommit = ContextEngine & {
   /** Commit (archive + extract) the OV session. Returns true on success. */
-  commitOVSession: (sessionId: string, sessionKey?: string) => Promise<boolean>;
+  commitOVSession: (params: {
+    sessionId: string;
+    sessionKey?: string;
+    runtimeContext?: Record<string, unknown>;
+  }) => Promise<boolean>;
 };
 
 type Logger = {
@@ -730,7 +735,13 @@ export function createMemoryOpenVikingContextEngine(params: {
   const isBypassedSession = (params: { sessionId?: string; sessionKey?: string }): boolean =>
     shouldBypassSession(params, bypassSessionPatterns);
 
-  async function doCommitOVSession(sessionId: string, sessionKey?: string): Promise<boolean> {
+  async function doCommitOVSession(params: {
+    sessionId: string;
+    sessionKey?: string;
+    runtimeContext?: Record<string, unknown>;
+  }): Promise<boolean> {
+    const { sessionId } = params;
+    const { sessionKey, ovSessionId: ovId } = resolveSessionIdentity(params);
     if (isBypassedSession({ sessionId, sessionKey })) {
       logger.warn?.(
         `openviking: commit skipped because session is bypassed (sessionId=${sessionId}, sessionKey=${sessionKey ?? "none"})`,
@@ -739,7 +750,6 @@ export function createMemoryOpenVikingContextEngine(params: {
     }
     try {
       const client = await getClient();
-      const ovId = openClawSessionToOvStorageId(sessionId, sessionKey);
       rememberSessionAgentId?.({
         sessionId,
         sessionKey,
@@ -774,7 +784,7 @@ export function createMemoryOpenVikingContextEngine(params: {
     return typeof key === "string" && key.trim() ? key.trim() : undefined;
   }
 
-  function extractAssembleSessionKey(params: {
+  function resolveSessionKey(params: {
     sessionKey?: string;
     runtimeContext?: Record<string, unknown>;
   }): string | undefined {
@@ -783,6 +793,18 @@ export function createMemoryOpenVikingContextEngine(params: {
       return direct;
     }
     return extractSessionKey(params.runtimeContext);
+  }
+
+  function resolveSessionIdentity(params: {
+    sessionId: string;
+    sessionKey?: string;
+    runtimeContext?: Record<string, unknown>;
+  }): { sessionKey: string | undefined; ovSessionId: string } {
+    const sessionKey = resolveSessionKey(params);
+    return {
+      sessionKey,
+      ovSessionId: openClawSessionToOvStorageId(params.sessionId, sessionKey),
+    };
   }
 
   function extractRuntimeAgentId(
@@ -883,12 +905,11 @@ export function createMemoryOpenVikingContextEngine(params: {
     async assemble(assembleParams): Promise<AssembleResult> {
       const { messages } = assembleParams;
       const tokenBudget = validTokenBudget(assembleParams.tokenBudget) ?? 128_000;
-      const sessionKey = extractAssembleSessionKey(assembleParams);
+      const { sessionKey, ovSessionId: OVSessionId } = resolveSessionIdentity(assembleParams);
       const sender = extractRuntimeSenderId(assembleParams.runtimeContext);
 
       const originalTokens = roughEstimate(messages);
 
-      const OVSessionId = openClawSessionToOvStorageId(assembleParams.sessionId, sessionKey);
       rememberSessionAgentId?.({
         sessionId: assembleParams.sessionId,
         sessionKey,
@@ -998,14 +1019,8 @@ export function createMemoryOpenVikingContextEngine(params: {
       }
 
       try {
-      const sender = extractRuntimeSenderId(afterTurnParams.runtimeContext);
-        const sessionKey =
-          (typeof afterTurnParams.sessionKey === "string" && afterTurnParams.sessionKey.trim()) ||
-          extractSessionKey(afterTurnParams.runtimeContext);
-        const OVSessionId = openClawSessionToOvStorageId(
-          afterTurnParams.sessionId,
-          sessionKey,
-        );
+        const sender = extractRuntimeSenderId(afterTurnParams.runtimeContext);
+        const { sessionKey, ovSessionId: OVSessionId } = resolveSessionIdentity(afterTurnParams);
         const runtimeAgentId = extractRuntimeAgentId(afterTurnParams.runtimeContext);
         if (runtimeAgentId) {
           rememberSessionAgentId?.({
@@ -1172,8 +1187,7 @@ export function createMemoryOpenVikingContextEngine(params: {
     },
 
     async compact(compactParams): Promise<CompactResult> {
-      const OVSessionId = compactParams.sessionId;
-      const sessionKey = extractSessionKey(compactParams.runtimeContext);
+      const { sessionKey, ovSessionId: OVSessionId } = resolveSessionIdentity(compactParams);
       const tokenBudget = validTokenBudget(compactParams.tokenBudget) ?? 128_000;
       diag("compact_entry", OVSessionId, {
         tokenBudget,
@@ -1198,7 +1212,7 @@ export function createMemoryOpenVikingContextEngine(params: {
       }
 
       const client = await getClient();
-      const agentId = resolveAgentId(OVSessionId);
+      const agentId = resolveAgentId(compactParams.sessionId, sessionKey, OVSessionId);
       const tokensBeforeOriginal = validTokenBudget(compactParams.currentTokenCount);
       let preCommitEstimatedTokens: number | undefined;
       if (typeof tokensBeforeOriginal !== "number") {
@@ -1418,9 +1432,27 @@ export function createMemoryOpenVikingContextEngine(params: {
           },
         };
       } catch (err) {
-        logger.warn?.(`openviking: compact commit failed for session=${OVSessionId}: ${String(err)}`);
+        const errorMessage = String(err);
+        if (errorMessage.includes("[NOT_FOUND]") && errorMessage.includes("Session not found")) {
+          logger.info(
+            `openviking: compact skipped because OV session does not exist ` +
+              `(session=${OVSessionId}, agentId=${agentId})`,
+          );
+          diag("compact_result", OVSessionId, {
+            ok: true,
+            compacted: false,
+            reason: "session_not_found",
+            error: errorMessage,
+          });
+          return {
+            ok: true,
+            compacted: false,
+            reason: "session_not_found",
+          };
+        }
+        logger.warn?.(`openviking: compact commit failed for session=${OVSessionId}: ${errorMessage}`);
         diag("compact_error", OVSessionId, {
-          error: String(err),
+          error: errorMessage,
         });
         return {
           ok: false,
@@ -1432,7 +1464,7 @@ export function createMemoryOpenVikingContextEngine(params: {
             tokensBefore: tokensBefore,
             tokensAfter: undefined,
             details: {
-              error: String(err),
+              error: errorMessage,
             },
           },
         };
