@@ -39,11 +39,18 @@ class TestParseSkillNoneData:
         assert aux_files == []
         assert base_path is None
 
-    @pytest.mark.parametrize("skill_dict", [{}, {"description": "missing name"}, {"name": ""}])
-    def test_validate_skill_dict_requires_name(self, skill_dict):
+    @pytest.mark.parametrize("skill_dict", [{}, {"description": "missing name"}])
+    def test_validate_skill_dict_requires_name_field(self, skill_dict):
         """Dict skill data should fail fast when required metadata is missing."""
         processor = SkillProcessor(vikingdb=None)
-        with pytest.raises(InvalidArgumentError, match="non-empty 'name' field"):
+        with pytest.raises(InvalidArgumentError, match="Skill must have 'name' field"):
+            processor._validate_skill_dict(skill_dict)
+
+    @pytest.mark.parametrize("skill_dict", [{"name": ""}, {"name": "   "}, {"name": 123}])
+    def test_validate_skill_dict_requires_non_empty_name_string(self, skill_dict):
+        """Dict skill data should reject empty or non-string skill names."""
+        processor = SkillProcessor(vikingdb=None)
+        with pytest.raises(InvalidArgumentError, match="Skill 'name' must be a non-empty string"):
             processor._validate_skill_dict(skill_dict)
 
     def test_parse_skill_unsupported_type_still_raises(self):

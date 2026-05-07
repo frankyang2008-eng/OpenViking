@@ -214,14 +214,20 @@ class SkillProcessor:
         else:
             raise ValueError(f"Unsupported data type: {type(data)}")
 
+        self._validate_skill_dict(skill_dict)
         return skill_dict, auxiliary_files, base_path
 
     @staticmethod
     def _validate_skill_dict(skill_dict: Dict[str, Any]) -> None:
         """Validate normalized skill metadata before storage/indexing."""
         name = skill_dict.get("name")
+        if name is None:
+            raise InvalidArgumentError("Skill must have 'name' field", details={"field": "name"})
         if not isinstance(name, str) or not name.strip():
-            raise InvalidArgumentError("Skill data must include a non-empty 'name' field")
+            raise InvalidArgumentError(
+                "Skill 'name' must be a non-empty string",
+                details={"field": "name"},
+            )
 
     @staticmethod
     def _build_skill_abstract(skill_dict: Dict[str, Any]) -> str:
