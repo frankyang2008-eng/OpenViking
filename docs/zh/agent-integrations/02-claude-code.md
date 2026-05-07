@@ -124,6 +124,25 @@ OPENVIKING_BYPASS_SESSION=1 claude
 
 bypass 启用时，所有 hook 立即返回 approve，不与 OpenViking 通信。
 
+## Statusline 状态行
+
+插件会在 Claude Code 输入框下方渲染一行 OpenViking 状态。安装脚本把它注册到 `~/.claude/settings.json`（CC 插件 manifest 不支持 `statusLine`，必须走用户 settings）。
+
+```text
+OV ✓ │ ↩ 6 mem (0.92) · 50ms             本轮注入 6 条记忆，最高分 0.92
+OV ⚠ slow                                 探针超过 1s 预算（服务器可能在抽风）
+OV ✗ offline                              服务器不可达
+OV ⚡ bypass                               命中 OPENVIKING_BYPASS_SESSION*
+OV ✓ │ ✎ 573/20k · 2 arch                 待提交进度 + 本 session 已归档 2 次
+OV ✓ │ 🔗 resumed │ +3 today              session 已恢复上下文；今日累计归档 3 次
+```
+
+hook 脚本把每轮的小快照写到 `~/.openviking/state/`；statusline 脚本读快照，再加 5 秒共享缓存的 `GET /health`。探针 1s 硬超时，多 session 共享缓存避免风暴。
+
+`OPENVIKING_STATUSLINE=off` 可静默不删；`jq 'del(.statusLine)' ~/.claude/settings.json` 彻底移除。已有自定义 statusline 时安装会询问替换 / 跳过 / 手动 compose。
+
+完整的段位说明（每个 segment 何时出现、为什么有时不显示）以及个性化 recipe（隐藏段位、改色、与已有 statusline 组合、自定义段位），参见 [`examples/claude-code-memory-plugin/STATUSLINE.md`](https://github.com/volcengine/OpenViking/blob/main/examples/claude-code-memory-plugin/STATUSLINE.md)。最方便的方式是打开 Claude Code 把链接喂给它，让它读完文档既能解释你看到的内容，又能按你的偏好调整。
+
 ## 与 Claude Code 内置 `MEMORY.md` 的对比
 
 本插件**补充**Claude Code 原生记忆系统，不替代：
