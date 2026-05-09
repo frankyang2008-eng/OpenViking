@@ -456,11 +456,11 @@ async def glob(pattern: str, uri: str = "viking://", node_limit: int = 100) -> s
 
 
 @mcp.tool()
-async def forget(uri: str) -> str:
-    """Permanently delete a viking:// URI from OpenViking. This is irreversible. Only use when the user explicitly asks to forget or delete something. Always confirm with the user before calling this tool. Use the search tool first to find the exact URI, then pass it here."""
+async def forget(uri: str, recursive: bool = False) -> str:
+    """Permanently delete a viking:// URI from OpenViking. This is irreversible. Only use when the user explicitly asks to forget or delete something. Always confirm with the user before calling this tool. Use the search tool first to find the exact URI, then pass it here. Set recursive=true only when the user explicitly asks to delete a directory tree."""
     service = get_service()
     ctx = _get_ctx()
-    await service.fs.rm(uri, ctx=ctx)
+    await service.fs.rm(uri, ctx=ctx, recursive=recursive)
     return f"Deleted: {uri}"
 
 
