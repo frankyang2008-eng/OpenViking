@@ -223,12 +223,15 @@ class BaseClient(ABC):
     # ============= Sessions =============
 
     @abstractmethod
-    async def create_session(self, session_id: Optional[str] = None) -> Dict[str, Any]:
+    async def create_session(
+        self, session_id: Optional[str] = None, telemetry: TelemetryRequest = False
+    ) -> Dict[str, Any]:
         """Create a new session.
 
         Args:
             session_id: Optional session ID. If provided, creates a session with the given ID.
                        If None, creates a new session with auto-generated ID.
+            telemetry: Whether to attach operation telemetry data to the result.
         """
         ...
 
@@ -275,6 +278,7 @@ class BaseClient(ABC):
         parts: list[dict] | None = None,
         created_at: str | None = None,
         role_id: str | None = None,
+        telemetry: TelemetryRequest = False,
     ) -> Dict[str, Any]:
         """Add a message to a session.
 
@@ -285,6 +289,7 @@ class BaseClient(ABC):
             parts: Parts array (full Part support: TextPart, ContextPart, ToolPart)
             created_at: Message creation time (ISO format string)
             role_id: Optional explicit actor identity. Omit to let the server derive it.
+            telemetry: Whether to attach operation telemetry data to the result.
 
         If both content and parts are provided, parts takes precedence.
         """

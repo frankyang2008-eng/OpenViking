@@ -764,19 +764,27 @@ class AsyncHTTPClient(BaseClient):
 
     # ============= Sessions =============
 
-    async def create_session(self, session_id: Optional[str] = None) -> Dict[str, Any]:
+    async def create_session(
+        self, session_id: Optional[str] = None, telemetry: TelemetryRequest = False
+    ) -> Dict[str, Any]:
         """Create a new session.
 
         Args:
             session_id: Optional session ID. If provided, creates a session with the given ID.
                        If None, creates a new session with auto-generated ID.
         """
-        json_body = {"session_id": session_id} if session_id else {}
+        telemetry = self._validate_telemetry(telemetry)
+        json_body: Dict[str, Any] = {}
+        if session_id is not None:
+            json_body["session_id"] = session_id
+        if telemetry is not False:
+            json_body["telemetry"] = telemetry
         response = await self._http.post(
             "/api/v1/sessions",
             json=json_body,
         )
-        return self._handle_response(response)
+        response_data = self._handle_response_data(response)
+        return self._attach_telemetry(response_data.get("result"), response_data)
 
     async def list_sessions(self) -> List[Any]:
         """List all sessions."""
@@ -847,6 +855,7 @@ class AsyncHTTPClient(BaseClient):
         parts: list[dict] | None = None,
         created_at: str | None = None,
         role_id: str | None = None,
+        telemetry: TelemetryRequest = False,
     ) -> Dict[str, Any]:
         """Add a message to a session.
 
@@ -860,6 +869,7 @@ class AsyncHTTPClient(BaseClient):
 
         If both content and parts are provided, parts takes precedence.
         """
+        telemetry = self._validate_telemetry(telemetry)
         payload: Dict[str, Any] = {"role": role}
         if parts is not None:
             payload["parts"] = parts
@@ -872,12 +882,15 @@ class AsyncHTTPClient(BaseClient):
             payload["created_at"] = created_at
         if role_id is not None:
             payload["role_id"] = role_id
+        if telemetry is not False:
+            payload["telemetry"] = telemetry
 
         response = await self._http.post(
             f"/api/v1/sessions/{session_id}/messages",
             json=payload,
         )
-        return self._handle_response(response)
+        response_data = self._handle_response_data(response)
+        return self._attach_telemetry(response_data.get("result"), response_data)
 
     # ============= Pack =============
 

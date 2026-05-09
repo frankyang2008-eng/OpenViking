@@ -128,7 +128,9 @@ class AsyncOpenViking:
         await self._ensure_initialized()
         return await self._client.session_exists(session_id)
 
-    async def create_session(self, session_id: Optional[str] = None) -> Dict[str, Any]:
+    async def create_session(
+        self, session_id: Optional[str] = None, telemetry: TelemetryRequest = False
+    ) -> Dict[str, Any]:
         """Create a new session.
 
         Args:
@@ -136,7 +138,7 @@ class AsyncOpenViking:
                        If None, creates a new session with auto-generated ID.
         """
         await self._ensure_initialized()
-        return await self._client.create_session(session_id)
+        return await self._client.create_session(session_id, telemetry=telemetry)
 
     async def list_sessions(self) -> List[Any]:
         """List all sessions."""
@@ -173,6 +175,7 @@ class AsyncOpenViking:
         parts: list[dict] | None = None,
         created_at: str | None = None,
         role_id: str | None = None,
+        telemetry: TelemetryRequest = False,
     ) -> Dict[str, Any]:
         """Add a message to a session.
 
@@ -194,6 +197,7 @@ class AsyncOpenViking:
             parts=parts,
             created_at=created_at,
             role_id=role_id,
+            telemetry=telemetry,
         )
 
     async def commit_session(

@@ -39,14 +39,16 @@ class SyncOpenViking:
         """Check whether a session exists in storage."""
         return run_async(self._async_client.session_exists(session_id))
 
-    def create_session(self, session_id: Optional[str] = None) -> Dict[str, Any]:
+    def create_session(
+        self, session_id: Optional[str] = None, telemetry: TelemetryRequest = False
+    ) -> Dict[str, Any]:
         """Create a new session.
 
         Args:
             session_id: Optional session ID. If provided, creates a session with the given ID.
                        If None, creates a new session with auto-generated ID.
         """
-        return run_async(self._async_client.create_session(session_id))
+        return run_async(self._async_client.create_session(session_id, telemetry=telemetry))
 
     def list_sessions(self) -> List[Any]:
         """List all sessions."""
@@ -78,6 +80,7 @@ class SyncOpenViking:
         parts: list[dict] | None = None,
         created_at: str | None = None,
         role_id: str | None = None,
+        telemetry: TelemetryRequest = False,
     ) -> Dict[str, Any]:
         """Add a message to a session.
 
@@ -92,7 +95,15 @@ class SyncOpenViking:
         If both content and parts are provided, parts takes precedence.
         """
         return run_async(
-            self._async_client.add_message(session_id, role, content, parts, created_at, role_id)
+            self._async_client.add_message(
+                session_id,
+                role,
+                content,
+                parts,
+                created_at,
+                role_id,
+                telemetry,
+            )
         )
 
     def commit_session(
