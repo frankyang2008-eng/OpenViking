@@ -1768,6 +1768,53 @@ async function cleanupConflictingPluginVariants() {
   info(tr("Conflicting plugin variants cleaned up", "冲突的插件变体已清理"));
 }
 
+function normalizeOpenClawLoadPath(filePath) {
+  return String(filePath || "")
+    .replace(/\\/g, "/")
+    .replace(/\/+$/g, "");
+}
+
+async function ensureOpenClawPluginLoadPath() {
+  const configPath = getOpenClawConfigPath();
+  let cfg = {};
+  if (existsSync(configPath)) {
+    try {
+      cfg = JSON.parse(await readFile(configPath, "utf8"));
+    } catch {
+      return;
+    }
+  }
+
+  const pluginPath = PLUGIN_DEST;
+  const normalizedPluginPath = normalizeOpenClawLoadPath(pluginPath);
+  const plugins = cfg.plugins && typeof cfg.plugins === "object" && !Array.isArray(cfg.plugins)
+    ? cfg.plugins
+    : {};
+  const load = plugins.load && typeof plugins.load === "object" && !Array.isArray(plugins.load)
+    ? plugins.load
+    : {};
+  const paths = Array.isArray(load.paths) ? load.paths : [];
+  if (paths.some((item) => normalizeOpenClawLoadPath(item) === normalizedPluginPath)) {
+    return;
+  }
+
+  const next = {
+    ...cfg,
+    plugins: {
+      ...plugins,
+      load: {
+        ...load,
+        paths: [...paths, pluginPath],
+      },
+    },
+  };
+  await mkdir(dirname(configPath), { recursive: true });
+  const tmp = `${configPath}.ov-install-tmp.${process.pid}`;
+  await writeFile(tmp, `${JSON.stringify(next, null, 2)}\n`, "utf8");
+  await rename(tmp, configPath);
+  info(tr(`Added OpenClaw plugin load path: ${pluginPath}`, `已添加 OpenClaw 插件加载路径: ${pluginPath}`));
+}
+
 async function configureOpenClawPlugin({
   preserveExistingConfig = false,
   runtimeConfig = null,
@@ -1820,6 +1867,8 @@ async function configureOpenClawPlugin({
   if (!preserveExistingConfig) {
     await scrubStaleOpenClawPluginRegistration();
   }
+
+  await ensureOpenClawPluginLoadPath();
 
   // Enable plugin: try CLI first (default path), fall back to direct file for --workdir
   if (!needWorkdirFlag) {
