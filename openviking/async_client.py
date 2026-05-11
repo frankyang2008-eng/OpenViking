@@ -563,8 +563,24 @@ class AsyncOpenViking:
         await self._ensure_initialized()
         return await self._client.export_ovpack(uri, to)
 
+    async def backup_ovpack(self, to: str) -> str:
+        """
+        Back up public OpenViking scopes as a restore-only .ovpack file.
+
+        Args:
+            to: Target file path
+
+        Returns:
+            Exported backup file path
+        """
+        await self._ensure_initialized()
+        return await self._client.backup_ovpack(to)
+
     async def import_ovpack(
-        self, file_path: str, parent: str, force: bool = False, vectorize: bool = True
+        self,
+        file_path: str,
+        parent: str,
+        on_conflict: Optional[str] = None,
     ) -> str:
         """
         Import local .ovpack file to specified parent path.
@@ -572,14 +588,38 @@ class AsyncOpenViking:
         Args:
             file_path: Local .ovpack file path
             parent: Target parent URI (e.g., viking://user/alice/resources/references/)
-            force: Whether to force overwrite existing resources (default: False)
-            vectorize: Whether to trigger vectorization (default: True)
+            on_conflict: One of "fail", "overwrite", or "skip"
 
         Returns:
             Imported root resource URI
         """
         await self._ensure_initialized()
-        return await self._client.import_ovpack(file_path, parent, force=force, vectorize=vectorize)
+        return await self._client.import_ovpack(
+            file_path,
+            parent,
+            on_conflict=on_conflict,
+        )
+
+    async def restore_ovpack(
+        self,
+        file_path: str,
+        on_conflict: Optional[str] = None,
+    ) -> str:
+        """
+        Restore a backup .ovpack file to its original public scope roots.
+
+        Args:
+            file_path: Local backup .ovpack file path
+            on_conflict: One of "fail", "overwrite", or "skip"
+
+        Returns:
+            Restored root URI
+        """
+        await self._ensure_initialized()
+        return await self._client.restore_ovpack(
+            file_path,
+            on_conflict=on_conflict,
+        )
 
     # ============= Debug methods =============
 

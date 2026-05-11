@@ -303,10 +303,27 @@ class BaseClient(ABC):
         ...
 
     @abstractmethod
+    async def backup_ovpack(self, to: str) -> str:
+        """Back up public scopes as a restore-only .ovpack file."""
+        ...
+
+    @abstractmethod
     async def import_ovpack(
-        self, file_path: str, parent: str, force: bool = False, vectorize: bool = True
+        self,
+        file_path: str,
+        parent: str,
+        on_conflict: Optional[str] = None,
     ) -> str:
         """Import .ovpack file."""
+        ...
+
+    @abstractmethod
+    async def restore_ovpack(
+        self,
+        file_path: str,
+        on_conflict: Optional[str] = None,
+    ) -> str:
+        """Restore backup .ovpack file."""
         ...
 
     # ============= Debug =============
