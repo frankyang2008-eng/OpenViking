@@ -39,11 +39,12 @@ codex             # first run: review /hooks once
 
 If you don't want the installer touching your rc, do these three things yourself:
 
-1. **Wire a `codex()` shell function** that injects OpenViking creds at invocation time. Add to `~/.zshrc` / `~/.bashrc` (uses `node` rather than `jq` so it works on any machine that already has Codex — Codex requires Node 22+):
+1. **Wire a `codex()` shell function** that injects OpenViking creds at invocation time. The installer-emitted version (see `setup-helper/install.sh`) additionally re-renders the cached `.mcp.json` bearer field on each launch — required if you swap `OPENVIKING_CLI_CONFIG_FILE` between configs with and without `api_key`. A simpler equivalent for a fixed config:
 
    ```bash
    codex() {
      local _ov_conf="${OPENVIKING_CLI_CONFIG_FILE:-$HOME/.openviking/ovcli.conf}"
+     local _ov_url _ov_key _ov_account _ov_user
      if [ -f "$_ov_conf" ] && command -v node >/dev/null 2>&1; then
        local _ov_env
        _ov_env=$(node -e '
@@ -59,16 +60,21 @@ If you don't want the installer touching your rc, do these three things yourself
          } catch {}
        ' "$_ov_conf" 2>/dev/null)
        eval "$_ov_env"
-       OPENVIKING_URL="${OPENVIKING_URL:-${OV_URL:-}}" \
-       OPENVIKING_API_KEY="${OPENVIKING_API_KEY:-${OV_KEY:-}}" \
-       OPENVIKING_ACCOUNT="${OPENVIKING_ACCOUNT:-${OV_ACCOUNT:-}}" \
-       OPENVIKING_USER="${OPENVIKING_USER:-${OV_USER:-}}" \
-       OPENVIKING_AGENT_ID="${OPENVIKING_AGENT_ID:-codex}" \
-         command codex "$@"
-       unset OV_URL OV_KEY OV_ACCOUNT OV_USER
-     else
-       command codex "$@"
      fi
+     _ov_url="${OPENVIKING_URL:-${OV_URL:-}}"
+     _ov_key="${OPENVIKING_API_KEY:-${OV_KEY:-}}"
+     _ov_account="${OPENVIKING_ACCOUNT:-${OV_ACCOUNT:-}}"
+     _ov_user="${OPENVIKING_USER:-${OV_USER:-}}"
+     unset OV_URL OV_KEY OV_ACCOUNT OV_USER
+     # Build env-prefix dynamically so empty values are NOT passed as empty
+     # strings — Codex hard-fails on empty bearer_token_env_var targets.
+     local -a _env_args=()
+     [ -n "$_ov_url" ]     && _env_args+=("OPENVIKING_URL=$_ov_url")
+     [ -n "$_ov_key" ]     && _env_args+=("OPENVIKING_API_KEY=$_ov_key")
+     [ -n "$_ov_account" ] && _env_args+=("OPENVIKING_ACCOUNT=$_ov_account")
+     [ -n "$_ov_user" ]    && _env_args+=("OPENVIKING_USER=$_ov_user")
+     _env_args+=("OPENVIKING_AGENT_ID=${OPENVIKING_AGENT_ID:-codex}")
+     env "${_env_args[@]}" codex "$@"
    }
    ```
 
@@ -88,6 +94,10 @@ Connection / identity resolution order (highest to lowest, applies to both hooks
 The shell function wrapper handles step 1 for you by promoting ovcli.conf fields into env vars before exec'ing codex. Hooks then re-resolve the full chain inside Node; the MCP server URL is baked into `.mcp.json` at install time and the API key flows in via `OPENVIKING_API_KEY` (referenced by `bearer_token_env_var` in `.mcp.json`).
 
 Auth is sent as `Authorization: Bearer <api_key>` to both the REST API (used by hooks) and the `/mcp` endpoint (used by the model).
+
+For **unauthenticated local OV** (`ovcli.conf` without `api_key`, or no ovcli.conf at all), `.mcp.json` is rendered *without* `bearer_token_env_var`. Codex 0.130 hard-fails MCP startup with `Environment variable ... is empty` if `bearer_token_env_var` points at an empty/unset env var, so it must be omitted entirely when there's no key.
+
+The `codex()` shell-function wrapper **re-renders this field on every codex launch** based on the currently-active `ovcli.conf` (the one `OPENVIKING_CLI_CONFIG_FILE` points at, falling back to `~/.openviking/ovcli.conf`). That means you can switch between authenticated and unauthenticated OV — e.g. to isolate a benchmark run from production memory — by just changing `OPENVIKING_CLI_CONFIG_FILE` before invoking `codex`, with no re-install needed. The wrapper also omits empty env-var assignments entirely (so `OPENVIKING_API_KEY=` is never passed to codex), keeping `env_http_headers` for identity (`X-OpenViking-Account` / `User` / `Agent`) intact.
 
 Optional Codex-specific tuning lives under `codex` in `ovcli.conf`:
 

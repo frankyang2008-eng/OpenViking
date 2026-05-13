@@ -35,11 +35,12 @@ codex features list | grep codex_hooks
 
 Three steps the installer does for you, that you can do manually:
 
-1. **Shell function wrapper** in `~/.zshrc` / `~/.bashrc` that promotes ovcli.conf into env vars before exec'ing codex (uses `node` rather than `jq` to avoid a silent fallback to OAuth when `jq` is missing — Codex already requires Node 22+):
+1. **Shell function wrapper** in `~/.zshrc` / `~/.bashrc`. The installer-emitted version (see `setup-helper/install.sh`) additionally re-renders the cached `.mcp.json` bearer field on each launch, which is required if you swap `OPENVIKING_CLI_CONFIG_FILE` between configs with and without `api_key`. A simpler fixed-config equivalent:
 
    ```bash
    codex() {
      local _ov_conf="${OPENVIKING_CLI_CONFIG_FILE:-$HOME/.openviking/ovcli.conf}"
+     local _ov_url _ov_key _ov_account _ov_user
      if [ -f "$_ov_conf" ] && command -v node >/dev/null 2>&1; then
        local _ov_env
        _ov_env=$(node -e '
@@ -55,16 +56,21 @@ Three steps the installer does for you, that you can do manually:
          } catch {}
        ' "$_ov_conf" 2>/dev/null)
        eval "$_ov_env"
-       OPENVIKING_URL="${OPENVIKING_URL:-${OV_URL:-}}" \
-       OPENVIKING_API_KEY="${OPENVIKING_API_KEY:-${OV_KEY:-}}" \
-       OPENVIKING_ACCOUNT="${OPENVIKING_ACCOUNT:-${OV_ACCOUNT:-}}" \
-       OPENVIKING_USER="${OPENVIKING_USER:-${OV_USER:-}}" \
-       OPENVIKING_AGENT_ID="${OPENVIKING_AGENT_ID:-codex}" \
-         command codex "$@"
-       unset OV_URL OV_KEY OV_ACCOUNT OV_USER
-     else
-       command codex "$@"
      fi
+     _ov_url="${OPENVIKING_URL:-${OV_URL:-}}"
+     _ov_key="${OPENVIKING_API_KEY:-${OV_KEY:-}}"
+     _ov_account="${OPENVIKING_ACCOUNT:-${OV_ACCOUNT:-}}"
+     _ov_user="${OPENVIKING_USER:-${OV_USER:-}}"
+     unset OV_URL OV_KEY OV_ACCOUNT OV_USER
+     # Empty values are NOT exported — Codex hard-fails on empty
+     # bearer_token_env_var targets.
+     local -a _env_args=()
+     [ -n "$_ov_url" ]     && _env_args+=("OPENVIKING_URL=$_ov_url")
+     [ -n "$_ov_key" ]     && _env_args+=("OPENVIKING_API_KEY=$_ov_key")
+     [ -n "$_ov_account" ] && _env_args+=("OPENVIKING_ACCOUNT=$_ov_account")
+     [ -n "$_ov_user" ]    && _env_args+=("OPENVIKING_USER=$_ov_user")
+     _env_args+=("OPENVIKING_AGENT_ID=${OPENVIKING_AGENT_ID:-codex}")
+     env "${_env_args[@]}" codex "$@"
    }
    ```
 
@@ -84,6 +90,8 @@ Resolution priority for every connection / identity field — env vars always wi
 Hooks resolve this chain on every fire (changes to ovcli.conf take effect on the next hook). The MCP server URL is baked into `.mcp.json` at install time (changing the URL requires a re-install); the API key is read fresh from env on every codex launch via `bearer_token_env_var`, so rotating `OPENVIKING_API_KEY` in ovcli.conf only requires a codex restart, not a re-install.
 
 Auth is sent as `Authorization: Bearer <api_key>` to both the REST API (used by hooks) and the `/mcp` endpoint (used by the model).
+
+For **unauthenticated local OV** (`ovcli.conf` without `api_key`, or no ovcli.conf at all), `.mcp.json` is rendered *without* `bearer_token_env_var`. Codex 0.130 hard-fails MCP startup with `Environment variable ... is empty` when `bearer_token_env_var` points at an empty/unset env var. The `codex()` shell-function wrapper re-renders this field on every codex launch based on whichever ovcli.conf `OPENVIKING_CLI_CONFIG_FILE` is currently pointing at, so swapping configs (e.g. for benchmark isolation) doesn't require a re-install. Identity headers still flow through `env_http_headers`.
 
 ### Key environment variables
 

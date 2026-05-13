@@ -35,11 +35,12 @@ codex features list | grep codex_hooks
 
 installer 替你做的三件事，你也可以自己手动做：
 
-1. **shell 函数包装**追加到 `~/.zshrc` / `~/.bashrc`，把 ovcli.conf 提升成环境变量后再 exec codex（用 `node` 而不是 `jq` 解析 conf —— 这样在没装 `jq` 的机器上也能跑，Codex 本身已经强依赖 Node 22+）：
+1. **shell 函数包装**追加到 `~/.zshrc` / `~/.bashrc`。installer 实际生成的版本（见 `setup-helper/install.sh`）还会在每次 codex 启动时**重新渲染缓存里的 `.mcp.json` bearer 字段** —— 这是切 `OPENVIKING_CLI_CONFIG_FILE`（有 / 无 key 来回换）所必需的。下面是固定 conf 场景的简化版：
 
    ```bash
    codex() {
      local _ov_conf="${OPENVIKING_CLI_CONFIG_FILE:-$HOME/.openviking/ovcli.conf}"
+     local _ov_url _ov_key _ov_account _ov_user
      if [ -f "$_ov_conf" ] && command -v node >/dev/null 2>&1; then
        local _ov_env
        _ov_env=$(node -e '
@@ -55,16 +56,20 @@ installer 替你做的三件事，你也可以自己手动做：
          } catch {}
        ' "$_ov_conf" 2>/dev/null)
        eval "$_ov_env"
-       OPENVIKING_URL="${OPENVIKING_URL:-${OV_URL:-}}" \
-       OPENVIKING_API_KEY="${OPENVIKING_API_KEY:-${OV_KEY:-}}" \
-       OPENVIKING_ACCOUNT="${OPENVIKING_ACCOUNT:-${OV_ACCOUNT:-}}" \
-       OPENVIKING_USER="${OPENVIKING_USER:-${OV_USER:-}}" \
-       OPENVIKING_AGENT_ID="${OPENVIKING_AGENT_ID:-codex}" \
-         command codex "$@"
-       unset OV_URL OV_KEY OV_ACCOUNT OV_USER
-     else
-       command codex "$@"
      fi
+     _ov_url="${OPENVIKING_URL:-${OV_URL:-}}"
+     _ov_key="${OPENVIKING_API_KEY:-${OV_KEY:-}}"
+     _ov_account="${OPENVIKING_ACCOUNT:-${OV_ACCOUNT:-}}"
+     _ov_user="${OPENVIKING_USER:-${OV_USER:-}}"
+     unset OV_URL OV_KEY OV_ACCOUNT OV_USER
+     # 空值不导出 —— Codex 看到 bearer_token_env_var 指向空 env var 会硬错。
+     local -a _env_args=()
+     [ -n "$_ov_url" ]     && _env_args+=("OPENVIKING_URL=$_ov_url")
+     [ -n "$_ov_key" ]     && _env_args+=("OPENVIKING_API_KEY=$_ov_key")
+     [ -n "$_ov_account" ] && _env_args+=("OPENVIKING_ACCOUNT=$_ov_account")
+     [ -n "$_ov_user" ]    && _env_args+=("OPENVIKING_USER=$_ov_user")
+     _env_args+=("OPENVIKING_AGENT_ID=${OPENVIKING_AGENT_ID:-codex}")
+     env "${_env_args[@]}" codex "$@"
    }
    ```
 
@@ -84,6 +89,8 @@ installer 替你做的三件事，你也可以自己手动做：
 Hook 每次触发都重新解析这条优先级链——改完 ovcli.conf 下一次 hook 立即生效。MCP server URL 在 install 时固化进 `.mcp.json`（改 URL 要重跑 installer），但 API key 通过 `bearer_token_env_var` 在 codex 启动时从 env 读，所以**轮换 API key 只需重启 codex，不必重装**。
 
 鉴权头同时发给 REST API（hook 用）和 `/mcp` endpoint（模型用）：`Authorization: Bearer <api_key>`。
+
+对于**无鉴权的本地 OV**（`ovcli.conf` 没有 `api_key`，或者根本没 ovcli.conf），`.mcp.json` 渲染时**不会**写入 `bearer_token_env_var`。Codex 0.130 一旦看到 `bearer_token_env_var` 指向空/未设置的 env var，会直接 `Environment variable ... is empty` 硬错。`codex()` shell 函数包装会在**每次 codex 启动时**根据当前 `OPENVIKING_CLI_CONFIG_FILE` 指向的 ovcli.conf 重新渲染这个字段，所以切换 conf（比如 benchmark 隔离）**不用重跑 installer**。多租户身份头通过 `env_http_headers` 始终传。
 
 ### 关键环境变量
 

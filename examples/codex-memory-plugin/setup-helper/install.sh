@@ -195,13 +195,46 @@ if [ -f "$HOOKS_JSON" ]; then
   rm -f "${HOOKS_JSON}.bak"
 fi
 
-# Render the OpenViking /mcp URL into the cached .mcp.json. The repo's
-# checked-in .mcp.json keeps the __OPENVIKING_MCP_URL__ placeholder.
+# Detect whether the user has an OpenViking API key configured anywhere.
+# When they don't (typical for a local unauth OV), we render .mcp.json
+# WITHOUT bearer_token_env_var, so Codex doesn't see an empty
+# OPENVIKING_API_KEY at MCP launch and trigger its OAuth fallback for
+# what should be an unauthenticated server.
+detect_api_key() {
+  if [ -n "${OPENVIKING_API_KEY:-}" ] || [ -n "${OPENVIKING_BEARER_TOKEN:-}" ]; then
+    echo "1"
+    return
+  fi
+  if [ -f "$OVCLI_CONF" ]; then
+    node -e '
+      try {
+        const c = JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8"));
+        process.stdout.write(c.api_key ? "1" : "0");
+      } catch { process.stdout.write("0"); }
+    ' "$OVCLI_CONF" 2>/dev/null || echo "0"
+    return
+  fi
+  echo "0"
+}
+HAS_API_KEY="$(detect_api_key)"
+
+# Render the OpenViking /mcp URL into the cached .mcp.json (and drop the
+# bearer_token_env_var line in no-auth mode). The repo's checked-in
+# .mcp.json keeps the placeholder + always-present bearer field; the cache
+# copy is what Codex actually loads.
 MCP_JSON="$CACHE_DIR/.mcp.json"
 if [ -f "$MCP_JSON" ]; then
-  MCP_URL_ESC="$(printf '%s' "$MCP_URL" | sed -e 's/[\\/&]/\\&/g')"
-  sed -i.bak -e "s|__OPENVIKING_MCP_URL__|$MCP_URL_ESC|g" "$MCP_JSON"
-  rm -f "${MCP_JSON}.bak"
+  node - "$MCP_JSON" "$MCP_URL" "$HAS_API_KEY" <<'NODE'
+const fs = require("node:fs");
+const [, , file, url, hasKey] = process.argv;
+const j = JSON.parse(fs.readFileSync(file, "utf8"));
+const s = j.mcpServers["openviking-memory"];
+s.url = url;
+if (hasKey !== "1") {
+  delete s.bearer_token_env_var;
+}
+fs.writeFileSync(file, JSON.stringify(j, null, 2) + "\n");
+NODE
 fi
 
 # ----- Shell rc wrapper -----
@@ -221,15 +254,32 @@ case "${SHELL:-}" in
     ;;
 esac
 
-# The wrapper uses `node` (already a hard requirement of this installer) to
-# parse ovcli.conf instead of `jq`. This avoids a silent-auth-loss failure
-# mode where `jq` is missing on the user's machine, the wrapper's
-# `command -v jq` check fails, and codex starts with no Bearer token →
-# OpenViking returns 401 → Codex falls back to OAuth.
+# The wrapper uses `node` (already a hard requirement of this installer)
+# instead of `jq` so a missing-jq machine doesn't silently lose auth.
+#
+# It also re-renders the cached .mcp.json's bearer_token_env_var field on
+# every codex launch, based on whichever ovcli.conf the user pointed
+# OPENVIKING_CLI_CONFIG_FILE at this time. That lets a single install
+# handle both authenticated and unauthenticated configs without forcing
+# a re-install when the user swaps configs (e.g. to isolate a benchmark
+# run from production memory).
+#
+# Codex 0.130 hard-fails MCP startup when bearer_token_env_var points at
+# an EMPTY env var ("Environment variable ... is empty"), and also when
+# bearer_token_env_var is present but the env var is unset. So when the
+# resolved api_key is empty, we both drop the field from .mcp.json AND
+# omit OPENVIKING_API_KEY from the env passed to codex.
 read -r -d '' WRAPPER_BODY <<'WRAPPER' || true
 codex() {
   local _ov_conf="${OPENVIKING_CLI_CONFIG_FILE:-$HOME/.openviking/ovcli.conf}"
-  if [ -f "$_ov_conf" ] && command -v node >/dev/null 2>&1; then
+  if ! command -v node >/dev/null 2>&1; then
+    command codex "$@"
+    return
+  fi
+
+  # Resolve OV connection settings: existing env > ovcli.conf > nothing.
+  local _ov_url _ov_key _ov_account _ov_user
+  if [ -f "$_ov_conf" ]; then
     local _ov_env
     _ov_env=$(node -e '
       try {
@@ -244,16 +294,74 @@ codex() {
       } catch {}
     ' "$_ov_conf" 2>/dev/null)
     eval "$_ov_env"
-    OPENVIKING_URL="${OPENVIKING_URL:-${OV_URL:-}}" \
-    OPENVIKING_API_KEY="${OPENVIKING_API_KEY:-${OV_KEY:-}}" \
-    OPENVIKING_ACCOUNT="${OPENVIKING_ACCOUNT:-${OV_ACCOUNT:-}}" \
-    OPENVIKING_USER="${OPENVIKING_USER:-${OV_USER:-}}" \
-    OPENVIKING_AGENT_ID="${OPENVIKING_AGENT_ID:-codex}" \
-      command codex "$@"
-    unset OV_URL OV_KEY OV_ACCOUNT OV_USER
-  else
-    command codex "$@"
   fi
+  _ov_url="${OPENVIKING_URL:-${OV_URL:-}}"
+  _ov_key="${OPENVIKING_API_KEY:-${OV_KEY:-}}"
+  _ov_account="${OPENVIKING_ACCOUNT:-${OV_ACCOUNT:-}}"
+  _ov_user="${OPENVIKING_USER:-${OV_USER:-}}"
+  unset OV_URL OV_KEY OV_ACCOUNT OV_USER
+
+  # Sync cache .mcp.json to current OV connection state: rewrite both the
+  # URL (so OPENVIKING_CLI_CONFIG_FILE swaps actually change the target)
+  # and the bearer_token_env_var field (Codex 0.130 hard-fails on empty
+  # bearer env vars, so the field must be absent in no-auth mode). The
+  # node script writes only when something actually changes — idempotent
+  # fast-path so we don't bump file mtime on every codex launch.
+  local _has_key _mcp_url_from_conf
+  if [ -n "$_ov_key" ]; then _has_key=1; else _has_key=0; fi
+  if [ -n "$_ov_url" ]; then
+    # Strip trailing slashes then append /mcp (matching the install-time
+    # resolve_mcp_url logic). OPENVIKING_MCP_URL env can fully override.
+    if [ -n "${OPENVIKING_MCP_URL:-}" ]; then
+      _mcp_url_from_conf="$OPENVIKING_MCP_URL"
+    else
+      _mcp_url_from_conf="${_ov_url%/}/mcp"
+    fi
+  else
+    _mcp_url_from_conf=""
+  fi
+  local _cache_mcp
+  for _cache_mcp in "$HOME"/.codex/plugins/cache/openviking-plugins-local/openviking-memory/*/.mcp.json; do
+    [ -f "$_cache_mcp" ] || continue
+    node -e '
+      const fs = require("node:fs");
+      // node -e: argv is [node, file, hasKey, url] — no [eval] placeholder.
+      const file = process.argv[1];
+      const hasKey = process.argv[2];
+      const url = process.argv[3] || "";
+      const j = JSON.parse(fs.readFileSync(file, "utf8"));
+      const s = j.mcpServers && j.mcpServers["openviking-memory"];
+      if (s) {
+        let changed = false;
+        if (url && s.url !== url) {
+          s.url = url;
+          changed = true;
+        }
+        const cur = s.bearer_token_env_var || "";
+        if (hasKey === "1" && cur !== "OPENVIKING_API_KEY") {
+          s.bearer_token_env_var = "OPENVIKING_API_KEY";
+          changed = true;
+        } else if (hasKey !== "1" && cur) {
+          delete s.bearer_token_env_var;
+          changed = true;
+        }
+        if (changed) {
+          fs.writeFileSync(file, JSON.stringify(j, null, 2) + "\n");
+        }
+      }
+    ' "$_cache_mcp" "$_has_key" "$_mcp_url_from_conf" 2>/dev/null || true
+  done
+
+  # Build env-prefix dynamically so empty values are NOT exported as empty
+  # strings — Codex hard-fails on empty bearer_token_env_var targets.
+  local -a _env_args=()
+  [ -n "$_ov_url" ]     && _env_args+=("OPENVIKING_URL=$_ov_url")
+  [ -n "$_ov_key" ]     && _env_args+=("OPENVIKING_API_KEY=$_ov_key")
+  [ -n "$_ov_account" ] && _env_args+=("OPENVIKING_ACCOUNT=$_ov_account")
+  [ -n "$_ov_user" ]    && _env_args+=("OPENVIKING_USER=$_ov_user")
+  _env_args+=("OPENVIKING_AGENT_ID=${OPENVIKING_AGENT_ID:-codex}")
+
+  env "${_env_args[@]}" codex "$@"
 }
 WRAPPER
 
@@ -298,13 +406,14 @@ EOF
   printf '\n%s\n' "$WRAPPER_BLOCK" >> "$RC"
 fi
 
-if [ ! -f "$OVCLI_CONF" ]; then
+if [ ! -f "$OVCLI_CONF" ] && [ "$HAS_API_KEY" != "1" ]; then
   cat >&2 <<EOF
 
-Note: $OVCLI_CONF was not found.
-The plugin will hit $MCP_URL with no Bearer token.
-Either create ovcli.conf (see https://docs.openviking.ai/zh/guides/03-deployment#cli)
-or export OPENVIKING_URL / OPENVIKING_API_KEY before running codex.
+Note: $OVCLI_CONF was not found and no OPENVIKING_API_KEY in env.
+The plugin is installed in unauthenticated mode targeting $MCP_URL.
+To enable Bearer auth later, create ovcli.conf with an api_key (see
+https://docs.openviking.ai/zh/guides/03-deployment#cli) and re-run this
+installer — the bearer_token_env_var field will be re-added to .mcp.json.
 EOF
 fi
 
@@ -314,6 +423,7 @@ Installed $PLUGIN_ID (version $PLUGIN_VERSION).
 Marketplace: $MARKETPLACE_ROOT
 Plugin cache: $CACHE_DIR
 MCP endpoint: $MCP_URL
+MCP auth: $([ "$HAS_API_KEY" = "1" ] && echo "Bearer (OPENVIKING_API_KEY)" || echo "none (unauthenticated)")
 
 Next:
 EOF
