@@ -11,6 +11,10 @@ MARKETPLACE_ROOT="${OPENVIKING_CODEX_MARKETPLACE_ROOT:-$HOME/.codex/${MARKETPLAC
 PLUGIN_NAME="openviking-memory"
 PLUGIN_ID="${PLUGIN_NAME}@${MARKETPLACE_NAME}"
 CODEX_CONFIG="${CODEX_CONFIG_FILE:-$HOME/.codex/config.toml}"
+OVCLI_CONF="${OPENVIKING_CLI_CONFIG_FILE:-$HOME/.openviking/ovcli.conf}"
+DEFAULT_MCP_URL="http://127.0.0.1:1933/mcp"
+WRAPPER_MARKER_BEGIN="# >>> openviking-codex-plugin >>>"
+WRAPPER_MARKER_END="# <<< openviking-codex-plugin <<<"
 
 need() {
   command -v "$1" >/dev/null 2>&1 || {
@@ -49,7 +53,39 @@ if [ ! -d "$PLUGIN_DIR/.codex-plugin" ]; then
   exit 1
 fi
 
-PLUGIN_VERSION="$(node -e 'const p=require(process.argv[1]); console.log(p.version || "0.0.0")' "$PLUGIN_DIR/package.json")"
+PLUGIN_VERSION="$(node -e 'const p=require(process.argv[1]); console.log(p.version || "0.0.0")' "$PLUGIN_DIR/.codex-plugin/plugin.json")"
+
+# Resolve the OpenViking /mcp endpoint at install time. Priority:
+#   OPENVIKING_MCP_URL (env, full /mcp URL) > OPENVIKING_URL (env, base URL) >
+#   ovcli.conf .url > default localhost.
+resolve_mcp_url() {
+  if [ -n "${OPENVIKING_MCP_URL:-}" ]; then
+    printf '%s' "$OPENVIKING_MCP_URL"
+    return
+  fi
+  if [ -n "${OPENVIKING_URL:-}" ]; then
+    printf '%s/mcp' "${OPENVIKING_URL%/}"
+    return
+  fi
+  if [ -f "$OVCLI_CONF" ] && command -v node >/dev/null 2>&1; then
+    local from_conf
+    from_conf="$(node -e '
+      try {
+        const c = JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8"));
+        if (typeof c.url === "string" && c.url) {
+          process.stdout.write(c.url.replace(/\/+$/, "") + "/mcp");
+        }
+      } catch {}
+    ' "$OVCLI_CONF" 2>/dev/null || true)"
+    if [ -n "$from_conf" ]; then
+      printf '%s' "$from_conf"
+      return
+    fi
+  fi
+  printf '%s' "$DEFAULT_MCP_URL"
+}
+
+MCP_URL="$(resolve_mcp_url)"
 
 mkdir -p "$MARKETPLACE_ROOT/.claude-plugin"
 rm -f "$MARKETPLACE_ROOT/$PLUGIN_NAME"
@@ -159,19 +195,131 @@ if [ -f "$HOOKS_JSON" ]; then
   rm -f "${HOOKS_JSON}.bak"
 fi
 
-if [ ! -f "$HOME/.openviking/ovcli.conf" ]; then
-  cat >&2 <<'EOF'
+# Render the OpenViking /mcp URL into the cached .mcp.json. The repo's
+# checked-in .mcp.json keeps the __OPENVIKING_MCP_URL__ placeholder.
+MCP_JSON="$CACHE_DIR/.mcp.json"
+if [ -f "$MCP_JSON" ]; then
+  MCP_URL_ESC="$(printf '%s' "$MCP_URL" | sed -e 's/[\\/&]/\\&/g')"
+  sed -i.bak -e "s|__OPENVIKING_MCP_URL__|$MCP_URL_ESC|g" "$MCP_JSON"
+  rm -f "${MCP_JSON}.bak"
+fi
 
-Note: ~/.openviking/ovcli.conf was not found.
-The plugin will use http://127.0.0.1:1933 unless OPENVIKING_URL / OPENVIKING_API_KEY are set.
+# ----- Shell rc wrapper -----
+#
+# The MCP server reads OPENVIKING_API_KEY (and OPENVIKING_ACCOUNT / _USER /
+# _AGENT_ID) from the process env at codex launch. Add a `codex` shell function
+# that pulls these from ovcli.conf at invocation time so the user doesn't have
+# to `export` secrets globally.
+
+case "${SHELL:-}" in
+  */zsh)  RC="$HOME/.zshrc" ;;
+  */bash) RC="$HOME/.bashrc" ;;
+  *)
+    if   [ -f "$HOME/.zshrc" ];  then RC="$HOME/.zshrc"
+    elif [ -f "$HOME/.bashrc" ]; then RC="$HOME/.bashrc"
+    else RC=""; fi
+    ;;
+esac
+
+# The wrapper uses `node` (already a hard requirement of this installer) to
+# parse ovcli.conf instead of `jq`. This avoids a silent-auth-loss failure
+# mode where `jq` is missing on the user's machine, the wrapper's
+# `command -v jq` check fails, and codex starts with no Bearer token →
+# OpenViking returns 401 → Codex falls back to OAuth.
+read -r -d '' WRAPPER_BODY <<'WRAPPER' || true
+codex() {
+  local _ov_conf="${OPENVIKING_CLI_CONFIG_FILE:-$HOME/.openviking/ovcli.conf}"
+  if [ -f "$_ov_conf" ] && command -v node >/dev/null 2>&1; then
+    local _ov_env
+    _ov_env=$(node -e '
+      try {
+        const c = JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8"));
+        const out = (k, v) => v ? `${k}=${JSON.stringify(String(v))}\n` : "";
+        process.stdout.write(
+          out("OV_URL", c.url) +
+          out("OV_KEY", c.api_key) +
+          out("OV_ACCOUNT", c.account) +
+          out("OV_USER", c.user)
+        );
+      } catch {}
+    ' "$_ov_conf" 2>/dev/null)
+    eval "$_ov_env"
+    OPENVIKING_URL="${OPENVIKING_URL:-${OV_URL:-}}" \
+    OPENVIKING_API_KEY="${OPENVIKING_API_KEY:-${OV_KEY:-}}" \
+    OPENVIKING_ACCOUNT="${OPENVIKING_ACCOUNT:-${OV_ACCOUNT:-}}" \
+    OPENVIKING_USER="${OPENVIKING_USER:-${OV_USER:-}}" \
+    OPENVIKING_AGENT_ID="${OPENVIKING_AGENT_ID:-codex}" \
+      command codex "$@"
+    unset OV_URL OV_KEY OV_ACCOUNT OV_USER
+  else
+    command codex "$@"
+  fi
+}
+WRAPPER
+
+# Wrap the function body with marker lines.
+WRAPPER_BLOCK="$WRAPPER_MARKER_BEGIN
+$WRAPPER_BODY
+$WRAPPER_MARKER_END"
+
+if [ -z "$RC" ]; then
+  cat >&2 <<EOF
+
+Note: could not detect a shell rc to install the codex() wrapper into.
+Add this snippet to your rc manually so OPENVIKING_API_KEY reaches codex:
+
+$WRAPPER_BLOCK
+EOF
+else
+  touch "$RC"
+  if grep -qF "$WRAPPER_MARKER_BEGIN" "$RC"; then
+    # Replace existing block in place — only if BOTH markers are present, so
+    # a corrupted rc (manual edit that lost the END marker) cannot cause us
+    # to drop everything from the BEGIN marker to EOF. Otherwise leave the
+    # file untouched and append a fresh block, so the user can inspect what
+    # they have and clean up themselves.
+    if grep -qF "$WRAPPER_MARKER_END" "$RC"; then
+      echo "Replacing existing openviking codex() wrapper in $RC"
+      awk -v b="$WRAPPER_MARKER_BEGIN" -v e="$WRAPPER_MARKER_END" '
+        $0 == b {skip=1; next}
+        $0 == e {skip=0; next}
+        !skip
+      ' "$RC" > "$RC.tmp" && mv "$RC.tmp" "$RC"
+    else
+      cat >&2 <<EOF
+Warning: $WRAPPER_MARKER_BEGIN found in $RC but $WRAPPER_MARKER_END is missing.
+Refusing to in-place rewrite; appending a fresh block instead. Please
+remove the stray begin marker manually.
+EOF
+    fi
+  else
+    echo "Appending codex() wrapper to $RC"
+  fi
+  printf '\n%s\n' "$WRAPPER_BLOCK" >> "$RC"
+fi
+
+if [ ! -f "$OVCLI_CONF" ]; then
+  cat >&2 <<EOF
+
+Note: $OVCLI_CONF was not found.
+The plugin will hit $MCP_URL with no Bearer token.
+Either create ovcli.conf (see https://docs.openviking.ai/zh/guides/03-deployment#cli)
+or export OPENVIKING_URL / OPENVIKING_API_KEY before running codex.
 EOF
 fi
 
 cat <<EOF
-Installed $PLUGIN_ID.
+
+Installed $PLUGIN_ID (version $PLUGIN_VERSION).
 Marketplace: $MARKETPLACE_ROOT
 Plugin cache: $CACHE_DIR
+MCP endpoint: $MCP_URL
 
-Restart Codex with:
-  codex
+Next:
 EOF
+if [ -n "$RC" ]; then
+  echo "  source $RC      # pick up the codex() wrapper"
+else
+  echo "  (paste the codex() snippet printed above into your shell rc, then restart your shell)"
+fi
+echo "  codex           # restart codex; review /hooks if prompted"
