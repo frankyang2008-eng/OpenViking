@@ -1,10 +1,11 @@
 import { createHash } from "node:crypto"
-import { readFileSync } from "node:fs"
-import { homedir } from "node:os"
-import { join, resolve as resolvePath } from "node:path"
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js"
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod"
+// Shared with scripts/*.mjs so hook surface and MCP server resolve identity identically.
+// Compiled output lives in servers/memory-server.js, so the relative path stays valid.
+// @ts-ignore -- pure JS module, no type declarations
+import { loadConfig } from "../scripts/config.mjs"
 
 type FindResultItem = {
   uri: string
@@ -38,39 +39,6 @@ type SystemStatus = {
   user?: unknown
 }
 
-function readJson(path: string): Record<string, unknown> {
-  return JSON.parse(readFileSync(path, "utf-8")) as Record<string, unknown>
-}
-
-function loadOvConf(): Record<string, unknown> {
-  const defaultPath = join(homedir(), ".openviking", "ov.conf")
-  const configPath = resolvePath(
-    (process.env.OPENVIKING_CONFIG_FILE || defaultPath).replace(/^~/, homedir()),
-  )
-  try {
-    return readJson(configPath)
-  } catch (err) {
-    const code = (err as { code?: string })?.code
-    const detail = code === "ENOENT" ? `Config file not found: ${configPath}` : `Invalid config file: ${configPath}`
-    process.stderr.write(`[openviking-memory] ${detail}\n`)
-    process.exit(1)
-  }
-}
-
-function str(value: unknown, fallback: string): string {
-  if (typeof value === "string" && value.trim()) return value.trim()
-  return fallback
-}
-
-function num(value: unknown, fallback: number): number {
-  if (typeof value === "number" && Number.isFinite(value)) return value
-  if (typeof value === "string" && value.trim()) {
-    const parsed = Number(value)
-    if (Number.isFinite(parsed)) return parsed
-  }
-  return fallback
-}
-
 function md5Short(value: string): string {
   return createHash("md5").update(value).digest("hex").slice(0, 12)
 }
@@ -92,20 +60,37 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-const ovConf = loadOvConf()
-const serverConfig = (ovConf.server ?? {}) as Record<string, unknown>
-const host = str(serverConfig.host, "127.0.0.1").replace("0.0.0.0", "127.0.0.1")
-const port = Math.floor(num(serverConfig.port, 1933))
+const shared = loadConfig() as {
+  baseUrl: string
+  apiKey: string
+  account: string
+  user: string
+  agentId: string
+  timeoutMs: number
+  recallLimit: number
+  scoreThreshold: number
+  configPath: string | null
+}
 
 const config = {
-  baseUrl: `http://${host}:${port}`,
-  apiKey: str(process.env.OPENVIKING_API_KEY, str(serverConfig.root_api_key, "")),
-  accountId: str(process.env.OPENVIKING_ACCOUNT, str(ovConf.default_account, "default")),
-  userId: str(process.env.OPENVIKING_USER, str(ovConf.default_user, "default")),
-  agentId: str(process.env.OPENVIKING_AGENT_ID, str(ovConf.default_agent, "codex")),
-  timeoutMs: Math.max(1000, Math.floor(num(process.env.OPENVIKING_TIMEOUT_MS, 15000))),
-  recallLimit: Math.max(1, Math.floor(num(process.env.OPENVIKING_RECALL_LIMIT, 6))),
-  scoreThreshold: Math.min(1, Math.max(0, num(process.env.OPENVIKING_SCORE_THRESHOLD, 0.01))),
+  configPath: shared.configPath,
+  baseUrl: shared.baseUrl,
+  apiKey: shared.apiKey,
+  // The MCP server defaults missing account/user to "default" rather than "" so the
+  // X-OpenViking-* headers carry a value; hooks leave them empty (server-side default).
+  accountId: shared.account || "default",
+  userId: shared.user || "default",
+  agentId: shared.agentId || "codex",
+  timeoutMs: shared.timeoutMs,
+  recallLimit: shared.recallLimit,
+  scoreThreshold: shared.scoreThreshold,
+}
+
+if (!config.baseUrl) {
+  process.stderr.write(
+    "[openviking-memory] No OpenViking URL resolved. Set OPENVIKING_URL or provide ovcli.conf / ov.conf.\n",
+  )
+  process.exit(1)
 }
 
 class OpenVikingClient {
@@ -126,7 +111,12 @@ class OpenVikingClient {
 
     try {
       const headers = new Headers(init.headers ?? {})
-      if (this.apiKey) headers.set("X-API-Key", this.apiKey)
+      if (this.apiKey) {
+        // OV Cloud only accepts Authorization: Bearer; self-hosted servers
+        // still accept X-API-Key, so we emit both for transition compat.
+        headers.set("Authorization", `Bearer ${this.apiKey}`)
+        headers.set("X-API-Key", this.apiKey)
+      }
       if (this.accountId) headers.set("X-OpenViking-Account", this.accountId)
       if (this.userId) headers.set("X-OpenViking-User", this.userId)
       if (this.agentId) headers.set("X-OpenViking-Agent", this.agentId)
@@ -284,7 +274,7 @@ const client = new OpenVikingClient(
 const server = new McpServer({ name: "openviking-memory-codex", version: "0.1.0" })
 
 server.tool(
-  "find",
+  "openviking_recall",
   "Find OpenViking long-term memory.",
   {
     query: z.string().describe("Find query"),
@@ -310,7 +300,7 @@ server.tool(
 )
 
 server.tool(
-  "remember",
+  "openviking_store",
   "Store information in OpenViking long-term memory.",
   {
     text: z.string().describe("Information to store"),
@@ -352,8 +342,8 @@ server.tool(
 )
 
 server.tool(
-  "forget",
-  "Delete an exact OpenViking memory URI. Use find first if you only have a query.",
+  "openviking_forget",
+  "Delete an exact OpenViking memory URI. Use openviking_recall first if you only have a query.",
   {
     uri: z.string().describe("Exact memory URI to delete"),
   },
@@ -368,7 +358,7 @@ server.tool(
 )
 
 server.tool(
-  "health",
+  "openviking_health",
   "Check whether the OpenViking server is reachable.",
   {},
   async () => {
