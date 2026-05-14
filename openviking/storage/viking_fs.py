@@ -2005,19 +2005,11 @@ class VikingFS:
 
     async def _ensure_parent_dirs(self, path: str) -> None:
         """Recursively create all parent directories."""
-        # Remove leading slash if present, then split
-        parts = path.lstrip("/").split("/")
-        # If it's a file path (not just a directory), we need to create parent directories
-        # We create directories up to the last component (which might be a file)
-        for i in range(1, len(parts)):
-            parent = "/" + "/".join(parts[:i])
-            try:
-                await self._run_in_threadpool(self.agfs.mkdir, parent)
-            except Exception as e:
-                # Log the error but continue, as parent might already exist
-                # or we might be creating it in the next iteration
-                if "exist" not in str(e).lower() and "already" not in str(e).lower():
-                    logger.debug(f"Failed to create parent directory {parent}: {e}")
+        try:
+            await self._run_in_threadpool(self.agfs.ensure_parent_dirs, path)
+        except Exception as e:
+            # Log the error but continue
+            logger.debug(f"Failed to ensure parent directories for {path}: {e}")
 
     # ========== Relation Table Internal Methods ==========
 
