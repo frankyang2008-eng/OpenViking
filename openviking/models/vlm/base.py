@@ -4,11 +4,20 @@
 
 import logging
 import re
+import threading
+import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
+from openviking.utils.model_retry import (
+    classify_api_error,
+    ERROR_CLASS_QUOTA_EXCEEDED,
+    ERROR_CLASS_TRANSIENT,
+    ERROR_CLASS_PERMANENT,
+    PrimaryBackupSwitcher,
+)
 from openviking.utils.time_utils import format_iso8601
 from openviking_cli.utils import get_logger
 
@@ -253,20 +262,6 @@ class VLMBase(ABC):
         """
         return self._token_tracker.to_dict()
 
-    def get_token_usage_summary(self) -> Dict[str, Any]:
-        """Get token usage summary
-
-        Returns:
-            Dict[str, Any]: Token usage summary
-        """
-        total_usage = self._token_tracker.get_total_usage()
-        return {
-            "total_prompt_tokens": total_usage.prompt_tokens,
-            "total_completion_tokens": total_usage.completion_tokens,
-            "total_tokens": total_usage.total_tokens,
-            "last_updated": format_iso8601(total_usage.last_updated),
-        }
-
     def reset_token_usage(self) -> None:
         """Reset token usage"""
         self._token_tracker.reset()
@@ -337,16 +332,25 @@ class VLMFactory:
 class FailoverVLM(VLMBase):
     """VLM wrapper that provides failover to a backup VLM instance.
 
-    When the primary VLM instance fails with retryable errors (like rate limits),
+    When the primary VLM instance fails with permanent or quota errors,
     this wrapper will automatically switch to using the backup VLM instance.
+    After 10 minutes or 50 requests, it will attempt to failback to primary.
     """
 
-    def __init__(self, primary: VLMBase, backup: VLMBase):
+    def __init__(
+        self,
+        primary: VLMBase,
+        backup: VLMBase,
+        failback_timeout_seconds: float = 600.0,  # 10 minutes
+        failback_request_count: int = 50,
+    ):
         """Initialize FailoverVLM with primary and backup VLM instances.
 
         Args:
             primary: The primary VLM instance to use first
             backup: The backup VLM instance to use when primary fails
+            failback_timeout_seconds: Time after which to attempt failback to primary
+            failback_request_count: Number of backup requests after which to attempt failback
         """
         # Use a dummy config since we're wrapping existing instances
         config = {
@@ -358,50 +362,10 @@ class FailoverVLM(VLMBase):
         self.primary = primary
         self.backup = backup
         self._logger = logging.getLogger(__name__)
-        self._using_backup = False
-
-    def _should_failover(self, error: Exception) -> bool:
-        """Determine if an error should trigger failover to backup.
-
-        Args:
-            error: The exception that occurred
-
-        Returns:
-            True if failover should be attempted, False otherwise
-        """
-        # Check for common retryable/failover error patterns
-        error_str = str(error).lower()
-
-        # Rate limiting errors
-        rate_limit_patterns = [
-            "rate limit",
-            "ratelimit",
-            "too many requests",
-            "429",
-            "quota",
-        ]
-
-        # Server errors
-        server_error_patterns = [
-            "500",
-            "502",
-            "503",
-            "504",
-            "server error",
-            "service unavailable",
-            "timeout",
-        ]
-
-        # Connection errors
-        connection_patterns = [
-            "connection",
-            "network",
-            "unreachable",
-        ]
-
-        all_patterns = rate_limit_patterns + server_error_patterns + connection_patterns
-
-        return any(pattern in error_str for pattern in all_patterns)
+        self._switcher = PrimaryBackupSwitcher(
+            failback_timeout_seconds=failback_timeout_seconds,
+            failback_request_count=failback_request_count,
+        )
 
     def _get_completion_with_failover(
         self,
@@ -424,27 +388,25 @@ class FailoverVLM(VLMBase):
         """
         last_error = None
 
-        # Try primary first if not already using backup
-        if not self._using_backup:
+        # Try primary if we should
+        if self._switcher.should_try_primary():
             try:
                 method = getattr(self.primary, method_name)
                 result = method(*args, **kwargs)
-                # If successful and we were in failover mode, consider switching back
-                # (but we'll stay conservative and keep using backup for this session)
+                self._switcher.record_primary_success()
                 return result
             except Exception as e:
                 last_error = e
-                if self._should_failover(e):
-                    self._logger.warning(
-                        f"Primary VLM failed with error: {e}, switching to backup"
-                    )
-                    self._using_backup = True
+                if self._switcher.record_primary_failure(e):
+                    # Switched to backup, continue to try backup
+                    pass
                 else:
                     # Not a failover-worthy error, re-raise
                     raise
 
         # Try backup
         try:
+            self._switcher.record_backup_request()
             method = getattr(self.backup, method_name)
             return method(*args, **kwargs)
         except Exception as e:
@@ -473,24 +435,25 @@ class FailoverVLM(VLMBase):
         """
         last_error = None
 
-        # Try primary first if not already using backup
-        if not self._using_backup:
+        # Try primary if we should
+        if self._switcher.should_try_primary():
             try:
                 method = getattr(self.primary, method_name)
                 result = await method(*args, **kwargs)
+                self._switcher.record_primary_success()
                 return result
             except Exception as e:
                 last_error = e
-                if self._should_failover(e):
-                    self._logger.warning(
-                        f"Primary VLM failed with error: {e}, switching to backup"
-                    )
-                    self._using_backup = True
+                if self._switcher.record_primary_failure(e):
+                    # Switched to backup, continue to try backup
+                    pass
                 else:
+                    # Not a failover-worthy error, re-raise
                     raise
 
         # Try backup
         try:
+            self._switcher.record_backup_request()
             method = getattr(self.backup, method_name)
             return await method(*args, **kwargs)
         except Exception as e:
@@ -577,4 +540,40 @@ class FailoverVLM(VLMBase):
     @property
     def is_using_backup(self) -> bool:
         """Check if currently using the backup VLM instance."""
-        return self._using_backup
+        return self._switcher.is_using_backup
+
+    @property
+    def _active_vlm(self) -> VLMBase:
+        """Get the currently active VLM instance."""
+        return self.backup if self._switcher.is_using_backup else self.primary
+
+    def update_token_usage(
+        self,
+        model_name: str,
+        provider: str,
+        prompt_tokens: int,
+        completion_tokens: int,
+        duration_seconds: float = 0.0,
+    ) -> None:
+        """Update token usage for the currently active instance."""
+        self._active_vlm.update_token_usage(
+            model_name=model_name,
+            provider=provider,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            duration_seconds=duration_seconds,
+        )
+
+    def get_token_usage(self) -> Dict[str, Any]:
+        """Get combined token usage from both primary and backup instances."""
+        from openviking.models.vlm.token_usage import TokenUsageTracker
+        merged_tracker = TokenUsageTracker.merge(
+            self.primary._token_tracker,
+            self.backup._token_tracker
+        )
+        return merged_tracker.to_dict()
+
+    def reset_token_usage(self) -> None:
+        """Reset token usage for both primary and backup instances."""
+        self.primary.reset_token_usage()
+        self.backup.reset_token_usage()
