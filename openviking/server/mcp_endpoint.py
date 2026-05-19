@@ -355,10 +355,31 @@ _LOCAL_FILE_HINT = (
     '       {"url": "https://your-host", "api_key": "your-key"}'
 )
 
+_WATCH_REQUIRES_TO_HINT = (
+    "watch_interval > 0 requires `to` to be specified (the stable target URI to refresh into). "
+    "Pick a deterministic URI under viking://resources/. For example:\n"
+    "  - https://github.com/<org>/<repo>  -> to='viking://resources/<org>/<repo>'\n"
+    "  - https://example.com/docs/api     -> to='viking://resources/example.com/docs/api'\n"
+    "Tip: call add_resource without watch_interval first, observe the returned URI, "
+    "then call again with watch_interval=<minutes> and to=<that URI>."
+)
+
 
 @mcp.tool()
-async def add_resource(path: str, description: str = "") -> str:
-    """Add a remote resource (HTTP/HTTPS URL or git URL) to OpenViking. Asynchronous — processed in the background. Local file paths are not supported here; use the `ov add-resource` CLI for local files."""
+async def add_resource(
+    path: str,
+    description: str = "",
+    watch_interval: float = 0,
+    to: str = "",
+) -> str:
+    """Add a remote resource (HTTP/HTTPS URL or git URL) to OpenViking. Asynchronous — processed in the background. Local file paths are not supported here; use the `ov add-resource` CLI for local files.
+
+    Args:
+        path: Remote URL (http(s):// or git URL).
+        description: Optional human-readable reason for adding the resource.
+        watch_interval: Auto-refresh cadence in minutes. 0 (default) = no watch. >0 = periodically re-fetch the resource at that cadence (full re-ingest each time). Prefer >=1440 (24h) unless the source genuinely changes faster — every refresh re-embeds the entire resource. Requires `to`.
+        to: Target URI under viking://resources/ (e.g. "viking://resources/volcengine/OpenViking"). Required when watch_interval > 0. Leave empty for one-shot adds — the system will auto-derive a URI from the source.
+    """
     from openviking.server.local_input_guard import require_remote_resource_source
 
     service = get_service()
@@ -367,22 +388,125 @@ async def add_resource(path: str, description: str = "") -> str:
         path = require_remote_resource_source(path)
     except PermissionDeniedError:
         return f"Error: {_LOCAL_FILE_HINT}"
+    if watch_interval < 0:
+        return (
+            "Error: watch_interval must be >= 0. Use 0 for one-shot add (no watch); "
+            "use a positive number of minutes (>=1440 recommended) to subscribe to auto-refresh."
+        )
+    if watch_interval > 0 and not to:
+        return f"Error: {_WATCH_REQUIRES_TO_HINT}"
     try:
         result = await service.resources.add_resource(
             path=path,
             ctx=ctx,
+            to=to or None,
             reason=description,
             wait=False,
+            watch_interval=watch_interval,
             enforce_public_remote_targets=True,
         )
         root_uri = result.get("root_uri", "")
+        if watch_interval > 0:
+            watch_suffix = f" (watch enabled, refresh every {watch_interval:g} minute(s))"
+        else:
+            watch_suffix = ""
         return (
-            f"Resource added: {root_uri}"
+            f"Resource added: {root_uri}{watch_suffix}"
             if root_uri
-            else "Resource added (processing in background)."
+            else f"Resource added (processing in background){watch_suffix}."
         )
     except Exception as e:
         return f"Error adding resource: {e}"
+
+
+# -- watch management ------------------------------------------------------
+# MCP exposes the minimum closure: list + cancel. Pause/resume/trigger and
+# the unified `update` verb are intentionally NOT exposed — they're either
+# low-value for agents or invite unwanted autonomous decisions. Power users
+# should reach for the REST API or the `ov task watch *` CLI (`pause`,
+# `resume`, `trigger`, `update --interval`, etc.) for those operations.
+
+
+@mcp.tool()
+async def list_watches() -> str:
+    """List watch tasks (auto-refresh subscriptions) visible to the current agent.
+
+    Each line shows: target URI, refresh interval (minutes), active/paused status,
+    and the next scheduled execution time. Returns "No watch tasks." when empty.
+    """
+    service = get_service()
+    ctx = _get_ctx()
+    scheduler = getattr(service, "watch_scheduler", None)
+    if scheduler is None or not scheduler.is_running:
+        return "Error: Watch scheduler not running"
+    wm = scheduler.watch_manager
+    if wm is None:
+        return "Error: Watch scheduler not running"
+    # get_all_tasks does not raise PermissionDeniedError — it silently filters
+    # tasks the caller cannot see (watch_manager.py:596-624), so we just
+    # accept the filtered list.
+    tasks = await wm.get_all_tasks(
+        ctx.account_id,
+        ctx.user.user_id,
+        ctx.role.value,
+        active_only=False,
+        agent_id=ctx.user.agent_id,
+    )
+    if not tasks:
+        return "No watch tasks."
+    lines = []
+    for t in tasks:
+        status = "active" if t.is_active else "paused"
+        nxt = t.next_execution_time.isoformat() if t.next_execution_time else "n/a"
+        lines.append(
+            f"- {t.to_uri or '(no uri)'}  interval={t.watch_interval:g}m  {status}  next={nxt}"
+        )
+    return "\n".join(lines)
+
+
+@mcp.tool()
+async def cancel_watch(to_uri: str) -> str:
+    """Cancel (delete) a watch task by its target URI.
+
+    The URI must match the watch task's `to` value (e.g. "viking://resources/volcengine/OpenViking").
+    To change the cadence or pause temporarily, cancel and re-add with a new watch_interval.
+    """
+    from openviking.resource import watch_manager as _wm_mod
+
+    service = get_service()
+    ctx = _get_ctx()
+    scheduler = getattr(service, "watch_scheduler", None)
+    if scheduler is None or not scheduler.is_running:
+        return "Error: Watch scheduler not running"
+    wm = scheduler.watch_manager
+    if wm is None:
+        return "Error: Watch scheduler not running"
+    task = await wm.get_task_by_uri(
+        to_uri,
+        ctx.account_id,
+        ctx.user.user_id,
+        ctx.role.value,
+        ctx.user.agent_id,
+    )
+    if task is None:
+        return f"No watch task found for {to_uri}"
+    try:
+        # Return value (bool) is intentionally ignored: delete_task returns
+        # False only when the task was removed between our lookup and the
+        # delete call (a concurrent cancel from another caller). In that case
+        # the post-condition the caller wanted ("no watch on this URI") still
+        # holds, so we report the same success message either way. Permission
+        # errors still surface via the explicit except below.
+        _ = await wm.delete_task(
+            task.task_id,
+            ctx.account_id,
+            ctx.user.user_id,
+            ctx.role.value,
+            ctx.user.agent_id,
+        )
+    except _wm_mod.PermissionDeniedError:
+        return f"Permission denied for {to_uri}"
+    return f"Watch cancelled: {to_uri}"
 
 
 # -- grep ------------------------------------------------------------------
