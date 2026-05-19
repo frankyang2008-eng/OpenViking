@@ -16,8 +16,11 @@ are extracted from HTTP request scope and propagated via contextvars.
 from __future__ import annotations
 
 import contextvars
+import os
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from typing import List, Literal, Optional
+from urllib.parse import quote
 
 from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
@@ -27,8 +30,14 @@ from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from openviking.server.auth import resolve_identity
-from openviking.server.dependencies import get_service
+from openviking.server.dependencies import get_server_config, get_service
 from openviking.server.identity import RequestContext
+from openviking.server.local_input_guard import (
+    TEMP_FILE_ID_RE,
+    is_remote_resource_source,
+)
+from openviking.server.temp_upload_store import TempUploadStore
+from openviking.server.upload_token_store import upload_token_store
 from openviking_cli.exceptions import (
     InvalidArgumentError,
     PermissionDeniedError,
@@ -45,6 +54,14 @@ logger = get_logger(__name__)
 
 _mcp_ctx: contextvars.ContextVar[Optional[RequestContext]] = contextvars.ContextVar(
     "_mcp_ctx", default=None
+)
+
+# URL hints from the incoming request, captured by middleware so MCP tools can
+# reconstruct the agent-facing public URL without knowing about ASGI/Starlette.
+# Only used as a fallback when neither OPENVIKING_PUBLIC_BASE_URL nor
+# ServerConfig.public_base_url is set.
+_request_url_ctx: contextvars.ContextVar[Optional[dict]] = contextvars.ContextVar(
+    "_request_url_ctx", default=None
 )
 
 
@@ -155,11 +172,18 @@ class _IdentityASGIMiddleware:
             role=identity.role,
             namespace_policy=identity.namespace_policy,
         )
-        token = _mcp_ctx.set(ctx)
+        url_info = {
+            "x_forwarded_proto": request.headers.get("x-forwarded-proto"),
+            "x_forwarded_host": request.headers.get("x-forwarded-host"),
+            "host": request.headers.get("host"),
+        }
+        ctx_token = _mcp_ctx.set(ctx)
+        url_token = _request_url_ctx.set(url_info)
         try:
             return await self.app(scope, receive, send)
         finally:
-            _mcp_ctx.reset(token)
+            _mcp_ctx.reset(ctx_token)
+            _request_url_ctx.reset(url_token)
 
 
 # ---------------------------------------------------------------------------
@@ -343,17 +367,62 @@ async def remember(messages: list[StoreMessage]) -> str:
 # -- add_resource ----------------------------------------------------------
 
 
-_LOCAL_FILE_HINT = (
-    "MCP add_resource only accepts remote URLs (http(s)://, git@, ssh://, git://). "
-    "For local files or directories, use the `ov` CLI:\n"
-    "  1. Try first: ov add-resource <path>\n"
-    "     (if `ov` is already on PATH, this is all you need)\n"
-    "  2. If `ov` is not installed, install the npm CLI package:\n"
-    "     npm i -g @openviking/cli\n"
-    "  3. Only if connecting to a remote / multi-tenant OpenViking server, "
-    "configure ~/.openviking/ovcli.conf:\n"
-    '       {"url": "https://your-host", "api_key": "your-key"}'
-)
+_DEFAULT_UPLOAD_TTL_SECONDS = 600
+
+
+def _resolve_public_base_url() -> tuple[str, str]:
+    """Pick the URL the agent should POST uploads to. Returns ``(base_url, source)``.
+
+    Resolution order (first match wins):
+
+    1. ``env`` — ``OPENVIKING_PUBLIC_BASE_URL`` environment variable. Operator-set,
+       always wins.
+    2. ``config`` — ``ServerConfig.public_base_url``. Operator-set baseline in ov.conf.
+    3. ``forwarded`` — ``X-Forwarded-Host`` (+ ``X-Forwarded-Proto``) from the request.
+       Set by reverse proxies (nginx, ALB, ingress controllers, MCP proxies). Reliable
+       when the proxy chain forwards these headers, which is the standard default.
+    4. ``host`` — the raw ``Host`` header from a direct connection. Reliable for
+       same-host MCP clients (e.g. local Claude Code talking to localhost server).
+    5. ``listen`` — ``http://{listen_host}:{listen_port}`` last-resort fallback.
+       Only produces an agent-reachable URL when the server is bound to a routable
+       address; commonly wrong behind reverse proxies.
+
+    Sources 1 and 2 are "explicit" — operator vouched for the URL. Sources 3-5 are
+    inferred and may be wrong when the proxy chain doesn't forward request headers.
+    Callers should append a "set OPENVIKING_PUBLIC_BASE_URL if upload fails" hint
+    in that case.
+    """
+    env_url = os.environ.get("OPENVIKING_PUBLIC_BASE_URL")
+    if env_url:
+        return env_url.rstrip("/"), "env"
+    config = get_server_config()
+    if config is not None and config.public_base_url:
+        return config.public_base_url.rstrip("/"), "config"
+
+    url_info = _request_url_ctx.get()
+    if url_info:
+        # X-Forwarded-Host / -Proto can be comma-separated lists when the request
+        # crosses multiple proxy hops. Take the first (left-most original-client)
+        # value, matching the normalization in openviking.server.oauth.router.
+        def _first(value: Optional[str]) -> Optional[str]:
+            if not value:
+                return None
+            head = value.split(",", 1)[0].strip()
+            return head or None
+
+        xfh = _first(url_info.get("x_forwarded_host"))
+        xfp = _first(url_info.get("x_forwarded_proto"))
+        host_hdr = _first(url_info.get("host"))
+        if xfh:
+            proto = xfp or "https"
+            return f"{proto}://{xfh}", "forwarded"
+        if host_hdr:
+            return f"http://{host_hdr}", "host"
+
+    if config is not None:
+        return f"http://{config.host}:{config.port}", "listen"
+    return "http://127.0.0.1:1933", "listen"
+
 
 _WATCH_REQUIRES_TO_HINT = (
     "watch_interval > 0 requires `to` to be specified (the stable target URI to refresh into). "
@@ -367,44 +436,116 @@ _WATCH_REQUIRES_TO_HINT = (
 
 @mcp.tool()
 async def add_resource(
-    path: str,
+    path: str = "",
+    temp_file_id: str = "",
     description: str = "",
     watch_interval: float = 0,
     to: str = "",
 ) -> str:
-    """Add a remote resource (HTTP/HTTPS URL or git URL) to OpenViking. Asynchronous — processed in the background. Local file paths are not supported here; use the `ov add-resource` CLI for local files.
+    """Add a resource to OpenViking. Asynchronous — processing happens in the background.
+
+    Three ways to invoke:
+
+    1. Remote URL: pass ``path`` set to an http(s)://, git@, ssh://, or git:// URL.
+       Returns a success message immediately. Supports ``watch_interval`` + ``to`` for
+       auto-refresh subscriptions.
+
+    2. Local file: pass ``path`` set to a local filesystem path (e.g. ``/tmp/foo.pdf``).
+       The response is NOT a success message — it's a multi-step upload instruction.
+       HTTP POST the file to the URL the response gives you, read ``temp_file_id`` from
+       the upload response body, then call this tool again with that ``temp_file_id``.
+
+    3. Re-call after upload: pass ``temp_file_id`` set to the value the signed upload
+       response returned. Omit ``path``. The server resolves the file via TempUploadStore
+       and ingests it.
 
     Args:
-        path: Remote URL (http(s):// or git URL).
+        path: Remote URL or local filesystem path.
+        temp_file_id: Server-minted upload id from a prior signed upload. Either
+            ``path`` or ``temp_file_id`` is required.
         description: Optional human-readable reason for adding the resource.
-        watch_interval: Auto-refresh cadence in minutes. 0 (default) = no watch. >0 = periodically re-fetch the resource at that cadence (full re-ingest each time). Prefer >=1440 (24h) unless the source genuinely changes faster — every refresh re-embeds the entire resource. Requires `to`.
-        to: Target URI under viking://resources/ (e.g. "viking://resources/volcengine/OpenViking"). Required when watch_interval > 0. Leave empty for one-shot adds — the system will auto-derive a URI from the source.
+        watch_interval: Auto-refresh cadence in minutes. 0 (default) = no watch.
+            >0 = periodically re-fetch the resource at that cadence (full re-ingest
+            each time). Prefer >=1440 (24h) unless the source genuinely changes
+            faster — every refresh re-embeds the entire resource. Requires ``to``.
+            Only applies to remote-URL invocations.
+        to: Target URI under viking://resources/ (e.g.
+            "viking://resources/volcengine/OpenViking"). Required when
+            watch_interval > 0. Leave empty for one-shot adds — the system will
+            auto-derive a URI from the source.
     """
     from openviking.server.local_input_guard import require_remote_resource_source
 
     service = get_service()
     ctx = _get_ctx()
-    try:
-        path = require_remote_resource_source(path)
-    except PermissionDeniedError:
-        return f"Error: {_LOCAL_FILE_HINT}"
+
     if watch_interval < 0:
         return (
             "Error: watch_interval must be >= 0. Use 0 for one-shot add (no watch); "
             "use a positive number of minutes (>=1440 recommended) to subscribe to auto-refresh."
         )
-    if watch_interval > 0 and not to:
-        return f"Error: {_WATCH_REQUIRES_TO_HINT}"
-    try:
-        result = await service.resources.add_resource(
-            path=path,
-            ctx=ctx,
-            to=to or None,
-            reason=description,
-            wait=False,
-            watch_interval=watch_interval,
-            enforce_public_remote_targets=True,
+
+    # Branch 1: ingest by temp_file_id (second leg of progressive upload, or REST-style)
+    if temp_file_id:
+        from openviking.server.config import ServerConfig
+
+        server_config = get_server_config() or ServerConfig()
+        store = TempUploadStore.build(server_config)
+        try:
+            resolved = await store.resolve_for_consume(temp_file_id, ctx)
+        except (PermissionDeniedError, InvalidArgumentError) as exc:
+            return f"Error: {exc}"
+        try:
+            try:
+                result = await service.resources.add_resource(
+                    path=resolved.local_path,
+                    ctx=ctx,
+                    reason=description,
+                    source_name=resolved.original_filename,
+                    wait=False,
+                    allow_local_path_resolution=True,
+                    enforce_public_remote_targets=True,
+                )
+            except Exception as exc:
+                await store.mark_failed(resolved, ctx)
+                return f"Error adding resource: {exc}"
+            await store.mark_consumed(resolved, ctx)
+        finally:
+            await resolved.cleanup()
+        root_uri = result.get("root_uri", "")
+        return (
+            f"Resource added: {root_uri}"
+            if root_uri
+            else "Resource added (processing in background)."
         )
+
+    if not path:
+        return "Error: provide either 'path' (remote URL or local file) or 'temp_file_id'."
+
+    # Branch 2: agent passed a temp_file_id-shaped string as `path` — guide them
+    if TEMP_FILE_ID_RE.match(path):
+        return (
+            f"Error: '{path}' looks like a temp_file_id, not a path. "
+            f'Pass it as the temp_file_id kwarg: add_resource(temp_file_id="{path}")'
+        )
+
+    # Branch 3: remote URL — same flow as before
+    if is_remote_resource_source(path):
+        if watch_interval > 0 and not to:
+            return f"Error: {_WATCH_REQUIRES_TO_HINT}"
+        try:
+            path = require_remote_resource_source(path)
+            result = await service.resources.add_resource(
+                path=path,
+                ctx=ctx,
+                to=to or None,
+                reason=description,
+                wait=False,
+                watch_interval=watch_interval,
+                enforce_public_remote_targets=True,
+            )
+        except Exception as exc:
+            return f"Error adding resource: {exc}"
         root_uri = result.get("root_uri", "")
         if watch_interval > 0:
             watch_suffix = f" (watch enabled, refresh every {watch_interval:g} minute(s))"
@@ -415,8 +556,54 @@ async def add_resource(
             if root_uri
             else f"Resource added (processing in background){watch_suffix}."
         )
-    except Exception as e:
-        return f"Error adding resource: {e}"
+
+    # Branch 4: local path — mint token, return upload instruction
+    server_config = get_server_config()
+    ttl_seconds = (
+        server_config.upload_signed_ttl_seconds
+        if server_config is not None
+        else _DEFAULT_UPLOAD_TTL_SECONDS
+    )
+
+    token, expires_at = upload_token_store.issue(
+        ctx.user.account_id,
+        ctx.user.user_id,
+        ctx.user.agent_id,
+        ttl_seconds=ttl_seconds,
+    )
+    base_url, url_source = _resolve_public_base_url()
+    upload_url = f"{base_url}/api/v1/resources/temp_upload_signed?token={quote(token, safe='')}"
+    expires_iso = datetime.fromtimestamp(expires_at, tz=timezone.utc).isoformat(timespec="seconds")
+    minutes = max(1, ttl_seconds // 60)
+
+    prose = (
+        "Local file detected — upload required before this resource can be ingested.\n"
+        "\n"
+        'Step 1. HTTP POST the file bytes (multipart/form-data, field name "file") to:\n'
+        "\n"
+        f"  {upload_url}\n"
+        "\n"
+        '  The response will be JSON: {"temp_file_id": "<id>"}\n'
+        "\n"
+        "Step 2. Read `temp_file_id` from that response, then call this tool again:\n"
+        "\n"
+        '  add_resource(temp_file_id="<id from step 1>")\n'
+        "\n"
+        f"This upload URL expires in ~{minutes} minutes ({expires_iso})."
+    )
+
+    if url_source not in ("env", "config"):
+        prose += (
+            "\n\n"
+            "Note for the user: this upload URL was auto-detected from the incoming "
+            "request because OPENVIKING_PUBLIC_BASE_URL is not set on the server. "
+            "If Step 1 fails (connection refused, wrong host, TLS error), ask the "
+            "server operator to set OPENVIKING_PUBLIC_BASE_URL to the agent-facing "
+            "URL of the OpenViking server (e.g. via docker-compose `environment:` "
+            "or systemd unit) and retry."
+        )
+
+    return prose
 
 
 # -- watch management ------------------------------------------------------
