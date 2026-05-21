@@ -7,6 +7,7 @@ import {
   FolderTreeIcon,
   HomeIcon,
   GithubIcon,
+  KeyRoundIcon,
   LanguagesIcon,
   LoaderIcon,
   MessageSquareIcon,
@@ -27,6 +28,7 @@ import {
   CollapsibleTrigger,
 } from '#/components/ui/collapsible'
 import { ConnectionDialog } from '#/components/connection-dialog'
+import { OAuthSetupDialog } from '#/components/oauth-setup-dialog'
 import { buttonVariants } from '#/components/ui/button'
 import {
   DropdownMenu,
@@ -347,6 +349,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
 function AppShellInner({ children }: { children: React.ReactNode }) {
   const { i18n, t } = useTranslation(['appShell', 'common'])
+  const navigate = useNavigate()
   const pathname = useRouterState({
     select: (state) => state.location.pathname,
   })
@@ -358,6 +361,27 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
   const currentLanguageOption =
     LANGUAGE_OPTIONS.find((item) => item.value === currentLanguage) ??
     LANGUAGE_OPTIONS[0]
+  const [oauthSetupOpen, setOauthSetupOpen] = React.useState(false)
+  const oauthSetupActive =
+    pathname === '/oauth/setup' || pathname.startsWith('/oauth/setup/')
+
+  function openOAuthSetup(): void {
+    if (oauthSetupActive) {
+      return
+    }
+    // Desktop: open the dialog so the user keeps the current page underneath.
+    // Phone / narrow tablets: navigate to the dedicated page since fullscreen
+    // dialogs are awkward to dismiss on mobile.
+    const useDialog =
+      typeof window !== 'undefined' &&
+      typeof window.matchMedia === 'function' &&
+      window.matchMedia('(min-width: 768px)').matches
+    if (useDialog) {
+      setOauthSetupOpen(true)
+    } else {
+      void navigate({ to: '/oauth/setup' })
+    }
+  }
 
   return (
     <SidebarProvider
@@ -438,6 +462,17 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
               >
                 <PlugZapIcon className="size-5" />
                 <span>{t('footer.connection', { ns: 'appShell' })}</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                onClick={openOAuthSetup}
+                isActive={oauthSetupActive}
+                tooltip={t('navigation.oauthSetup.title', { ns: 'appShell' })}
+                className="text-base"
+              >
+                <KeyRoundIcon className="size-5" />
+                <span>{t('navigation.oauthSetup.title', { ns: 'appShell' })}</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
             <SidebarMenuItem>
@@ -543,6 +578,10 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
       </SidebarInset>
 
       <ConnectionDialog />
+      <OAuthSetupDialog
+        open={oauthSetupOpen}
+        onOpenChange={setOauthSetupOpen}
+      />
     </SidebarProvider>
   )
 }

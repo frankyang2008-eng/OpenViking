@@ -709,16 +709,16 @@ function JsonlMessageCard({ record }: { record: JsonlRecord }) {
       : `${message.text.slice(0, JSONL_MESSAGE_PREVIEW_LIMIT).trimEnd()}...`
   const alignClass =
     message.kind === 'user'
-      ? 'ml-auto bg-primary/10 border-primary/25'
+      ? 'bg-primary/10 border-primary/25'
       : message.kind === 'tool-result'
-        ? 'mx-auto border-dashed bg-muted/50'
+        ? 'border-dashed bg-muted/50'
         : message.kind === 'invalid' || message.kind === 'other'
-          ? 'w-full max-w-none bg-muted/40'
-          : 'mr-auto bg-background'
+          ? 'bg-muted/40'
+          : 'bg-background'
 
   return (
     <article
-      className={`w-fit max-w-[min(820px,88%)] rounded-lg border p-3 text-sm shadow-sm ${alignClass}`}
+      className={`w-full min-w-0 max-w-full rounded-lg border p-3 text-sm shadow-sm ${alignClass}`}
     >
       <div className="mb-2 flex min-w-0 items-center gap-2">
         <span className="text-xs font-semibold">{message.label}</span>
@@ -839,7 +839,7 @@ function JsonlPreview({ content }: { content: string }) {
       </div>
 
       {dialogMode ? (
-        <div className="flex flex-col gap-3">
+        <div className="flex min-w-0 flex-col gap-3">
           {filteredRecords.map((record) => (
             <JsonlMessageCard key={record.index} record={record} />
           ))}

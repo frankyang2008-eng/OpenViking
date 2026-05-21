@@ -169,6 +169,18 @@ export function parseSizeToBytes(value: unknown): number | null {
   return Math.round(amount * multiplier)
 }
 
+const TIME_ONLY_RE = /^\d{1,2}:\d{2}(:\d{2})?(\s*[apAP][mM])?$/
+const DATE_ONLY_RE = /^\d{4}-\d{2}-\d{2}$/
+
+function todayUtcDateKey(): string {
+  // Backend simplifies modTime against UTC's "today", not the user's
+  // local today. We need to match that reference so time-only values
+  // bind to the right UTC moment regardless of the viewer's tz.
+  const d = new Date()
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`
+}
+
 export function parseModTimeToTs(value: unknown): number | null {
   if (typeof value === 'number') {
     return Number.isFinite(value) ? value : null
@@ -177,6 +189,29 @@ export function parseModTimeToTs(value: unknown): number | null {
   const text = String(value ?? '').trim()
   if (!text) {
     return null
+  }
+
+  // Time-only ("HH:MM:SS", "12:34am" etc) — backend's format_simplified
+  // returns this only when the entry's UTC date matches UTC's today.
+  // Combine with UTC today + explicit Z so the moment is anchored in UTC,
+  // and downstream Date methods naturally render it in the viewer's local
+  // tz (no double-shift, no day mis-attribution).
+  if (TIME_ONLY_RE.test(text)) {
+    const normalized = text.replace(/\s+/g, '').toUpperCase()
+    const ts = Date.parse(`${todayUtcDateKey()}T${normalized}Z`)
+    if (Number.isFinite(ts)) {
+      return ts
+    }
+  }
+
+  // Date-only ("YYYY-MM-DD") — backend's format_simplified returns this
+  // when the entry is older than UTC's today. Treat as local midnight on
+  // that date for sort purposes (we have no sub-day precision anyway).
+  if (DATE_ONLY_RE.test(text)) {
+    const [year, month, day] = text.split('-').map(Number)
+    if (year && month && day) {
+      return new Date(year, month - 1, day).getTime()
+    }
   }
 
   const direct = Date.parse(text)
@@ -195,6 +230,12 @@ export function parseModTimeToTs(value: unknown): number | null {
 export function formatModTime(value: unknown): string {
   const text = String(value ?? '').trim()
   if (!text) return ''
+  // Date-only inputs (older entries) — the backend has already dropped
+  // sub-day precision, so we render the date as-is without faking an
+  // 00:00 time component.
+  if (DATE_ONLY_RE.test(text)) {
+    return text
+  }
   const ts = parseModTimeToTs(text)
   if (ts === null) return text
   const d = new Date(ts)

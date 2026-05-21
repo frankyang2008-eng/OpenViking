@@ -402,7 +402,7 @@ export function VikingFileManager({
 
   const toolbar = (
     <div className="flex h-10 items-center gap-1 border-b px-3">
-      <nav className="flex items-center gap-0.5 overflow-hidden text-sm text-muted-foreground">
+      <nav className="flex flex-1 items-center gap-0.5 overflow-x-auto whitespace-nowrap text-xs text-muted-foreground md:text-sm">
         {breadcrumbs.map((crumb, i) => (
           <span key={crumb.uri} className="flex shrink-0 items-center gap-0.5">
             {i > 0 && <ChevronRight className="size-3" />}
@@ -420,17 +420,16 @@ export function VikingFileManager({
   )
 
   return (
-    <div className="web-studio-resource-fs -mx-4 -mt-6 -mb-4 flex h-[calc(100vh-3.5rem)] flex-col md:-mx-6">
+    <div className="web-studio-resource-fs -mx-4 -my-6 flex h-[calc(100svh-6rem)] flex-col md:-mx-6">
       <div ref={layoutRef} className="flex min-h-0 flex-1 flex-col md:flex-row">
         <section
           className="flex h-[var(--resource-tree-height)] min-h-[190px] min-w-0 flex-col bg-muted/30 md:h-auto md:min-h-0 md:w-[var(--resource-tree-width)] md:min-w-[var(--resource-tree-width)]"
           style={treePaneStyle}
         >
-          <div className="flex h-10 items-center gap-1 overflow-hidden border-b px-2">
+          <div className="flex h-10 items-center gap-1 overflow-hidden border-b pl-4 pr-2 md:px-2">
             <Button
               variant="ghost"
-              size="icon"
-              className="size-7"
+              size="icon-sm"
               title={t('toolbar.refresh')}
               onClick={() => void handleRefresh()}
             >
@@ -470,7 +469,9 @@ export function VikingFileManager({
           <div className="min-h-0 flex-1">
             <FileTree
               currentUri={currentUri}
-              selectedFileUri={selectedFile?.uri ?? null}
+              selectedFileUri={
+                selectedFile && !selectedFile.isDir ? selectedFile.uri : null
+              }
               expandedKeys={expandedKeys}
               onExpandedKeysChange={setExpandedKeys}
               onSelectDirectory={handleOpenDirectory}

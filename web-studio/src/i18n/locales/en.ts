@@ -12,6 +12,9 @@ const en = {
       home: {
         title: 'Home',
       },
+      oauthSetup: {
+        title: 'OAuth setup',
+      },
       operations: {
         title: 'Operations',
       },
@@ -31,7 +34,7 @@ const en = {
     sidebar: {
       loadingSessions: 'Loading...',
       noSessions: 'No sessions',
-      workspaceGroupLabel: 'Workspace',
+      workspaceGroupLabel: 'OpenViking Studio',
     },
   },
   common: {
@@ -110,6 +113,14 @@ const en = {
       generateError: 'Could not generate OTP: {{message}}',
     },
   },
+  oauthSetup: {
+    page: {
+      title: 'OAuth setup',
+      intro:
+        'Use this page when authenticating an MCP client via OAuth — for example Claude.ai, Claude Desktop, ChatGPT, or Cursor. Generate a short-lived OTP here, then paste it into the MCP client to bind its connection to the selected identity.',
+      docsLink: 'Read the OAuth integration guide',
+    },
+  },
   home: {
     agentAccess: {
       description:
@@ -143,8 +154,8 @@ const en = {
         recentDay: 'Recent commit',
       },
       title: 'Context Commit Stats',
-      yearlyEmpty: 'No context commits in the last year',
-      yearlyTotal: '{{count}} context commits in the last year',
+      yearlyEmpty: 'No context commits',
+      yearlyTotal: '{{count}} context commits',
       tooltip: {
         total: 'Total commits',
       },
@@ -203,8 +214,8 @@ const en = {
     todayRetrievals: {
       description:
         'Shows successful semantic retrieval calls for find() and search() today. Resets at midnight.',
-      find: 'find()',
-      search: 'search()',
+      find: 'find',
+      search: 'search',
       title: 'Retrievals Today',
     },
     todayTokens: {
@@ -410,7 +421,7 @@ const en = {
     searchPalette: {
       ariaLabel: 'Search',
       openContainingDirectory: 'Open containing directory',
-      placeholder: 'Search files and directories...',
+      placeholder: 'Search',
       scope: {
         global: 'Search scope: Global',
         current: 'Search scope: {{name}}',
@@ -503,13 +514,13 @@ const en = {
   },
   retrieval: {
     title: 'Retrieval',
-    searchPlaceholder: 'Search context, e.g. how to authenticate users',
+    searchPlaceholder: 'Search context',
     send: 'Search',
     controls: {
       function: 'Retrieval Function',
       modes: {
-        find: 'find()',
-        search: 'search()',
+        find: 'find',
+        search: 'search',
       },
       resultCount: 'Results',
       path: 'Path',

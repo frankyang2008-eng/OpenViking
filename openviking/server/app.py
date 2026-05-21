@@ -13,7 +13,7 @@ from typing import Callable, Optional
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from openviking.server.api_keys import APIKeyManager
@@ -651,6 +651,12 @@ def create_app(
 
         def _studio_response(path: Path, *, no_store: bool = False) -> FileResponse:
             return FileResponse(path, headers=_studio_no_store if no_store else None)
+
+        @app.get("/", include_in_schema=False)
+        async def _root_redirect_to_studio():
+            # When web-studio is bundled, treat / as a convenience entry to
+            # /studio/ so users hitting the bare origin land on the UI.
+            return RedirectResponse(url="/studio/", status_code=302)
 
         @app.get("/studio", include_in_schema=False)
         async def _studio_root_handler():

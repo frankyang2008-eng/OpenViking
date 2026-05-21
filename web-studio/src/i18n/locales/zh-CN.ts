@@ -12,6 +12,9 @@ const zhCN = {
       home: {
         title: '首页',
       },
+      oauthSetup: {
+        title: 'OAuth 设置',
+      },
       operations: {
         title: '运维',
       },
@@ -31,7 +34,7 @@ const zhCN = {
     sidebar: {
       loadingSessions: '加载中...',
       noSessions: '暂无会话',
-      workspaceGroupLabel: 'OpenViking',
+      workspaceGroupLabel: 'OpenViking Studio',
     },
   },
   common: {
@@ -110,6 +113,14 @@ const zhCN = {
       generateError: '生成 OTP 失败：{{message}}',
     },
   },
+  oauthSetup: {
+    page: {
+      title: 'OAuth 设置',
+      intro:
+        '当你需要让 MCP 客户端（例如 Claude.ai / Claude Desktop / ChatGPT / Cursor）通过 OAuth 完成鉴权时使用本页。在这里生成一个短期 OTP，粘到 MCP 客户端，它就会用所选身份完成 OAuth 授权。',
+      docsLink: '阅读 OAuth 接入指南',
+    },
+  },
   home: {
     agentAccess: {
       description:
@@ -143,8 +154,8 @@ const zhCN = {
         recentDay: '最近提交',
       },
       title: '上下文提交统计',
-      yearlyEmpty: '过去一年没有上下文提交',
-      yearlyTotal: '过去一年 {{count}} 次上下文提交',
+      yearlyEmpty: '暂无上下文提交',
+      yearlyTotal: '{{count}} 次上下文提交',
       tooltip: {
         total: '总提交',
       },
@@ -203,8 +214,8 @@ const zhCN = {
     todayRetrievals: {
       description:
         '展示用户或 Agent 今日使用语义检索 find() 和 search() 的成功调用次数，每天零点刷新。',
-      find: 'find()',
-      search: 'search()',
+      find: 'find',
+      search: 'search',
       title: '今日检索次数',
     },
     todayTokens: {
@@ -400,7 +411,7 @@ const zhCN = {
     searchPalette: {
       ariaLabel: '搜索',
       openContainingDirectory: '打开所在目录',
-      placeholder: '搜索文件和目录...',
+      placeholder: '搜索',
       scope: {
         global: '搜索范围: 全局',
         current: '搜索范围: {{name}}',
@@ -492,13 +503,13 @@ const zhCN = {
   },
   retrieval: {
     title: '检索',
-    searchPlaceholder: '输入检索内容，例如：how to authenticate users',
+    searchPlaceholder: '输入检索内容',
     send: '检索',
     controls: {
       function: '检索函数',
       modes: {
-        find: 'find()',
-        search: 'search()',
+        find: 'find',
+        search: 'search',
       },
       resultCount: '返回数量',
       path: '路径',
