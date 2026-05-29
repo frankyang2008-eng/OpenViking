@@ -768,7 +768,7 @@ OpenViking 仍处于早期阶段，有许多改进和探索的空间。我们真
 OpenViking 项目不同组件采用不同的开源协议：
 
 - **主项目**: AGPLv3 - 详情请参见 [LICENSE](./LICENSE) 文件
-- **crates/ov_cli**: Apache 2.0 - 详情请参见 [LICENSE](./crates/ov_cli/LICENSE) 文件
+- **crates/ov_cli**: Apache 2.0 - 详情请参见 [LICENSE](./crates/LICENSE) 文件
 - **examples**: Apache 2.0 - 详情请参见 [LICENSE](./examples/LICENSE) 文件
 - **third_party**: 保留各三方项目的原有协议
 
