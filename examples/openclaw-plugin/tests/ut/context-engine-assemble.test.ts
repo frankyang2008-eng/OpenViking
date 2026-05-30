@@ -147,6 +147,9 @@ describe("context-engine assemble()", () => {
       expect(result.messages[2]?.role).toBe("user");
       expect(result.messages[2]?.content).toMatch(/^<relevant-memories>/);
       expect(result.messages[2]?.content).toContain("Source: openviking-auto-recall");
+      expect(result.messages[2]?.content).toContain(
+        "<uri>viking://user/default/memories/rust-pref</uri>",
+      );
       expect(result.messages[2]?.content).toContain("User prefers Rust for backend tasks.");
       expect(result.messages[2]?.content).toContain("what backend language should we use?");
       expect(result.systemPromptAddition).toBeUndefined();

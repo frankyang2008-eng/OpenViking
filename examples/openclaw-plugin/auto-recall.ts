@@ -59,7 +59,36 @@ export function estimateTokenCount(text: string): number {
 
 export type BuildMemoryLinesOptions = {
   recallPreferAbstract: boolean;
+  includeUri?: boolean;
 };
+
+function memoryCategory(item: FindResultItem): string {
+  return item.category?.trim() || "memory";
+}
+
+function indentContent(content: string): string {
+  return content
+    .split("\n")
+    .map((line) => `  ${line}`)
+    .join("\n");
+}
+
+function formatMemoryLine(
+  item: FindResultItem,
+  content: string,
+  options: BuildMemoryLinesOptions,
+): string {
+  const category = memoryCategory(item);
+  if (!options.includeUri) {
+    return `- [${category}] ${content}`;
+  }
+
+  return [
+    `- [${category}]`,
+    `  <uri>${item.uri}</uri>`,
+    indentContent(content),
+  ].join("\n");
+}
 
 async function resolveMemoryContent(
   item: FindResultItem,
@@ -95,7 +124,7 @@ export async function buildMemoryLines(
   const lines: string[] = [];
   for (const item of memories) {
     const content = await resolveMemoryContent(item, readFn, options);
-    lines.push(`- [${item.category ?? "memory"}] ${content}`);
+    lines.push(formatMemoryLine(item, content, options));
   }
   return lines;
 }
@@ -128,7 +157,7 @@ export async function buildMemoryLinesWithBudget(
     }
 
     const content = await resolveMemoryContent(item, readFn, options);
-    const line = `- [${item.category ?? "memory"}] ${content}`;
+    const line = formatMemoryLine(item, content, options);
     const separatorChars = lines.length > 0 ? 1 : 0;
     const projectedChars = totalChars + separatorChars + line.length;
 
@@ -231,6 +260,7 @@ export async function buildAutoRecallContext(params: {
         {
           recallPreferAbstract: cfg.recallPreferAbstract,
           recallMaxInjectedChars: cfg.recallMaxInjectedChars,
+          includeUri: true,
         },
       );
 

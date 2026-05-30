@@ -52,6 +52,30 @@ describe("buildMemoryLines", () => {
     expect(lines[1]).toBe("- [facts] Works at TechCorp");
   });
 
+  it("includes uri metadata when requested", async () => {
+    const memories = [
+      makeMemory({
+        uri: "viking://user/default/memories/projects/openclaw/autorecall_filename_contract.md",
+        category: "",
+        abstract: "Filename carries semantic meaning.",
+      }),
+    ];
+    const readFn = vi.fn();
+
+    const lines = await buildMemoryLines(memories, readFn, {
+      recallPreferAbstract: true,
+      includeUri: true,
+    });
+
+    expect(lines).toEqual([
+      [
+        "- [memory]",
+        "  <uri>viking://user/default/memories/projects/openclaw/autorecall_filename_contract.md</uri>",
+        "  Filename carries semantic meaning.",
+      ].join("\n"),
+    ]);
+  });
+
   it("uses abstract when recallPreferAbstract=true", async () => {
     const memories = [makeMemory({ abstract: "The abstract text" })];
     const readFn = vi.fn();
@@ -121,7 +145,7 @@ describe("buildMemoryLines", () => {
   });
 
   it("defaults category to 'memory'", async () => {
-    const memories = [makeMemory({ category: undefined })];
+    const memories = [makeMemory({ category: "" })];
     const readFn = vi.fn();
 
     const lines = await buildMemoryLines(memories, readFn, {
