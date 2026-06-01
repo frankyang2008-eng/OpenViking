@@ -464,6 +464,9 @@ const zhCN = {
     directlyUploadMedia: '直接上传媒体文件',
     'directlyUploadMedia.hint':
       '开启时，媒体文件（图片、音频、视频）原样存储。关闭后，媒体文件会先通过 AI 视觉/音频管道提取内容再存储。',
+    createParent: '自动创建父文件夹',
+    'createParent.hint':
+      '开启时，若目标父目录不存在则自动创建。',
     reason: '添加原因',
     'reason.placeholder': '为什么要添加这个资源？',
     instruction: '处理指令',
@@ -524,6 +527,7 @@ const zhCN = {
       scope: {
         global: '搜索范围: 全局',
         current: '搜索范围: {{name}}',
+        resetToGlobal: '点击重置为全局搜索',
       },
       scopeState: {
         validatingTitle: '正在校验搜索范围',
@@ -571,6 +575,7 @@ const zhCN = {
       back: '返回上一级',
       loading: '正在加载目录',
       filesSection: '文件',
+      error: '加载目录失败',
       empty: {
         title: '空目录',
         subtitle: '这一层目前没有可继续展开的子目录',
