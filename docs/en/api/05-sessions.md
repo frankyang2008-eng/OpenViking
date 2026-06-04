@@ -910,6 +910,7 @@ Commit a session. Message archiving (Phase 1) completes immediately. Summary gen
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | session_id | str | Yes | - | Session ID to commit |
+| keep_recent_count | int | No | 0 | Number of recent live messages to retain (kept live, not archived) after commit. `0` (default) archives all messages. |
 
 #### 3. Usage Examples
 
