@@ -278,7 +278,8 @@ class SessionMeta:
             session_id=data.get("session_id", ""),
             created_at=data.get("created_at", ""),
             updated_at=data.get("updated_at", ""),
-            created_by_account_id=data.get("created_by_account_id", ""),
+            created_by_account_id=data.get("created_by_account_id", "")
+            or data.get("account_id", ""),
             created_by_user_id=data.get("created_by_user_id", ""),
             participant_user_ids=list(data.get("participant_user_ids", [])),
             message_count=data.get("message_count", 0),
