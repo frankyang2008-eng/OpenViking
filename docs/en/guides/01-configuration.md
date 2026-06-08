@@ -986,6 +986,8 @@ Storage configuration for context data, including file storage (RAGFS) and vecto
 |-----------|------|-------------|---------|
 | `backend` | str | `"local"`, `"s3"`, or `"memory"` | `"local"` |
 | `timeout` | float | Request timeout in seconds | `10.0` |
+| `backups` | object | Multi-write storage configuration. When set, the top-level `backend` acts as the primary backend and `backups.items[]` defines backup backends | `null` |
+| `redirects` | array | File redirect policies for multi-write storage. Matching files are written to the specified backup instead of the primary backend | `[]` |
 | `queuefs` | object | QueueFS configuration. Controls the namespace mode, backend, and runtime options for `/queue` | `{ "mode": "shared", "backend": "sqlite", "recover_stale_sec": 0, "busy_timeout_ms": 5000 }` |
 | `queue_db_path` | str (optional) | Legacy compatibility field for QueueFS sqlite DB path. Superseded by `storage.agfs.queuefs.db_path`. Defaults to `{storage.workspace}/_system/queue/queue.db` when not set. Useful when the workspace volume does not support sqlite (e.g. some network filesystems) | `null` |
 | `s3` | object | S3 backend configuration (when backend is 's3') | - |
@@ -996,6 +998,82 @@ RAGFS uses Rust binding mode by default, directly accessing the file system thro
 
 > [!WARNING]
 > `storage.agfs` no longer supports the AGFS HTTP client mode, and the old HTTP client entry should not be configured anymore. AGFS / RAGFS filesystem access now happens only through the in-process Rust binding (`RAGFSBindingClient`). This does not affect the OpenViking server HTTP API, the `ov` CLI, or `AsyncHTTPClient` / `SyncHTTPClient` when they connect to an OpenViking server.
+
+##### Multi-Write Storage Configuration
+
+`storage.agfs.backups` enables multi-write storage. If it is not configured, OpenViking stays in single-backend mode.
+
+```json
+{
+  "storage": {
+    "workspace": "./data",
+    "agfs": {
+      "backend": "local",
+      "redirects": [
+        {
+          "type": "FileExtensionPolicy",
+          "extensions": ["(pdf|ppt|zip)"],
+          "target": ["s3-backup"]
+        }
+      ],
+      "backups": {
+        "sync_type": "async",
+        "items": [
+          {
+            "name": "s3-backup",
+            "backend": "s3",
+            "s3": {
+              "bucket": "openviking-backup",
+              "region": "cn-beijing",
+              "endpoint": "https://tos-s3-cn-beijing.volces.com",
+              "access_key": "your-ak",
+              "secret_key": "your-sk",
+              "prefix": "multi-write"
+            }
+          }
+        ]
+      }
+    }
+  }
+}
+```
+
+Common `backups` fields:
+
+| Parameter | Type | Description | Default |
+|-----------|------|-------------|---------|
+| `sync_type` | str | Multi-write sync mode. Supports `"async"` or `"sync"` | `"async"` |
+| `write_ack_count` | int | Number of backup acknowledgements required before a `sync` write returns | all backups |
+| `write_ack_timeout_ms` | int | Timeout in milliseconds while waiting for backup acknowledgements in `sync` mode | `null` |
+| `write_concurrency` | int | Maximum async backup write concurrency | `null` |
+| `items` | array | Backup backend list. Each item reuses normal backend configuration and adds fields such as `name`, `operations`, `excludes`, and `encryption` | `[]` |
+
+Common `redirects` fields:
+
+| Parameter | Type | Description | Default |
+|-----------|------|-------------|---------|
+| `type` | str | Policy type. Supports `"FileExtensionPolicy"` or `"FileOverSizePolicy"` | required |
+| `extensions` | array | Extension regex list used by `FileExtensionPolicy`, for example `["(pdf\\|ppt)"]` | `[]` |
+| `max_size_mb` | int | File size threshold in MB used by `FileOverSizePolicy` | `null` |
+| `target` | array | Backup `name` list that receives matched files | required |
+
+File-size redirect example:
+
+```json
+{
+  "type": "FileOverSizePolicy",
+  "max_size_mb": 100,
+  "target": ["s3-backup"]
+}
+```
+
+Notes:
+
+- `redirects` is configured at top-level `storage.agfs` and defines redirect policies for the primary backend.
+- `target` must reference an existing backup `name` from `backups.items[]`.
+- Files matched by redirect still appear as normal readable and listable files through the filesystem APIs.
+
+See the [Multi-Write Storage Guide](./13-multi-write-storage.md) for more examples.
 
 ##### QueueFS Configuration
 
