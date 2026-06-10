@@ -408,7 +408,7 @@ describe("context-engine assemble()", () => {
       );
 
       const experienceHit = {
-        uri: "viking://agent/main/memories/experiences/openclaw-plugin-file-write-guard.md",
+        uri: "viking://user/default/memories/experiences/openclaw-plugin-file-write-guard.md",
         level: 2,
         category: "experience",
         abstract: "经验摘要",
@@ -463,6 +463,9 @@ describe("context-engine assemble()", () => {
         ],
       });
 
+      expect(client.find.mock.calls[0]?.[1]).toMatchObject({
+        targetUri: "viking://user/memories/experiences",
+      });
       const injected = String(result.messages[1]?.content ?? "");
       expect(injected).toMatch(/^<openviking-context>/);
       expect(injected).not.toContain("<relevant-memories>");
