@@ -227,7 +227,7 @@ describe("context-engine assemble()", () => {
         JSON.stringify({
           message_id: "om_1",
           sender_id: "ou_bcc",
-          sender: "秦浩杰",
+          sender: "Dana Tester",
           is_group_chat: true,
         }),
         "```",
@@ -236,12 +236,12 @@ describe("context-engine assemble()", () => {
         "```json",
         JSON.stringify({
           id: "ou_bcc",
-          name: "秦浩杰",
+          name: "Dana Tester",
         }),
         "```",
         "",
         "[message_id: om_1]",
-        "秦浩杰: 我是谁",
+        "Dana Tester: who am I?",
         "",
         "[System: mention metadata]",
       ].join("\n");
