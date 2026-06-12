@@ -2987,12 +2987,12 @@ mod tests {
 
     #[test]
     fn cli_parses_find_peer_id() {
-        let cli = Cli::try_parse_from(["ov", "find", "invoice", "--peer-id", "web:visitor:alice"])
+        let cli = Cli::try_parse_from(["ov", "find", "invoice", "--peer-id", "web-visitor-alice"])
             .expect("find peer id should parse");
 
         match cli.command {
             Commands::Find { peer_id, .. } => {
-                assert_eq!(peer_id.as_deref(), Some("web:visitor:alice"));
+                assert_eq!(peer_id.as_deref(), Some("web-visitor-alice"));
             }
             _ => panic!("expected find command"),
         }
@@ -3001,12 +3001,12 @@ mod tests {
     #[test]
     fn cli_parses_search_peer_id() {
         let cli =
-            Cli::try_parse_from(["ov", "search", "invoice", "--peer-id", "web:visitor:alice"])
+            Cli::try_parse_from(["ov", "search", "invoice", "--peer-id", "web-visitor-alice"])
                 .expect("search peer id should parse");
 
         match cli.command {
             Commands::Search { peer_id, .. } => {
-                assert_eq!(peer_id.as_deref(), Some("web:visitor:alice"));
+                assert_eq!(peer_id.as_deref(), Some("web-visitor-alice"));
             }
             _ => panic!("expected search command"),
         }
