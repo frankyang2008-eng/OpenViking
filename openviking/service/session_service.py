@@ -17,7 +17,11 @@ from openviking.session.memory.memory_type_registry import MemoryTypeRegistry
 from openviking.session.memory_policy import MemoryPolicy
 from openviking.storage import VikingDBManager
 from openviking.storage.viking_fs import VikingFS
-from openviking_cli.exceptions import AlreadyExistsError, NotFoundError, NotInitializedError
+from openviking_cli.exceptions import (
+    AlreadyExistsError,
+    NotFoundError,
+    NotInitializedError,
+)
 from openviking_cli.utils import get_logger
 
 logger = get_logger(__name__)
@@ -218,13 +222,12 @@ class SessionService:
         self._ensure_initialized()
 
         session_uri = canonical_session_uri(ctx, session_id)
-        if await self.session(ctx, session_id).exists():
-            storage_ctx = ctx
-        else:
+        session = await self.get(session_id, ctx)
+        if not await session.exists():
             self._record_lifecycle_metric("delete", "error")
             raise NotFoundError(session_id, "session")
 
-        await self._viking_fs.rm(session_uri, recursive=True, ctx=storage_ctx)
+        await self._viking_fs.rm(session_uri, recursive=True, ctx=ctx)
         logger.info(f"Deleted session: {session_id}")
         self._record_lifecycle_metric("delete", "ok")
         return True

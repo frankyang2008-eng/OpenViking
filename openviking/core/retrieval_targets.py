@@ -1,6 +1,6 @@
 # Copyright (c) 2026 Beijing Volcano Engine Technology Co., Ltd.
 # SPDX-License-Identifier: AGPL-3.0
-"""Retrieval-only target resolution for search/find."""
+"""Target resolution for search/find."""
 
 from dataclasses import dataclass
 from typing import List, Optional, Union
@@ -9,11 +9,12 @@ from openviking.core.namespace import (
     NamespaceShapeError,
     canonical_user_root,
     canonicalize_uri,
+    is_hidden_by_actor_peer_view,
     uri_parts,
 )
 from openviking.core.peer_id import normalize_peer_id
 from openviking.server.identity import RequestContext, Role
-from openviking_cli.exceptions import InvalidArgumentError
+from openviking_cli.exceptions import InvalidArgumentError, PermissionDeniedError
 from openviking_cli.retrieve import ContextType
 from openviking_cli.utils.uri import VikingURI
 
@@ -29,20 +30,18 @@ class ResolvedRetrievalTargets:
 def resolve_retrieval_targets(
     target_uri: Union[str, List[str]],
     ctx: RequestContext,
-    peer_id: Optional[str],
 ) -> ResolvedRetrievalTargets:
     """Resolve search/find target directories."""
-    normalized_peer_id = _normalize_peer_id(peer_id)
     target_uris = _canonicalize_target_uris(target_uri, ctx)
 
     if not target_uris:
         return ResolvedRetrievalTargets(
-            target_directories=default_target_directories(ctx, peer_id=normalized_peer_id),
+            target_directories=default_target_directories(ctx),
         )
 
     target_directories: List[str] = []
     for target in target_uris:
-        for target_dir in _target_directories_for_uri(target, ctx=ctx, peer_id=normalized_peer_id):
+        for target_dir in _target_directories_for_uri(target, ctx=ctx):
             if target_dir not in target_directories:
                 target_directories.append(target_dir)
     return ResolvedRetrievalTargets(
@@ -54,31 +53,33 @@ def resolve_retrieval_targets(
 def default_target_directories(
     ctx: Optional[RequestContext],
     *,
-    peer_id: Optional[str] = None,
     context_type: Optional[ContextType] = None,
 ) -> List[str]:
     """Return default retrieval directories for a user context."""
     if not ctx or ctx.role == Role.ROOT:
         return []
 
+    user_root = canonical_user_root(ctx)
     if context_type == ContextType.MEMORY:
-        return _default_user_scoped_targets(ctx, peer_id, "memories")
+        if ctx.actor_peer_id:
+            return [
+                f"{user_root}/memories",
+                f"{user_root}/peers/{ctx.actor_peer_id}/memories",
+            ]
+        return [user_root]
     if context_type == ContextType.RESOURCE:
-        return _default_resource_targets(ctx, peer_id)
+        if ctx.actor_peer_id:
+            return [
+                "viking://resources",
+                f"{user_root}/resources",
+                f"{user_root}/peers/{ctx.actor_peer_id}/resources",
+            ]
+        return ["viking://resources", user_root]
     if context_type == ContextType.SKILL:
         return _default_skill_targets(ctx)
-    return [
-        *_default_user_scoped_targets(ctx, peer_id, "memories"),
-        *_default_resource_targets(ctx, peer_id),
-        *_default_skill_targets(ctx),
-    ]
-
-
-def _normalize_peer_id(peer_id: Optional[str]) -> Optional[str]:
-    try:
-        return normalize_peer_id(peer_id)
-    except ValueError as exc:
-        raise InvalidArgumentError(str(exc)) from exc
+    if ctx.actor_peer_id:
+        return ["viking://resources", *_default_user_root_targets(ctx)]
+    return [user_root, "viking://resources"]
 
 
 def _canonicalize_target_uris(
@@ -103,59 +104,53 @@ def _target_directories_for_uri(
     target_uri: str,
     *,
     ctx: RequestContext,
-    peer_id: Optional[str],
 ) -> List[str]:
     if _is_current_user_root(target_uri, ctx):
-        return _default_user_root_targets(ctx, peer_id)
+        return _default_user_root_targets(ctx)
 
-    peer_target = _resolve_peer_target(target_uri, ctx=ctx, peer_id=peer_id)
+    peer_target = _resolve_peer_target(target_uri, ctx=ctx)
     if peer_target is not None:
         return peer_target
 
     for segment in ("memories", "resources", "skills"):
         if _is_default_user_content_root(target_uri, ctx, segment):
-            if segment == "skills":
-                return _default_skill_targets(ctx)
-            return _default_user_scoped_targets(ctx, peer_id, segment)
+            return [target_uri]
 
     return [target_uri]
 
 
-def _default_user_root_targets(ctx: RequestContext, peer_id: Optional[str]) -> List[str]:
-    return [
-        *_default_user_scoped_targets(ctx, peer_id, "memories"),
-        *_default_user_scoped_targets(ctx, peer_id, "resources"),
-        *_default_skill_targets(ctx),
-    ]
-
-
-def _default_resource_targets(ctx: RequestContext, peer_id: Optional[str]) -> List[str]:
-    return [
-        "viking://resources",
-        *_default_user_scoped_targets(ctx, peer_id, "resources"),
-    ]
+def _default_user_root_targets(ctx: RequestContext) -> List[str]:
+    user_root = canonical_user_root(ctx)
+    if not ctx.actor_peer_id:
+        return [user_root]
+    return _dedupe(
+        [
+            f"{user_root}/memories",
+            f"{user_root}/resources",
+            *_default_skill_targets(ctx),
+            *_actor_peer_targets(ctx),
+        ]
+    )
 
 
 def _default_skill_targets(ctx: RequestContext) -> List[str]:
     return [f"{canonical_user_root(ctx)}/skills"]
 
 
-def _default_user_scoped_targets(
-    ctx: RequestContext,
-    peer_id: Optional[str],
-    segment: str,
-) -> List[str]:
-    targets = [f"{canonical_user_root(ctx)}/{segment}"]
-    if peer_id:
-        targets.append(f"{canonical_user_root(ctx)}/peers/{peer_id}/{segment}")
-    return targets
+def _actor_peer_targets(ctx: RequestContext) -> List[str]:
+    if not ctx.actor_peer_id:
+        return []
+    peer_root = f"{canonical_user_root(ctx)}/peers/{ctx.actor_peer_id}"
+    return [
+        f"{peer_root}/memories",
+        f"{peer_root}/resources",
+    ]
 
 
 def _resolve_peer_target(
     target_uri: str,
     *,
     ctx: RequestContext,
-    peer_id: Optional[str],
 ) -> Optional[List[str]]:
     parts = uri_parts(target_uri)
     user_root_parts = uri_parts(canonical_user_root(ctx))
@@ -167,11 +162,13 @@ def _resolve_peer_target(
         return None
 
     if len(suffix) == 1:
-        raise InvalidArgumentError("target_uri must not point at all peer contexts.")
+        if ctx.actor_peer_id:
+            return _actor_peer_targets(ctx)
+        return [target_uri]
 
     target_peer_id = _normalize_peer_id(suffix[1])
-    if peer_id and target_peer_id != peer_id:
-        raise InvalidArgumentError("target_uri peer does not match peer_id.")
+    if is_hidden_by_actor_peer_view(target_uri, ctx):
+        raise PermissionDeniedError("Actor peer cannot access another peer's context.")
 
     peer_root = f"{canonical_user_root(ctx)}/peers/{target_peer_id}"
     if len(suffix) == 2:
@@ -182,6 +179,21 @@ def _resolve_peer_target(
     if suffix[2] not in {"memories", "resources"}:
         raise InvalidArgumentError("Only peer memories and resources are searchable.")
     return [target_uri]
+
+
+def _normalize_peer_id(peer_id: Optional[str]) -> Optional[str]:
+    try:
+        return normalize_peer_id(peer_id)
+    except ValueError as exc:
+        raise InvalidArgumentError(str(exc)) from exc
+
+
+def _dedupe(items: List[str]) -> List[str]:
+    deduped: List[str] = []
+    for item in items:
+        if item not in deduped:
+            deduped.append(item)
+    return deduped
 
 
 def _is_current_user_root(target_uri: str, ctx: RequestContext) -> bool:
