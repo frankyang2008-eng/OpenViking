@@ -239,7 +239,7 @@ describe("Tool: memory_recall (registration)", () => {
     const findCalls = fetchMock.mock.calls.filter(([calledUrl]) =>
       String(calledUrl).includes("/api/v1/search/find")
     );
-    expect(findCalls).toHaveLength(2);
+    expect(findCalls).toHaveLength(1);
     for (const [, init] of findCalls) {
       const body = JSON.parse(String((init as RequestInit).body));
       expect(body.limit).toBe(20);
@@ -276,7 +276,7 @@ describe("Tool: memory_recall (registration)", () => {
     const findBodies = fetchMock.mock.calls
       .filter(([calledUrl]) => String(calledUrl).includes("/api/v1/search/find"))
       .map((call) => JSON.parse(String((call[1] as RequestInit).body)));
-    expect(findBodies).toHaveLength(2);
+    expect(findBodies).toHaveLength(1);
     for (const body of findBodies) {
       expect(body.peer_id).toBe("wx_user-01_abc");
     }
@@ -951,6 +951,43 @@ describe("Tool: add_resource, add_skill, and ov_search (registration)", () => {
     expect(props).toHaveProperty("limit");
   });
 
+  it("registers ov_recall_trace tool and command", () => {
+    const { tools, commands, api } = setupPlugin(undefined, { traceRecall: true });
+    contextEnginePlugin.register(api as any);
+
+    const tool = tools.get("ov_recall_trace");
+    expect(tool).toBeDefined();
+    expect(tool!.description).toContain("recall trace");
+    const props = (tool!.parameters as any).properties;
+    expect(props).toHaveProperty("traceId");
+    expect(props).toHaveProperty("source");
+    expect(props).toHaveProperty("resourceTypes");
+    expect(props).toHaveProperty("includeContent");
+    expect(props).toHaveProperty("limit");
+    expect(commands.get("ov-recall-trace")).toMatchObject({
+      acceptsArgs: true,
+      description: "Query OpenViking recall trace records.",
+    });
+  });
+
+  it("registers recall trace gateway routes when a route adapter is available", async () => {
+    const { api } = setupPlugin(undefined, { traceRecall: true });
+    contextEnginePlugin.register(api as any);
+    const service = (api.registerService as any).mock.calls[0][0];
+    const registerRoute = vi.fn();
+
+    await service.start({ registerRoute });
+
+    expect(registerRoute).toHaveBeenCalledWith(expect.objectContaining({
+      method: "GET",
+      path: "/api/openviking/recall-traces",
+    }));
+    expect(registerRoute).toHaveBeenCalledWith(expect.objectContaining({
+      method: "GET",
+      path: "/api/openviking/recall-traces/:traceId",
+    }));
+  });
+
   it("applies enabledTools and disabledTools to runtime tool registration", () => {
     const { tools, api } = setupPlugin(undefined, {
       enabledTools: ["resource_query", "memory"],
@@ -1076,6 +1113,272 @@ describe("Tool: ov_search (behavioral)", () => {
       .map((call) => JSON.parse(String((call[1] as RequestInit).body)));
     expect(findBodies.some((body) => body.target_uri === "viking://resources")).toBe(true);
     expect(findBodies.some((body) => String(body.target_uri).startsWith("viking://user/") && String(body.target_uri).endsWith("/skills"))).toBe(true);
+  });
+
+  it("records ov_search recall traces when traceRecall is enabled", async () => {
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.endsWith("/api/v1/system/status")) {
+        return okResponse({ user: "default" });
+      }
+      if (url.includes("/api/v1/fs/ls")) {
+        return okResponse([]);
+      }
+      if (url.endsWith("/api/v1/search/find")) {
+        const body = JSON.parse(String(init?.body ?? "{}"));
+        return okResponse({
+          memories: [],
+          resources: [
+            {
+              context_type: "resource",
+              uri: body.target_uri === "viking://resources"
+                ? "viking://resources/trace-design.md"
+                : "viking://user/skills/trace-skill",
+              level: 2,
+              score: 0.88,
+              category: "",
+              match_reason: "",
+              relations: [],
+              abstract: "Trace design note",
+              overview: null,
+            },
+          ],
+          skills: [],
+          total: 1,
+        });
+      }
+      return okResponse({});
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { tools, api } = setupPlugin(undefined, { traceRecall: true });
+    contextEnginePlugin.register(api as any);
+    await tools.get("ov_search")!.execute("tc-search", { query: "trace design" });
+
+    const result = await tools.get("ov_recall_trace")!.execute("tc-trace", {
+      source: "ov_search",
+      limit: 10,
+    }) as ToolResult;
+
+    expect(result.content[0]!.text).toContain("ov_search");
+    expect(result.content[0]!.text).toContain("trace design");
+    expect(result.details.count).toBe(1);
+    const entry = (result.details.entries as any[])[0];
+    expect(entry.source).toBe("ov_search");
+    expect(entry.searches.length).toBeGreaterThan(0);
+    expect(entry.selected[0].uri).toContain("trace");
+  });
+
+  it("includes selected trace content only when includeContent is requested", async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      const requestUrl = new URL(url);
+      if (requestUrl.pathname === "/api/v1/search/find") {
+        return okResponse({
+          memories: [],
+          resources: [makeMemory({
+            uri: "viking://resources/project/spec.md",
+            abstract: "Recall trace design spec",
+            score: 0.88,
+          })],
+          skills: [],
+          total: 1,
+        });
+      }
+      if (requestUrl.pathname === "/api/v1/content/read") {
+        expect(requestUrl.searchParams.get("uri")).toBe("viking://resources/project/spec.md");
+        return okResponse("Full trace content with operational details");
+      }
+      return okResponse({});
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { tools, factoryTools, commands, api } = setupPlugin(undefined, { traceRecall: true });
+    contextEnginePlugin.register(api as any);
+    await tools.get("ov_search")!.execute("tc-search", { query: "trace design", uri: "viking://resources" });
+
+    const traceTool = factoryTools.get("ov_recall_trace")!({ sessionId: "test-session" });
+    const result = await traceTool.execute("tc-trace", { source: "ov_search", includeContent: true }) as ToolResult;
+    const entry = (result.details.entries as any[])[0];
+    expect(entry.selected[0].contentPreview).toContain("Full trace content");
+
+    await commands.get("ov-recall-trace")!.handler({
+      args: "--source ov_search --include-content",
+      commandBody: "",
+      sessionId: "test-session",
+    });
+    expect(fetchMock.mock.calls.filter(([calledUrl]) => String(calledUrl).includes("/api/v1/content/read")).length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("queries recorded traces from memory without calling OpenViking find again", async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      const requestUrl = new URL(url);
+      if (requestUrl.pathname === "/api/v1/search/find") {
+        return okResponse({
+          memories: [],
+          resources: [makeMemory({
+            uri: "viking://resources/project/spec.md",
+            abstract: "Recall trace design spec",
+            score: 0.88,
+          })],
+          skills: [],
+          total: 1,
+        });
+      }
+      return okResponse({});
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { tools, factoryTools, api } = setupPlugin(undefined, { traceRecall: true });
+    contextEnginePlugin.register(api as any);
+    await tools.get("ov_search")!.execute("tc-search", {
+      query: "trace design",
+      uri: "viking://resources",
+      limit: 3,
+    });
+
+    fetchMock.mockClear();
+    const traceTool = factoryTools.get("ov_recall_trace")!({ sessionId: "test-session" });
+    const result = await traceTool.execute("tc-trace", {
+      source: "ov_search",
+      limit: 10,
+    }) as ToolResult;
+
+    expect(result.content[0]!.text).toContain("ov_search");
+    expect(result.content[0]!.text).toContain("trace design");
+    expect(result.content[0]!.text).toContain("viking://resources/project/spec.md");
+    expect(result.details.count).toBe(1);
+    expect(fetchMock.mock.calls.some(([calledUrl]) => String(calledUrl).includes("/api/v1/search/find"))).toBe(false);
+  });
+
+  it("bounds stored trace query text by traceRecallQueryMaxChars", async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      const requestUrl = new URL(url);
+      if (requestUrl.pathname === "/api/v1/search/find") {
+        return okResponse({ memories: [], resources: [], skills: [], total: 0 });
+      }
+      return okResponse({});
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { tools, factoryTools, api } = setupPlugin(undefined, {
+      traceRecall: true,
+      traceRecallQueryMaxChars: 200,
+    });
+    contextEnginePlugin.register(api as any);
+    await tools.get("ov_search")!.execute("tc-search-long-query", {
+      query: "q".repeat(500),
+      uri: "viking://resources",
+    });
+
+    const trace = factoryTools.get("ov_recall_trace")!({ sessionId: "test-session" });
+    const result = await trace.execute("tc-trace", { source: "ov_search", limit: 10 }) as ToolResult;
+    const entry = (result.details.entries as any[])[0];
+
+    expect(entry.trigger.query).toHaveLength(200);
+    expect(entry.trigger.queryTruncated).toBe(true);
+  });
+
+  it("records explicit memory_recall traces without duplicate default searches", async () => {
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      const requestUrl = new URL(url);
+      if (requestUrl.pathname === "/api/v1/system/status") {
+        return okResponse({ user: "default" });
+      }
+      if (requestUrl.pathname === "/api/v1/search/find") {
+        const body = JSON.parse(String(init?.body ?? "{}"));
+        return okResponse({
+          memories: [makeMemory({
+            uri: `${body.target_uri}/backend-pref`,
+            abstract: "Backend preference",
+            score: 0.91,
+          })],
+          resources: [],
+          skills: [],
+          total: 1,
+        });
+      }
+      if (requestUrl.pathname === "/api/v1/content/read") {
+        return okResponse("Full backend memory content");
+      }
+      return okResponse({});
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { factoryTools, api } = setupPlugin(undefined, { traceRecall: true });
+    contextEnginePlugin.register(api as any);
+    const recall = factoryTools.get("memory_recall")!({ sessionId: "test-session", agentId: "main" });
+    await recall.execute("tc-recall", { query: "backend preference", limit: 1, scoreThreshold: 0.2 });
+
+    const findBodies = fetchMock.mock.calls
+      .filter(([calledUrl]) => String(calledUrl).includes("/api/v1/search/find"))
+      .map(([, fetchInit]) => JSON.parse(String((fetchInit as RequestInit).body)));
+    expect(findBodies).toHaveLength(1);
+    expect(findBodies[0]!.target_uri).toBe("viking://user/default/memories");
+
+    const trace = factoryTools.get("ov_recall_trace")!({ sessionId: "test-session" });
+    const result = await trace.execute("tc-trace", { source: "memory_recall", limit: 10 }) as ToolResult;
+    expect(result.content[0]!.text).toContain("memory_recall");
+    expect(result.content[0]!.text).toContain("backend preference");
+
+    const entry = (result.details.entries as any[])[0];
+    expect(entry.resourceTypes).toEqual(["user"]);
+    expect(entry.searches).toHaveLength(1);
+    expect(entry.searches[0]).toMatchObject({
+      resourceType: "user",
+      targetUriResolved: "viking://user/memories",
+      total: 1,
+    });
+    expect(entry.selected).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        uri: "viking://user/default/memories/backend-pref",
+        injected: true,
+      }),
+    ]));
+  });
+
+  it("records archive search traces with displayed archive matches", async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      const requestUrl = new URL(url);
+      if (requestUrl.pathname === "/api/v1/search/grep") {
+        return okResponse({
+          matches: [{
+            line: 12,
+            uri: "viking://user/sessions/test-session/history/archive_001#L12",
+            content: "discussion about recall traces",
+          }],
+          count: 1,
+        });
+      }
+      return okResponse({});
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { factoryTools, api } = setupPlugin(undefined, { traceRecall: true });
+    contextEnginePlugin.register(api as any);
+    const archiveSearch = factoryTools.get("ov_archive_search")!({ sessionId: "test-session", agentId: "main" });
+    await archiveSearch.execute("tc-archive", { query: "recall traces" });
+
+    const trace = factoryTools.get("ov_recall_trace")!({ sessionId: "test-session" });
+    const result = await trace.execute("tc-trace", { source: "ov_archive_search", limit: 10 }) as ToolResult;
+
+    expect(result.content[0]!.text).toContain("ov_archive_search");
+    expect(result.content[0]!.text).toContain("recall traces");
+    expect(result.content[0]!.text).toContain("archive_001");
+    const entry = (result.details.entries as any[])[0];
+    expect(entry.operationType).toBe("archive_grep");
+    expect(entry.trigger.derivedKeywords).toEqual(["recall traces"]);
+    expect(entry.searches[0]).toMatchObject({
+      targetUriResolved: "viking://user/sessions/test-session/history",
+      total: 1,
+      caseInsensitive: true,
+    });
+    expect(entry.searches[0].durationMs).toBeGreaterThanOrEqual(0);
+    expect(entry.selected).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        uri: "viking://user/sessions/test-session/history/archive_001#L12",
+        abstractPreview: "discussion about recall traces",
+        displayed: true,
+      }),
+    ]));
   });
 
   it("passes assistant peer_id to ov_search when peer_role is assistant", async () => {
@@ -1422,16 +1725,16 @@ describe("OpenViking ov_search command parsing", () => {
 });
 
 describe("Plugin registration", () => {
-  it("registers all 13 default tools", () => {
+  it("registers all 14 default tools", () => {
     const { api } = setupPlugin();
     contextEnginePlugin.register(api as any);
-    expect(api.registerTool).toHaveBeenCalledTimes(13);
+    expect(api.registerTool).toHaveBeenCalledTimes(14);
   });
 
-  it("registers all 14 tools when add_resource is explicitly enabled", () => {
+  it("registers all 15 tools when add_resource is explicitly enabled", () => {
     const { api } = setupPlugin(undefined, { enableAddResourceTool: true });
     contextEnginePlugin.register(api as any);
-    expect(api.registerTool).toHaveBeenCalledTimes(14);
+    expect(api.registerTool).toHaveBeenCalledTimes(15);
   });
 
   it("registers add and search commands", () => {
@@ -1448,6 +1751,10 @@ describe("Plugin registration", () => {
     expect(commands.get("ov-search")).toMatchObject({
       acceptsArgs: true,
       description: "Search OpenViking resources and skills.",
+    });
+    expect(commands.get("ov-recall-trace")).toMatchObject({
+      acceptsArgs: true,
+      description: "Query OpenViking recall trace records.",
     });
   });
 
