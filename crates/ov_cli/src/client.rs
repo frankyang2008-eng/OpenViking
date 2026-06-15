@@ -1,5 +1,5 @@
 use serde::de::DeserializeOwned;
-use serde_json::Value;
+use serde_json::{Map, Value};
 use std::env;
 use std::path::Path;
 
@@ -503,10 +503,12 @@ impl HttpClient {
         exclude: Option<String>,
         directly_upload_media: bool,
         watch_interval: f64,
+        resource_args: Option<Map<String, Value>>,
         show_progress: bool,
         verbose: bool,
     ) -> Result<serde_json::Value> {
         let path_obj = Path::new(path);
+        let args = Value::Object(resource_args.unwrap_or_default());
 
         // Determine effective parent and create_parent flag.
         // Only send create_parent when the user explicitly selected
@@ -562,6 +564,7 @@ impl HttpClient {
                     "exclude": exclude,
                     "directly_upload_media": directly_upload_media,
                     "watch_interval": watch_interval,
+                    "args": args.clone(),
                 }));
 
                 let dynamic_timeout =
@@ -596,6 +599,7 @@ impl HttpClient {
                     "exclude": exclude,
                     "directly_upload_media": directly_upload_media,
                     "watch_interval": watch_interval,
+                    "args": args.clone(),
                 }));
 
                 let dynamic_timeout =
@@ -618,6 +622,7 @@ impl HttpClient {
                     "exclude": exclude,
                     "directly_upload_media": directly_upload_media,
                     "watch_interval": watch_interval,
+                    "args": args.clone(),
                 }));
 
                 self.post("/api/v1/resources", &body).await
@@ -637,6 +642,7 @@ impl HttpClient {
                 "exclude": exclude,
                 "directly_upload_media": directly_upload_media,
                 "watch_interval": watch_interval,
+                "args": args,
             }));
 
             self.post("/api/v1/resources", &body).await
