@@ -265,6 +265,10 @@ const COMMAND_HELP_SPECS: &[CommandHelpSpec] = &[
                 label: "ov rm viking://scratch --recursive",
                 description: "Remove a directory subtree.",
             },
+            HelpItem {
+                label: "ov rm viking://resources/images/foo --recursive --wait",
+                description: "Remove a subtree and wait for generated overviews to refresh.",
+            },
         ],
         next_steps: &[
             HelpItem {
@@ -2675,6 +2679,7 @@ mod tests {
         for args in [
             ["ov", "add-resource", "--help"],
             ["ov", "add-skill", "--help"],
+            ["ov", "rm", "--help"],
             ["ov", "write", "--help"],
         ] {
             let rendered = strip_ansi(
