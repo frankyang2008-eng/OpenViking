@@ -74,6 +74,7 @@ openclaw config get plugins.slots.contextEngine  # should output: openviking
 | [INSTALL.md](./INSTALL.md) | Full install, upgrade, and uninstall guide |
 | [INSTALL-ZH.md](./INSTALL-ZH.md) | Chinese install guide |
 | [INSTALL-AGENT.md](./INSTALL-AGENT.md) | Agent-oriented operator guide |
+| [docs/openviking-tos-install-guide.md](./docs/openviking-tos-install-guide.md) | TOS release bundle publishing and installer guide |
 | [docs/openviking-openclaw-plugin-guide.md](./docs/openviking-openclaw-plugin-guide.md) | Comprehensive Chinese guide for usage, configuration, debugging, testing, build, release, deployment, and rollback |
 | [docs/openviking-websocket-rpc-api.md](./docs/openviking-websocket-rpc-api.md) | Gateway WebSocket RPC usage for OpenViking tools |
 | [docs/openviking-runtime-query-config.md](./docs/openviking-runtime-query-config.md) | Runtime query config scopes, fields, and commands |
