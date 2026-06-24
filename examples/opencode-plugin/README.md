@@ -9,11 +9,12 @@ The new plugin exposes everything through OpenCode tool hooks and talks to OpenV
 ## What It Does
 
 - Injects indexed `viking://resources/` repositories into the system prompt.
-- Exposes repository search, grep, glob, read, browse, add, remove, and queue status as tools.
+- Exposes repository search, grep, glob, read, browse, add, write, remove, and queue status as tools.
 - Maps each OpenCode session to an OpenViking session.
 - Captures user and assistant text messages into OpenViking.
 - Commits sessions at lifecycle boundaries for memory extraction.
 - Automatically recalls relevant memories and injects them as hidden synthetic context for the current user message.
+- Blocks accidental local filesystem reads of `viking://` URIs and points the agent back to `memread`, `membrowse`, or `memsearch`.
 
 ## Files
 
@@ -30,7 +31,9 @@ examples/opencode-plugin/
 │   ├── memadd-local.mjs
 │   ├── memory-tools.mjs
 │   ├── memory-recall.mjs
+│   ├── viking-uri-guard.mjs
 │   └── utils.mjs
+├── tests/
 └── wrappers/
     └── openviking.mjs
 ```
@@ -133,6 +136,10 @@ precedence over values in this file.
 
 For advanced setups, `OPENVIKING_PLUGIN_CONFIG` can point to another config file path.
 
+OpenCode's local `read`, `glob`, and `grep` tools cannot read `viking://` URIs.
+When the agent accidentally tries that, the plugin blocks the filesystem tool
+call and points it to `memread`, `membrowse`, or `memsearch`.
+
 ## Tools
 
 ### `memsearch`
@@ -192,6 +199,22 @@ memadd path="file:///home/alice/project/notes.md" reason="project notes"
 ```
 
 After adding a resource, the tool also returns `GET /api/v1/observer/queue` status.
+
+### `memwrite`
+
+Write text content to a `viking://` file through `POST /api/v1/content/write`.
+
+Use this for durable notes, small project memory files, or resource text that
+should be updated directly. The default mode is `create` to avoid accidental
+overwrites. Use `append` to extend an existing file and `replace` only when the
+user explicitly wants to overwrite the file.
+
+Examples:
+
+```text
+memwrite uri="viking://user/memories/project-notes.md" content="# Decision\n\nUse PostgreSQL." wait=true
+memwrite uri="viking://resources/docs/api.md" content="\n\n## New endpoint" mode="append"
+```
 
 ### `memremove`
 

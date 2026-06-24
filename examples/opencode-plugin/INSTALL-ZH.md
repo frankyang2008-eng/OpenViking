@@ -135,7 +135,7 @@ user/admin API key 的 API_KEY mode 时应留空。
 
 - `memsearch`、`memread`、`membrowse`
 - `memgrep`、`memglob`
-- `memadd`、`memremove`、`memqueue`
+- `memadd`、`memwrite`、`memremove`、`memqueue`
 - `memcommit`
 
 如果行为异常，先查看运行时文件：
@@ -162,6 +162,7 @@ curl http://localhost:1933/health
 - `memgrep`：精确文本或模式搜索，替代原 `ov grep`
 - `memglob`：文件 glob 枚举，替代原 `ov glob`
 - `memadd`：添加远端 URL 或本地文件资源，替代常见 `ov add-resource` 场景
+- `memwrite`：通过 `/api/v1/content/write` 直接写入 `viking://` 文本文件
 - `memremove`：删除资源，替代 `ov rm`
 - `memqueue`：查看处理队列，替代 `ov observer queue`
 
@@ -172,7 +173,9 @@ curl http://localhost:1933/health
 - 枚举文件用 `memglob`
 - 读取内容用 `memread`
 - 探索目录结构用 `membrowse`
+- 持久化笔记或小型文本更新用 `memwrite`；默认是 `create`，避免误覆盖
 - 删除前必须先获得用户明确确认，再调用 `memremove` 且传入 `confirm: true`
+- 如果 agent 误用 OpenCode 本地 `read`、`glob`、`grep` 工具访问 `viking://` URI，插件会阻止这次本地文件系统调用，并提示改用 `memread`、`membrowse` 或 `memsearch`。
 
 ## `memadd` 本地文件
 
