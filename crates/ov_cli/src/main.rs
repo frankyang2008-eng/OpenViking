@@ -340,6 +340,9 @@ enum Commands {
         /// Wait timeout in seconds
         #[arg(long, value_name = "seconds", help_heading = "Common options")]
         timeout: Option<f64>,
+        /// Parent skill root URI (e.g. viking://agent/skills); defaults to user-private skills
+        #[arg(short = 'p', long = "parent-auto-create", value_name = "uri", help_heading = "Skill options")]
+        parent: Option<String>,
         #[command(flatten)]
         upload_options: UploadCliOptions,
     },
@@ -1226,6 +1229,9 @@ enum SkillCommands {
         /// Skip confirmation prompt
         #[arg(short = 'y', long = "yes")]
         yes: bool,
+        /// Parent skill root URI (e.g. viking://agent/skills); defaults to user-private skills
+        #[arg(short = 'p', long = "parent-auto-create", value_name = "uri")]
+        parent: Option<String>,
     },
     /// List installed agent skills
     #[command(alias = "ls")]
@@ -1239,6 +1245,9 @@ enum SkillCommands {
             value_name = "n"
         )]
         node_limit: i32,
+        /// Restrict listing to a specific skill root URI (defaults to merged user + agent)
+        #[arg(short = 'p', long = "uri", value_name = "uri")]
+        parent: Option<String>,
     },
     /// Find installed agent skills semantically
     Find {
@@ -1265,6 +1274,9 @@ enum SkillCommands {
             value_name = "0,1,2"
         )]
         level: Option<Vec<i32>>,
+        /// Restrict search to a specific skill root URI (defaults to merged user + agent)
+        #[arg(short = 'p', long = "uri", value_name = "uri")]
+        parent: Option<String>,
     },
     /// Show one installed skill
     Show {
@@ -1291,6 +1303,9 @@ enum SkillCommands {
         /// Include full SKILL.md content (legacy alias for --level 2)
         #[arg(long, hide = true)]
         content: bool,
+        /// Resolve the skill under a specific root URI (e.g. viking://agent/skills)
+        #[arg(short = 'p', long = "uri", value_name = "uri")]
+        parent: Option<String>,
     },
     /// Update installed skills from their recorded source
     Update {
@@ -1303,6 +1318,9 @@ enum SkillCommands {
         /// Skip confirmation prompt
         #[arg(short = 'y', long = "yes")]
         yes: bool,
+        /// Resolve the skill under a specific root URI (e.g. viking://agent/skills)
+        #[arg(short = 'p', long = "parent-auto-create", value_name = "uri")]
+        parent: Option<String>,
     },
     /// Remove installed skills
     #[command(alias = "rm", alias = "delete")]
@@ -1316,6 +1334,9 @@ enum SkillCommands {
         /// Skip confirmation prompt
         #[arg(short = 'y', long = "yes")]
         yes: bool,
+        /// Resolve the skill under a specific root URI (e.g. viking://agent/skills)
+        #[arg(short = 'p', long = "parent-auto-create", value_name = "uri")]
+        parent: Option<String>,
     },
     /// Validate a local SKILL.md file or skill directory
     Validate {
@@ -2640,11 +2661,12 @@ async fn main() {
             data,
             wait,
             timeout,
+            parent,
             upload_options,
         } => {
             let ctx =
                 ctx.with_upload_options(upload_options.merged_with_legacy(legacy_upload_options));
-            handlers::handle_add_skill(data, wait, timeout, ctx).await
+            handlers::handle_add_skill(data, wait, timeout, parent, ctx).await
         }
         Commands::Skills { action } => match action {
             SkillCommands::Add {
@@ -2653,6 +2675,7 @@ async fn main() {
                 list,
                 wait,
                 yes,
+                parent,
             } => {
                 let client = ctx.get_client();
                 commands::skills::add(
@@ -2666,18 +2689,27 @@ async fn main() {
                     ctx.is_verbose(),
                     ctx.output_format,
                     ctx.compact,
+                    parent.as_deref(),
                 )
                 .await
             }
-            SkillCommands::List { node_limit } => {
+            SkillCommands::List { node_limit, parent } => {
                 let client = ctx.get_client();
-                commands::skills::list(&client, node_limit, ctx.output_format, ctx.compact).await
+                commands::skills::list(
+                    &client,
+                    node_limit,
+                    ctx.output_format,
+                    ctx.compact,
+                    parent.as_deref(),
+                )
+                .await
             }
             SkillCommands::Find {
                 query,
                 node_limit,
                 threshold,
                 level,
+                parent,
             } => {
                 let client = ctx.get_client();
                 commands::skills::find(
@@ -2688,6 +2720,7 @@ async fn main() {
                     level,
                     ctx.output_format,
                     ctx.compact,
+                    parent.as_deref(),
                 )
                 .await
             }
@@ -2698,6 +2731,7 @@ async fn main() {
                 source,
                 format,
                 content,
+                parent,
             } => {
                 let client = ctx.get_client();
                 let output_format = format
@@ -2713,18 +2747,45 @@ async fn main() {
                     source,
                     output_format,
                     ctx.compact,
+                    parent.as_deref(),
                 )
                 .await
             }
-            SkillCommands::Update { skills, wait, yes } => {
+            SkillCommands::Update {
+                skills,
+                wait,
+                yes,
+                parent,
+            } => {
                 let client = ctx.get_client();
-                commands::skills::update(&client, skills, wait, yes, ctx.output_format, ctx.compact)
-                    .await
+                commands::skills::update(
+                    &client,
+                    skills,
+                    wait,
+                    yes,
+                    ctx.output_format,
+                    ctx.compact,
+                    parent.as_deref(),
+                )
+                .await
             }
-            SkillCommands::Remove { skills, all, yes } => {
+            SkillCommands::Remove {
+                skills,
+                all,
+                yes,
+                parent,
+            } => {
                 let client = ctx.get_client();
-                commands::skills::remove(&client, skills, all, yes, ctx.output_format, ctx.compact)
-                    .await
+                commands::skills::remove(
+                    &client,
+                    skills,
+                    all,
+                    yes,
+                    ctx.output_format,
+                    ctx.compact,
+                    parent.as_deref(),
+                )
+                .await
             }
             SkillCommands::Validate { path, strict } => {
                 let client = ctx.get_client();
