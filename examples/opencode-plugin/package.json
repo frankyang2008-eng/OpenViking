@@ -5,6 +5,10 @@
   "description": "Unified OpenCode plugin for OpenViking repository retrieval and long-term memory",
   "type": "module",
   "main": "index.mjs",
+  "oc-plugin": [
+    "server",
+    "tui"
+  ],
   "exports": {
     ".": "./index.mjs"
   },
