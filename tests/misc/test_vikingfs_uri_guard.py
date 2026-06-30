@@ -190,6 +190,40 @@ class TestVikingFSURITraversalGuard:
         fs.agfs.mv.assert_not_called()
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("source_uri", "match"),
+        [
+            # Bare account root: the net-new gap — rm() rejects it (#2873) but mv()'s
+            # write guard alone used to let it through to the recursive source delete.
+            ("viking://", "Deleting viking://"),
+            ("/", "Deleting viking://"),
+            # viking://user is already blocked by the write guard; assert mv still
+            # refuses it (parity with rm) regardless of which guard fires first.
+            ("viking://user", "viking://user is not supported"),
+            ("viking://user/", "viking://user is not supported"),
+            ("/user", "viking://user is not supported"),
+            ("user", "viking://user is not supported"),
+        ],
+    )
+    async def test_mv_rejects_protected_namespace_roots_in_source_before_side_effects(
+        self, source_uri: str, match: str
+    ) -> None:
+        fs = _make_viking_fs()
+        fs._collect_uris = AsyncMock(return_value=[])
+        fs._update_vector_store_uris = AsyncMock()
+        fs._delete_from_vector_store = AsyncMock()
+
+        with pytest.raises(PermissionDeniedError, match=match):
+            await fs.mv(source_uri, "viking://temp/dst")
+
+        fs._collect_uris.assert_not_called()
+        fs._update_vector_store_uris.assert_not_called()
+        fs._delete_from_vector_store.assert_not_called()
+        fs.agfs.stat.assert_not_called()
+        fs.agfs.rm.assert_not_called()
+        fs.agfs.mv.assert_not_called()
+
+    @pytest.mark.asyncio
     async def test_read_file_keeps_valid_uri_behavior(self) -> None:
         fs = _make_viking_fs()
         fs.agfs.stat = AsyncMock(return_value=MagicMock())

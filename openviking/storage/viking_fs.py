@@ -608,6 +608,12 @@ class VikingFS:
         from openviking.storage.transaction import LockContext, get_lock_manager
 
         self._ensure_mutable_access(old_uri, ctx)
+        # mv is implemented as copy + recursive rm of the source (see the
+        # ``rm(old_path, recursive=is_dir)`` below), so the source must also clear
+        # the delete guard. Without this, a protected account root such as
+        # ``viking://`` — which rm() rejects up front (#2873) — could still be
+        # destroyed via mv, since the write guard alone permits the bare root.
+        self._ensure_delete_access(old_uri, ctx)
         self._ensure_mutable_access(new_uri, ctx)
         old_path = self._uri_to_path(old_uri, ctx=ctx)
         new_path = self._uri_to_path(new_uri, ctx=ctx)
