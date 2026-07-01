@@ -279,7 +279,7 @@ impl HttpClient {
             "mode": mode,
             "recursive": recursive,
         });
-        self.post("/api/v1/content/set_tags", &body).await
+        self.post("/api/v1/fs/attrs/set_tags", &body).await
     }
 
     fn build_write_body(
@@ -462,6 +462,11 @@ impl HttpClient {
     pub async fn stat(&self, uri: &str) -> Result<serde_json::Value> {
         let params = vec![("uri".to_string(), uri.to_string())];
         self.get("/api/v1/fs/stat", &params).await
+    }
+
+    pub async fn attrs(&self, uri: &str) -> Result<serde_json::Value> {
+        let params = vec![("uri".to_string(), uri.to_string())];
+        self.get("/api/v1/fs/attrs", &params).await
     }
 
     // ============ Search Methods ============
