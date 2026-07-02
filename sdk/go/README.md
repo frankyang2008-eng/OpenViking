@@ -116,7 +116,7 @@ Implemented:
 | Sessions and tasks | `CreateSession`, `ListSessions`, `GetSession`, `SessionExists`, `GetSessionContext`, `GetSessionArchive`, `DeleteSession`, `AddMessage`, `BatchAddMessages`, `CommitSession`, `GetTask`, `ListTasks` |
 | Packs | `ExportOVPack`, `BackupOVPack`, `ImportOVPack`, `RestoreOVPack` |
 | System and observer | `Health`, `CheckConsistency`, `GetStatus`, `IsHealthy`, `QueueStatus`, `VikingDBStatus`, `ModelsStatus` |
-| Admin | `AdminCreateAccount`, `AdminCreateAccountWithOptions`, `AdminListAccounts`, `AdminDeleteAccount`, `AdminRegisterUser`, `AdminRegisterUserWithOptions`, `AdminListUsers`, `AdminRemoveUser`, `AdminSetRole`, `AdminRegenerateKey`, `AdminMigrate` |
+| Admin | `AdminCreateAccount`, `AdminCreateAccountWithOptions`, `AdminListAccounts`, `AdminDeleteAccount`, `AdminRegisterUser`, `AdminRegisterUserWithOptions`, `AdminListUsers`, `AdminRemoveUser`, `AdminSetRole`, `AdminRegenerateKey`, `AdminRegenerateKeyWithOptions`, `AdminMigrate` |
 
 Not implemented in Go SDK v1:
 
@@ -135,15 +135,27 @@ config. Ordinary add calls do not need SDK defaults; omit `To` / `TargetURI`
 and let the server resolve user and deployment defaults.
 
 ```go
+seed := "alice-seed"
 _, err := client.AdminRegisterUserWithOptions(ctx, "acme", "alice", "user", &openviking.AdminRegisterUserOptions{
-	UserConfig: map[string]any{
+    Seed: &seed,
+    UserConfig: map[string]any{
 		"add_targets": map[string]any{
 			"resource_uri": "viking://user/resources/project-a",
 			"skill_uri":    "viking://user/skills",
 		},
 	},
 })
+
+newSeed := "alice-new-seed"
+_, err = client.AdminRegenerateKeyWithOptions(ctx, "acme", "alice", &openviking.AdminRegenerateKeyOptions{
+    Seed: &newSeed,
+})
 ```
+
+When `Seed` is set, the returned API key is derived from
+`sha256(user_id + "\0" + seed)`; omit it for random key generation.
+Use `nil` to omit `Seed`; set `Seed` to a string pointer to send it, including
+an empty string that the server rejects.
 
 ## Files, Directories, and Packs
 
