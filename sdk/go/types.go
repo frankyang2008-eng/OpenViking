@@ -44,21 +44,33 @@ type AddSkillOptions struct {
 	Wait      bool
 	Timeout   *float64
 	Telemetry any
+	// TargetURI scopes the operation to a skills root such as
+	// "viking://agent/skills" (account-shared) or a per-user root. A nil
+	// value omits target_uri and lets the server use its default root.
+	TargetURI any
 }
 
 // AdminCreateAccountOptions controls AdminCreateAccountWithOptions.
 type AdminCreateAccountOptions struct {
 	UserConfig map[string]any
+	Seed       *string
 }
 
 // AdminRegisterUserOptions controls AdminRegisterUserWithOptions.
 type AdminRegisterUserOptions struct {
 	UserConfig map[string]any
+	Seed       *string
+}
+
+// AdminRegenerateKeyOptions controls AdminRegenerateKeyWithOptions.
+type AdminRegenerateKeyOptions struct {
+	Seed *string
 }
 
 // ListSkillsOptions controls ListSkills.
 type ListSkillsOptions struct {
 	NodeLimit int
+	TargetURI any
 }
 
 // FindSkillsOptions controls FindSkills.
@@ -67,6 +79,7 @@ type FindSkillsOptions struct {
 	ScoreThreshold *float64
 	Level          []int
 	Telemetry      any
+	TargetURI      any
 }
 
 // ValidateSkillOptions controls ValidateSkill.
@@ -74,6 +87,7 @@ type ValidateSkillOptions struct {
 	Strict       bool
 	SourcePath   string
 	SkillDirName string
+	TargetURI    any
 }
 
 // GetSkillOptions controls GetSkill.
@@ -82,6 +96,7 @@ type GetSkillOptions struct {
 	IncludeFiles   *bool
 	IncludeSource  bool
 	Level          *int
+	TargetURI      any
 }
 
 // UpdateSkillOptions controls UpdateSkill.
@@ -90,6 +105,12 @@ type UpdateSkillOptions struct {
 	Timeout        *float64
 	SourceMetadata map[string]any
 	Telemetry      any
+	TargetURI      any
+}
+
+// DeleteSkillOptions controls DeleteSkill.
+type DeleteSkillOptions struct {
+	TargetURI any
 }
 
 // WaitProcessedOptions controls WaitProcessed.
@@ -200,6 +221,7 @@ type SearchOptions struct {
 type GrepOptions struct {
 	CaseInsensitive bool
 	NodeLimit       *int
+	LevelLimit      *int
 	ExcludeURI      string
 }
 
