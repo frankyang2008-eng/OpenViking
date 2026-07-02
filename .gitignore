@@ -205,3 +205,5 @@ specs/
 .codex/
 .ttadk/
 tests/integration/.tmp_*/
+.omc/
+.codegraph/
