@@ -16,9 +16,11 @@ import re
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any, Dict, NoReturn, Optional, Tuple, Union
 from urllib.parse import urlparse
 
+from openviking.utils.exceptions import error_code_from_http_status
+from openviking_cli.exceptions import OpenVikingError
 from openviking_cli.utils.logger import get_logger
 
 from .base import DataAccessor, LocalResource, SourceType
@@ -27,6 +29,7 @@ from .mime_types import get_preferred_extension
 logger = get_logger(__name__)
 
 _FEISHU_IMAGE_RE = re.compile(r"!\[([^\]]*)\]\(feishu://image/([^)]+)\)")
+_FEISHU_DOCUMENT_FORBIDDEN = 1770032
 
 
 def _getattr_safe(obj, key: str, default=None):
@@ -34,6 +37,47 @@ def _getattr_safe(obj, key: str, default=None):
     if isinstance(obj, dict):
         return obj.get(key, default)
     return getattr(obj, key, default)
+
+
+def _response_http_status(response: Any) -> int | None:
+    status = getattr(getattr(response, "raw", None), "status_code", None)
+    return status if isinstance(status, int) else None
+
+
+def _raise_from_lark_response(
+    response: Any,
+    *,
+    operation: str,
+    resource: str | None = None,
+) -> NoReturn:
+    code = getattr(response, "code", None)
+    msg = getattr(response, "msg", None) or "Feishu API request failed"
+    http_status = _response_http_status(response)
+    details: dict[str, Any] = {
+        "operation": operation,
+        "feishu_code": code,
+        "feishu_msg": msg,
+        "http_status": http_status,
+    }
+    if resource:
+        details["resource"] = resource
+
+    logger.error(
+        "[FeishuAPI] %s failed: code=%s msg=%s http=%s",
+        operation,
+        code,
+        msg,
+        http_status,
+    )
+    raise OpenVikingError(
+        f"Feishu {operation} failed: code={code}, msg={msg}",
+        code=(
+            "PERMISSION_DENIED"
+            if code == _FEISHU_DOCUMENT_FORBIDDEN or "forbidden" in msg.lower()
+            else error_code_from_http_status(http_status)
+        ),
+        details=details,
+    )
 
 
 @dataclass
@@ -344,8 +388,8 @@ class FeishuAccessor(DataAccessor):
                 import lark_oapi as lark
             except ImportError:
                 raise ImportError(
-                "lark-oapi is required for Feishu document parsing. "
-                "Install it with: pip install lark-oapi>=1.0.0"
+                    "lark-oapi is required for Feishu document parsing. "
+                    "Install it with: pip install lark-oapi>=1.0.0"
                 )
             config = self._get_config()
             app_id = config.app_id or os.getenv("FEISHU_APP_ID", "")
@@ -396,8 +440,10 @@ class FeishuAccessor(DataAccessor):
         else:
             response = client.wiki.v2.space.get_node(request, option)
         if not response.success():
-            raise RuntimeError(
-                f"Failed to resolve wiki node {token}: code={response.code}, msg={response.msg}"
+            _raise_from_lark_response(
+                response,
+                operation=f"resolve wiki node {token}",
+                resource=token,
             )
         node = response.data.node
         obj_type = node.obj_type or ""
@@ -492,9 +538,10 @@ class FeishuAccessor(DataAccessor):
                 response = client.docx.v1.document_block.list(request, option)
 
             if not response.success():
-                raise RuntimeError(
-                    f"Failed to fetch blocks for {document_id}: "
-                    f"code={response.code}, msg={response.msg}"
+                _raise_from_lark_response(
+                    response,
+                    operation=f"fetch blocks for {document_id}",
+                    resource=document_id,
                 )
 
             items = response.data.items or []
@@ -674,9 +721,7 @@ class FeishuAccessor(DataAccessor):
         # injects it (see lark_oapi.core.token.auth.verify) and the download
         # silently fails — dropping images from user-token imports.
         token_type = (
-            lark.AccessTokenType.USER
-            if feishu_access_token
-            else lark.AccessTokenType.TENANT
+            lark.AccessTokenType.USER if feishu_access_token else lark.AccessTokenType.TENANT
         )
         raw_req = (
             lark.BaseRequest.builder()
@@ -688,7 +733,9 @@ class FeishuAccessor(DataAccessor):
         option = self._user_request_option(feishu_access_token)
 
         try:
-            raw_resp = client.request(raw_req) if option is None else client.request(raw_req, option)
+            raw_resp = (
+                client.request(raw_req) if option is None else client.request(raw_req, option)
+            )
         except Exception as exc:
             logger.warning("[FeishuAccessor] Error downloading image %s: %s", file_token, exc)
             return None
@@ -698,9 +745,7 @@ class FeishuAccessor(DataAccessor):
             http_status = getattr(raw, "status_code", None)
             detail = getattr(raw_resp, "msg", "") or f"HTTP {http_status}"
             if http_status == 403:
-                detail = (
-                    f"{detail} (missing Feishu permission docs:document.media:download)"
-                )
+                detail = f"{detail} (missing Feishu permission docs:document.media:download)"
             logger.warning(
                 "[FeishuAccessor] Failed to download image %s: code=%s, http=%s, msg=%s",
                 file_token,
