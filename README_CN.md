@@ -61,6 +61,23 @@
 
 > 💡 **想先看看实际效果？** 试试 [OpenViking Studio](https://openviking.net/studio)——在线托管实例，提供上下文实验场、语义检索和多智能体 Hub，无需安装。
 
+### OpenViking Helper macOS 桌面端（Beta）
+
+**OpenViking Helper** 是面向 OpenViking 用户的 macOS 桌面应用，把本机 Agent 接入、会话轨迹、记忆和技能放到可视化界面里，方便用户确认接入状态，并把本地上下文同步到 OpenViking。
+
+核心特性：
+
+- **可视化接入本地 Agent**：检测 OpenViking CLI、Claude Code、Codex、Cursor、Trae、OpenCode，并配置支持的插件、MCP、Hook 和 CLI 接入。
+- **回看会话生效过程**：解析 Claude Code、Codex、Trae 会话，展示 OpenViking 的召回、Prompt 注入、MCP 调用、捕获和提交事件。
+- **管理本地记忆与技能**：查看本地 memory / rule 文件和 `SKILL.md` 技能，并同步到 OpenViking。
+
+> OpenViking Helper 目前仍处于 Beta 阶段，暂时仅支持 macOS。
+
+下载：
+
+- [macOS Apple Silicon 版（arm64）](https://lf3-cdn-tos.bytegoofy.com/obj/tron-demo/7654844610543360265/418715779/0.0.18/darwin-arm64/openviking-helper-0.0.18-arm64.dmg)
+- [macOS Intel 版（x64）](https://lf3-cdn-tos.bytegoofy.com/obj/tron-demo/7654844610543360265/418715779/0.0.18/darwin-x64/openviking-helper-0.0.18-x64.dmg)
+
 ### 本地部署
 
 #### 前置条件
@@ -121,7 +138,7 @@ Volcengine 支持模型名称和端点 ID。为简单起见，建议使用模型
 {
   "vlm": {
     "provider": "volcengine",
-    "model": "doubao-seed-2-0-pro-260215",
+    "model": "doubao-seed-2-0-lite-260428",
     "api_key": "your-api-key",
     "api_base": "https://ark.cn-beijing.volces.com/api/v3"
   }
@@ -299,6 +316,10 @@ openviking-server doctor
 
 > **注意**：对于 embedding 模型，支持 `volcengine`（豆包）、`openai`、`azure`、`jina`、`ollama`、`voyage`、`dashscope`、`minimax`、`cohere`、`vikingdb`、`gemini`（需 `pip install "google-genai>=1.0.0"`）、`litellm` 和 `local`。对于 VLM 模型，常见提供商包括 `volcengine`、`openai`、`openai-codex`、`kimi`、`glm`。
 
+> **Memory 配置**：OpenViking 始终使用 v3 记忆抽取链路。旧的 `memory.version` 配置项已废弃且会被忽略；已有配置中保留该字段仍可正常加载，但不会改变行为。
+
+> **Memory schema 作用域**：Memory schema YAML 默认 `stage: "user"` 且 `peer_enabled: true`。trajectories/experiences 这类执行派生 schema 使用 `stage: "agent"`；如果某类记忆必须保留在当前用户目录而不是 peer 目录，设置 `peer_enabled: false`。
+
 ##### 服务器配置示例
 
 👇 展开查看您的模型服务的配置示例：
@@ -329,7 +350,7 @@ openviking-server doctor
     "api_base" : "https://ark.cn-beijing.volces.com/api/v3",
     "api_key"  : "your-volcengine-api-key",
     "provider" : "volcengine",
-    "model"    : "doubao-seed-2-0-pro-260215",
+    "model"    : "doubao-seed-2-0-lite-260428",
     "max_concurrent": 64
   }
 }

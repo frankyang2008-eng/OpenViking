@@ -61,6 +61,23 @@ With OpenViking, developers can build an Agent's brain just like managing local 
 
 > 💡 **Want to see it in action first?** Try [OpenViking Studio](https://openviking.ai/studio) — a live hosted instance with a context playground, semantic search, and a multi-agent hub. No installation required.
 
+### OpenViking Helper for macOS (Beta)
+
+**OpenViking Helper** is a macOS desktop app for OpenViking users. It brings local agent setup, session traces, memories, and skills into a visual console, making it easier to verify setup and sync local context into OpenViking.
+
+Highlights:
+
+- **Visual local Agent setup**: Detect OpenViking CLI, Claude Code, Codex, Cursor, Trae, and OpenCode, then configure supported plugin, MCP, Hook, and CLI integrations.
+- **Session trace inspection**: Parse Claude Code, Codex, and Trae sessions to show OpenViking recall, prompt injection, MCP calls, capture, and commit events.
+- **Local memory and skill management**: View local memory / rule files and `SKILL.md` skills, then sync them to OpenViking.
+
+> OpenViking Helper is currently in beta and supports macOS only.
+
+Download:
+
+- [macOS Apple Silicon (arm64)](https://lf3-cdn-tos.bytegoofy.com/obj/tron-demo/7654844610543360265/418715779/0.0.18/darwin-arm64/openviking-helper-0.0.18-arm64.dmg)
+- [macOS Intel (x64)](https://lf3-cdn-tos.bytegoofy.com/obj/tron-demo/7654844610543360265/418715779/0.0.18/darwin-x64/openviking-helper-0.0.18-x64.dmg)
+
 ### Local Deployment
 
 #### Prerequisites
@@ -123,7 +140,7 @@ Volcengine supports both model names and endpoint IDs. Using model names is reco
 {
   "vlm": {
     "provider": "volcengine",
-    "model": "doubao-seed-2-0-pro-260215",
+    "model": "doubao-seed-2-0-lite-260428",
     "api_key": "your-api-key",
     "api_base": "https://ark.cn-beijing.volces.com/api/v3"
   }
@@ -335,13 +352,17 @@ If you prefer manual configuration, create `~/.openviking/ov.conf`, remove the c
     "api_base" : "<api-endpoint>",     // API endpoint address
     "api_key"  : "<your-api-key>",     // Model service API Key (optional for openai-codex)
     "provider" : "<provider-type>",    // Provider type (volcengine, openai, openai-codex, kimi, glm, etc.)
-    "model"    : "<model-name>",       // VLM model name (e.g., doubao-seed-2-0-pro-260215 or gpt-4-vision-preview)
+    "model"    : "<model-name>",       // VLM model name (e.g., doubao-seed-2-0-lite-260428 or gpt-4-vision-preview)
     "max_concurrent": 64              // Max concurrent LLM calls for semantic processing (default: 64)
   }
 }
 ```
 
 > **Note**: For embedding models, supported providers are `volcengine` (Doubao), `openai`, `azure`, `jina`, `ollama`, `voyage`, `dashscope`, `minimax`, `cohere`, `vikingdb`, `gemini` (requires `pip install "google-genai>=1.0.0"`), `litellm`, and `local`. For VLM models, common providers include `volcengine`, `openai`, `openai-codex`, `kimi`, and `glm`.
+
+> **Memory config**: OpenViking always uses the v3 memory extraction pipeline. The legacy `memory.version` setting is deprecated and ignored; existing configs that set it still load without changing behavior.
+
+> **Memory schema scope**: Memory schema YAML defaults to `stage: "user"` and `peer_enabled: true`. Use `stage: "agent"` for execution-derived schemas such as trajectories/experiences, and set `peer_enabled: false` when a schema must stay in the current user's memory directory instead of peer directories.
 
 ##### Server Configuration Examples
 
@@ -373,7 +394,7 @@ If you prefer manual configuration, create `~/.openviking/ov.conf`, remove the c
     "api_base" : "https://ark.cn-beijing.volces.com/api/v3",
     "api_key"  : "your-volcengine-api-key",
     "provider" : "volcengine",
-    "model"    : "doubao-seed-2-0-pro-260215",
+    "model"    : "doubao-seed-2-0-lite-260428",
     "max_concurrent": 64
   }
 }
