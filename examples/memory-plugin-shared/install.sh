@@ -1228,6 +1228,48 @@ migrate_claude_legacy_marketplace() {
     info "$(t 'Removing pre-unification marketplace' '移除旧命名的 marketplace') ($OLD_MARKETPLACE_NAME)"
     claude_cmd plugin marketplace remove "$OLD_MARKETPLACE_NAME" >/dev/null 2>&1 || true
   fi
+  migrate_claude_legacy_settings
+}
+
+# `claude plugin marketplace remove` only clears the runtime registry
+# (~/.claude/plugins/known_marketplaces.json); the declarative
+# extraKnownMarketplaces and enabledPlugins maps in ~/.claude/settings.json
+# survive and re-assert on every Claude Code startup, re-registering a
+# marketplace whose source directory may no longer exist (and re-enabling a
+# plugin id that is no longer installed). Scrub them so restarts don't
+# resurrect the old install. Idempotent; safe to run when nothing is stale.
+migrate_claude_legacy_settings() {
+  [ -f "$CC_SETTINGS" ] || return 0
+  command -v node >/dev/null 2>&1 || return 0
+  local changed
+  changed="$(node - "$CC_SETTINGS" "$OLD_MARKETPLACE_NAME" 2>/dev/null <<'NODE' || true
+const fs = require("node:fs");
+const [settingsPath, oldName] = process.argv.slice(2);
+const s = JSON.parse(fs.readFileSync(settingsPath, "utf8"));
+let dirty = false;
+if (s.extraKnownMarketplaces && Object.prototype.hasOwnProperty.call(s.extraKnownMarketplaces, oldName)) {
+  delete s.extraKnownMarketplaces[oldName];
+  dirty = true;
+}
+if (s.enabledPlugins && typeof s.enabledPlugins === "object") {
+  for (const id of Object.keys(s.enabledPlugins)) {
+    if (id.endsWith("@" + oldName)) {
+      delete s.enabledPlugins[id];
+      dirty = true;
+    }
+  }
+}
+if (dirty) {
+  fs.writeFileSync(settingsPath, JSON.stringify(s, null, 2) + "\n");
+  process.stdout.write("1");
+} else {
+  process.stdout.write("0");
+}
+NODE
+  )"
+  if [ "$changed" = "1" ]; then
+    info "$(t 'Cleaned stale legacy entries from settings' '已清理 settings.json 旧命名残留条目') ($CC_SETTINGS)"
+  fi
 }
 
 write_claude_remote_manifest() {
