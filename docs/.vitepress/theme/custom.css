@@ -1,4 +1,5 @@
 :root {
+  --vp-layout-max-width: 100vw;
   --vp-c-brand-1: #0f766e;
   --vp-c-brand-2: #115e59;
   --vp-c-brand-3: #14b8a6;
@@ -11,6 +12,27 @@
   --vp-c-text-2: #47534f;
   --vp-font-family-base: "Avenir Next", "Gill Sans", "Trebuchet MS", sans-serif;
   --vp-font-family-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+}
+
+@media (min-width: 1280px) {
+  .VPContent .VPDoc.has-aside > .container > .content {
+    flex: 1 1 0;
+    min-width: 0;
+    padding-right: 16px;
+    padding-left: 16px;
+    width: auto;
+  }
+
+  .VPContent .VPDoc.has-aside > .container > .content > .content-container {
+    width: 100%;
+    max-width: 1200px;
+  }
+}
+
+@media (min-width: 1600px) {
+  :root {
+    --vp-layout-max-width: calc(100vw - 176px);
+  }
 }
 
 .dark {
@@ -329,3 +351,60 @@
     grid-template-columns: 1fr;
   }
 }
+.doc-page-actions {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.doc-page-actions > .llms-link-wrap,
+.doc-page-actions > .copy-md-wrap {
+  margin-bottom: 0;
+}
+
+@media (max-width: 640px) {
+  .doc-page-actions {
+    align-items: center;
+    flex-wrap: wrap;
+  }
+}
+
+.api-example-tabs {
+  margin: 20px 0 28px;
+}
+
+.api-example-tabs__tablist {
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+  margin-bottom: 12px;
+  padding-bottom: 1px;
+  border-bottom: 1px solid var(--vp-c-divider);
+}
+
+.api-example-tabs__tablist button {
+  flex: 0 0 auto;
+  padding: 7px 12px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--vp-c-text-2);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.api-example-tabs__tablist button:hover { color: var(--vp-c-text-1); }
+.api-example-tabs__tablist button.is-active {
+  border-bottom-color: var(--vp-c-brand-1);
+  color: var(--vp-c-brand-1);
+}
+
+.api-example-tabs > p:has(> strong:first-child) { margin-top: 0; }
+.api-example-tabs > div[class*='language-'] { margin: 0; }
+.api-example-tabs__panel > p:first-child { margin-top: 0; }
+.api-example-tabs__panel > div[class*='language-'] { margin: 0; }
+.api-example-tabs-enhancer { display: none; }
