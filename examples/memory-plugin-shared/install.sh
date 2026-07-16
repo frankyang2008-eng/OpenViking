@@ -1322,9 +1322,9 @@ migrate_claude_legacy_settings() {
   [ -f "$CC_SETTINGS" ] || return 0
   command -v node >/dev/null 2>&1 || return 0
   local changed
-  changed="$(node - "$CC_SETTINGS" "$OLD_MARKETPLACE_NAME" 2>/dev/null <<'NODE' || true
+  changed="$(node - "$CC_SETTINGS" "$OLD_MARKETPLACE_NAME" "$(date +%Y%m%d-%H%M%S)" 2>/dev/null <<'NODE' || true
 const fs = require("node:fs");
-const [settingsPath, oldName] = process.argv.slice(2);
+const [settingsPath, oldName, ts] = process.argv.slice(2);
 const s = JSON.parse(fs.readFileSync(settingsPath, "utf8"));
 let dirty = false;
 if (s.extraKnownMarketplaces && Object.prototype.hasOwnProperty.call(s.extraKnownMarketplaces, oldName)) {
@@ -1340,6 +1340,10 @@ if (s.enabledPlugins && typeof s.enabledPlugins === "object") {
   }
 }
 if (dirty) {
+  const backup = `${settingsPath}.bak.${ts}`;
+  const mode = fs.statSync(settingsPath).mode;
+  fs.copyFileSync(settingsPath, backup);
+  fs.chmodSync(backup, mode);
   fs.writeFileSync(settingsPath, JSON.stringify(s, null, 2) + "\n");
   process.stdout.write("1");
 } else {
@@ -1347,9 +1351,11 @@ if (dirty) {
 }
 NODE
   )"
-  if [ "$changed" = "1" ]; then
-    info "$(t 'Cleaned stale legacy entries from settings' '已清理 settings.json 旧命名残留条目') ($CC_SETTINGS)"
-  fi
+  case "$changed" in
+    1) info "$(t 'Cleaned stale legacy entries from settings' '已清理 settings.json 旧命名残留条目') ($CC_SETTINGS)" ;;
+    0) ;;
+    *) warn "$(t 'Could not clean stale entries from settings (malformed JSON or write failure); old plugin ids may revive on restart' '清理 settings.json 旧条目失败（JSON 非法或写入失败），旧插件 id 可能在重启后复活') ($CC_SETTINGS)" ;;
+  esac
 }
 
 write_claude_remote_manifest() {
@@ -1523,6 +1529,7 @@ install_claude() {
     return 0
   }
   if has_plugin_subcommand; then
+    warn "$(t 'Exit any running Claude Code first (/exit); a running instance can overwrite this cleanup and revive stale entries on restart.' '请先退出运行中的 Claude Code（/exit）；运行中的实例可能回写覆盖本次清理，使旧条目在重启后复活。')"
     migrate_claude_legacy_marketplace
     install_claude_modern || return 1
   else
