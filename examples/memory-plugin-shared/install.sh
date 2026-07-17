@@ -1358,6 +1358,48 @@ NODE
   esac
 }
 
+# Print the PIDs of any running Claude Code CLI instances, one per line.
+# Use `ps`, not pgrep: from inside Claude Code's own Bash sandbox pgrep cannot
+# see the claude process (it returns empty), whereas ps can. Match two ways:
+#   - comm=claude — the native-binary CLI (the standard install on macOS/Linux).
+#   - args path   — a Linux npm install runs via `#!/usr/bin/env node`, so the
+#     kernel reports comm=node; catch it by the claude / claude-code script path.
+# Plugin/MCP node subprocesses live under a `/.claude/` component (dot-prefixed),
+# which neither args pattern matches, so they are not misreported as the main CLI
+# — the process that loads settings.json into memory and rewrites it on exit.
+claude_running_pids() {
+  ps -eo pid=,comm=,args= 2>/dev/null | awk '
+    $2 == "claude" { print $1; next }
+    {
+      args = $3; for (i = 4; i <= NF; i++) args = args " " $i
+      if (args ~ /(^|\/)claude([[:space:]]|$)/ || args ~ /claude-code\//) print $1
+    }
+  ' || true
+}
+
+# Scrub stale legacy Claude Code settings entries on EVERY run, not only
+# `--harness claude`. Historically migrate_claude_legacy_settings only ran via
+# install_claude, so installs targeting other harnesses never cleaned the stale
+# extraKnownMarketplaces / enabledPlugins ids and they kept reviving on restart.
+# A running Claude Code instance holds settings.json in memory and rewrites the
+# whole file on exit, undoing the scrub — so when the stale ids are present and
+# claude is running, warn prominently that the cleanup will not stick yet.
+scrub_claude_legacy_settings() {
+  [ -f "$CC_SETTINGS" ] || return 0
+  command -v node >/dev/null 2>&1 || return 0
+  # Fast path: in practice the old id appears only in the stale entries, so if
+  # it is absent there is nothing to scrub — skip the node spawn on clean systems.
+  grep -qF "$OLD_MARKETPLACE_NAME" "$CC_SETTINGS" 2>/dev/null || return 0
+  local running_pids="" pid_list=""
+  running_pids="$(claude_running_pids)"
+  migrate_claude_legacy_settings
+  if [ -n "$running_pids" ]; then
+    pid_list="${running_pids//$'\n'/ }"
+    warn "$(t 'Claude Code is currently running' 'Claude Code 当前正在运行') (PID: $pid_list)."
+    warn "$(t 'A running instance loads settings.json into memory and rewrites the whole file on exit, which will resurrect the legacy entries just removed. /exit every Claude Code instance, then re-run this installer from a regular terminal (not from inside Claude Code) so the cleanup sticks.' '运行中的实例会把 settings.json 加载进内存，并在退出时整份回写，导致刚清理的旧条目复活。请 /exit 所有 Claude Code 实例，然后在普通终端（不要在 Claude Code 内部）重跑本安装脚本，清理才会持久生效。')"
+  fi
+}
+
 write_claude_remote_manifest() {
   mkdir -p "$(dirname "$CC_REMOTE_MANIFEST")"
   # Pre-directory-layout leftover (a bare .json registered as a file-type
@@ -1529,7 +1571,11 @@ install_claude() {
     return 0
   }
   if has_plugin_subcommand; then
-    warn "$(t 'Exit any running Claude Code first (/exit); a running instance can overwrite this cleanup and revive stale entries on restart.' '请先退出运行中的 Claude Code（/exit）；运行中的实例可能回写覆盖本次清理，使旧条目在重启后复活。')"
+    # Warn only when claude is actually running; scrub_claude_legacy_settings
+    # (run earlier in dispatch) already warns precisely about the settings scrub.
+    if [ -n "$(claude_running_pids)" ]; then
+      warn "$(t 'Exit any running Claude Code first (/exit); a running instance can overwrite these changes and revive stale entries on restart.' '请先退出运行中的 Claude Code（/exit）；运行中的实例可能回写覆盖本次更改，使旧条目在重启后复活。')"
+    fi
     migrate_claude_legacy_marketplace
     install_claude_modern || return 1
   else
@@ -2782,6 +2828,11 @@ NODE_BIN="$(command -v node)"
 NODE_MAJOR="$("$NODE_BIN" -p 'Number(process.versions.node.split(".")[0])')"
 [ "$NODE_MAJOR" -ge 18 ] || { err "Node.js 18+ required; found $("$NODE_BIN" --version)."; exit 1; }
 command -v curl >/dev/null 2>&1 || warn "curl not found; archive installs may fail."
+
+# Scrub stale legacy Claude Code settings entries on every run (not only
+# `--harness claude`) so the old plugin ids stop reviving on restart. Done
+# early — before any network step — so it still runs if a later step fails.
+scrub_claude_legacy_settings
 
 resolve_self_checkout
 select_harnesses
