@@ -1,7 +1,7 @@
 {
   "name": "openviking-memory",
   "displayName": "OpenViking Memory",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "description": "Long-term semantic memory for Qoder, powered by OpenViking. Auto-recall relevant memories at session start and capture important information during conversations.",
   "descriptionZh": "由 OpenViking 驱动的 Qoder 长期语义记忆。会话开始时自动召回相关记忆，并在对话过程中捕获重要信息。",
   "author": {
