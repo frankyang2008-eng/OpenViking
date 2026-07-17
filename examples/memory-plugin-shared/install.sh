@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 #
 # OpenViking Memory Plugin shared installer for Claude Code, Codex, Cursor,
-# TRAE / TRAE CN, OpenCode, and pi.
+# TRAE / TRAE CN, OpenCode, pi, and Qoder.
 #
 # One-liner (GitHub):
 #   bash <(curl -fsSL https://raw.githubusercontent.com/volcengine/OpenViking/main/examples/memory-plugin-shared/install.sh)
 # One-liner (TOS mirror, for regions where GitHub is unreachable):
 #   bash <(curl -fsSL https://ovrelease.tos-cn-beijing.volces.com/memory-plugin-shared/install.sh) --dist tos
 # Non-interactive:
-#   bash install.sh --harness claude,codex,cursor,trae,trae-cn,opencode,pi --dist github --lang en --url http://127.0.0.1:1933 --api-key ''
+#   bash install.sh --harness claude,codex,cursor,trae,trae-cn,opencode,pi,qoder --dist github --lang en --url http://127.0.0.1:1933 --api-key ''
 # Format-compatible CLI aliases:
 #   bash install.sh --harness codex --codex-bin codex,traex
 #   bash install.sh --harness claude --claude-bin claude,seed
@@ -63,6 +63,12 @@ MARKETPLACE_NAME="${OPENVIKING_MARKETPLACE_NAME:-openviking}"
 PLUGIN_NAME="openviking-memory"
 PLUGIN_ID="${PLUGIN_NAME}@${MARKETPLACE_NAME}"
 
+# Qoder installs a local plugin directory directly (no marketplace
+# registration); qodercli namespaces such installs under a synthetic "@local"
+# marketplace, so the plugin id is always openviking-memory@local regardless of
+# the install scope.
+QODER_PLUGIN_ID="${PLUGIN_NAME}@local"
+
 # Pre-unification names, cleaned up on upgrade.
 OLD_MARKETPLACE_NAME='openviking-plugins-local'
 CC_OLD_IDS="claude-code-memory-plugin@${OLD_MARKETPLACE_NAME} ${PLUGIN_NAME}@${OLD_MARKETPLACE_NAME}"
@@ -72,6 +78,8 @@ CODEX_OLD_MARKETPLACE_ROOT="$HOME/.codex/${OLD_MARKETPLACE_NAME}-marketplace"
 CODEX_CONFIG="${CODEX_CONFIG_FILE:-$HOME/.codex/config.toml}"
 CC_SETTINGS="$HOME/.claude/settings.json"
 CC_KNOWN_MARKETPLACES="$HOME/.claude/plugins/known_marketplaces.json"
+QODER_SETTINGS="$HOME/.qoder/settings.json"
+QODER_CACHE_DIR="$HOME/.qoder/plugins/cache/local/$PLUGIN_NAME"
 MKT_DIR_ARCHIVE="$OV_HOME/memory-plugin-marketplace"
 # Directory-shaped on purpose: Claude Code's file-type marketplaces
 # mis-derive installLocation and fail `marketplace update` with EISDIR.
@@ -143,7 +151,7 @@ usage() {
 Usage: install.sh [options]
 
 Options:
-  --harness LIST     Comma-separated harnesses: claude, codex, cursor, trae, trae-cn, opencode, pi.
+  --harness LIST     Comma-separated harnesses: claude, codex, cursor, trae, trae-cn, opencode, pi, qoder.
   --claude-bin LIST  Comma-separated Claude-format CLI commands (default: claude).
   --codex-bin LIST   Comma-separated Codex-format CLI commands (default: codex).
   --dist CHANNEL     github (default) | tos (mirror for GitHub-blocked regions).
@@ -155,7 +163,7 @@ Options:
   --user ID          Optional OpenViking user.
   --statusline       Register the Claude Code statusline without asking.
   --no-statusline    Skip the statusline prompt.
-  --uninstall        Remove Cursor/TRAE OpenViking integration files and config.
+  --uninstall        Remove Cursor/TRAE/Qoder OpenViking integration files and config.
   --yes, -y          Use defaults for prompts when possible.
 EOF
 }
@@ -369,7 +377,7 @@ EOF
 }
 
 refresh_available_harnesses() {
-  HAVE_CLAUDE=0; HAVE_CODEX=0; HAVE_CURSOR=0; HAVE_TRAE=0; HAVE_TRAE_CN=0; HAVE_OPENCODE=0; HAVE_PI=0
+  HAVE_CLAUDE=0; HAVE_CODEX=0; HAVE_CURSOR=0; HAVE_TRAE=0; HAVE_TRAE_CN=0; HAVE_OPENCODE=0; HAVE_PI=0; HAVE_QODER=0
   has_available_bin "$CLAUDE_BINS" && HAVE_CLAUDE=1
   has_available_bin "$CODEX_BINS" && HAVE_CODEX=1
   { command -v cursor >/dev/null 2>&1 || command -v cursor-agent >/dev/null 2>&1 || [ -d "/Applications/Cursor.app" ] || [ -d "$HOME/.cursor" ]; } && HAVE_CURSOR=1
@@ -377,6 +385,7 @@ refresh_available_harnesses() {
   { [ -d "/Applications/Trae CN.app" ] || [ -d "/Applications/TRAE SOLO CN.app" ] || [ -d "$HOME/.trae-cn" ]; } && HAVE_TRAE_CN=1
   command -v opencode >/dev/null 2>&1 && HAVE_OPENCODE=1
   command -v pi >/dev/null 2>&1 && HAVE_PI=1
+  command -v qodercli >/dev/null 2>&1 && HAVE_QODER=1
   return 0
 }
 
@@ -443,7 +452,7 @@ NODE
 CLAUDE_BINS="$(normalize_bin_list "$CLAUDE_BINS_ARG" claude)"
 CODEX_BINS="$(normalize_bin_list "$CODEX_BINS_ARG" codex)"
 
-HAVE_CLAUDE=0; HAVE_CODEX=0; HAVE_CURSOR=0; HAVE_TRAE=0; HAVE_TRAE_CN=0; HAVE_OPENCODE=0; HAVE_PI=0
+HAVE_CLAUDE=0; HAVE_CODEX=0; HAVE_CURSOR=0; HAVE_TRAE=0; HAVE_TRAE_CN=0; HAVE_OPENCODE=0; HAVE_PI=0; HAVE_QODER=0
 refresh_available_harnesses
 
 TUI_CLAUDE_BINS="$CLAUDE_BINS"
@@ -455,6 +464,7 @@ SEL_PI=0
 SEL_CURSOR_APP=0
 SEL_TRAE=0
 SEL_TRAE_CN=0
+SEL_QODER=0
 TUI_CURSOR=0; TUI_LINES=0
 
 list_count() {
@@ -468,7 +478,7 @@ EOF
 }
 
 tui_selectable_count() {
-  printf '%s' $(( $(list_count "$TUI_CLAUDE_BINS") + $(list_count "$TUI_CODEX_BINS") + 5 ))
+  printf '%s' $(( $(list_count "$TUI_CLAUDE_BINS") + $(list_count "$TUI_CODEX_BINS") + 6 ))
 }
 
 tui_total_count() {
@@ -500,6 +510,8 @@ EOF
   if [ "$i" -eq "$idx" ]; then printf 'trae|trae'; return 0; fi
   i=$((i + 1))
   if [ "$i" -eq "$idx" ]; then printf 'trae-cn|trae-cn'; return 0; fi
+  i=$((i + 1))
+  if [ "$i" -eq "$idx" ]; then printf 'qoder|qoder'; return 0; fi
   printf 'add|'
 }
 
@@ -529,6 +541,7 @@ tui_bin_label() {
     cursor:*) printf 'Cursor' ;;
     trae:*) printf 'TRAE' ;;
     trae-cn:*) printf 'TRAE CN' ;;
+    qoder:*) printf 'Qoder' ;;
     claude:*) printf '%s %s' "$bin" "$(t '(Claude-format)' '（Claude 格式）')" ;;
     codex:*) printf '%s %s' "$bin" "$(t '(Codex-format)' '（Codex 格式）')" ;;
   esac
@@ -548,8 +561,10 @@ tui_bin_selected() {
     [ "$SEL_CURSOR_APP" -eq 1 ]
   elif [ "$kind" = "trae" ]; then
     [ "$SEL_TRAE" -eq 1 ]
-  else
+  elif [ "$kind" = "trae-cn" ]; then
     [ "$SEL_TRAE_CN" -eq 1 ]
+  else
+    [ "$SEL_QODER" -eq 1 ]
   fi
 }
 
@@ -558,6 +573,7 @@ tui_bin_detected() { # tui_bin_detected <kind> <bin>
     cursor) [ "$HAVE_CURSOR" -eq 1 ] ;;
     trae) [ "$HAVE_TRAE" -eq 1 ] ;;
     trae-cn) [ "$HAVE_TRAE_CN" -eq 1 ] ;;
+    qoder) [ "$HAVE_QODER" -eq 1 ] ;;
     *) command -v "$2" >/dev/null 2>&1 ;;
   esac
 }
@@ -570,6 +586,7 @@ tui_set_all_bins() {
   SEL_CURSOR_APP=1
   SEL_TRAE=1
   SEL_TRAE_CN=1
+  SEL_QODER=1
 }
 
 tui_toggle_bin() {
@@ -588,8 +605,10 @@ tui_toggle_bin() {
     SEL_CURSOR_APP=$((1 - SEL_CURSOR_APP)); return 0
   elif [ "$kind" = "trae" ]; then
     SEL_TRAE=$((1 - SEL_TRAE)); return 0
-  else
+  elif [ "$kind" = "trae-cn" ]; then
     SEL_TRAE_CN=$((1 - SEL_TRAE_CN)); return 0
+  else
+    SEL_QODER=$((1 - SEL_QODER)); return 0
   fi
   if list_contains_line "$selected" "$bin"; then
     while IFS= read -r item; do
@@ -658,6 +677,7 @@ tui_reset_bin_selection() {
   SEL_CURSOR_APP=0
   SEL_TRAE=0
   SEL_TRAE_CN=0
+  SEL_QODER=0
   while IFS= read -r bin; do
     [ -n "$bin" ] || continue
     if command -v "$bin" >/dev/null 2>&1; then
@@ -681,6 +701,7 @@ EOF
   if [ "$HAVE_CURSOR" -eq 1 ]; then SEL_CURSOR_APP=1; any=1; fi
   if [ "$HAVE_TRAE" -eq 1 ]; then SEL_TRAE=1; any=1; fi
   if [ "$HAVE_TRAE_CN" -eq 1 ]; then SEL_TRAE_CN=1; any=1; fi
+  if [ "$HAVE_QODER" -eq 1 ]; then SEL_QODER=1; any=1; fi
   if [ "$any" -ne 1 ]; then
     SEL_CLAUDE_BINS="$TUI_CLAUDE_BINS"
     SEL_CODEX_BINS="$TUI_CODEX_BINS"
@@ -768,7 +789,7 @@ tui_add_compatible_cli() {
 tui_has_selection() {
   [ -n "$(list_words "$SEL_CLAUDE_BINS")" ] || [ -n "$(list_words "$SEL_CODEX_BINS")" ] \
     || [ "$SEL_OPENCODE" -eq 1 ] || [ "$SEL_PI" -eq 1 ] || [ "$SEL_CURSOR_APP" -eq 1 ] \
-    || [ "$SEL_TRAE" -eq 1 ] || [ "$SEL_TRAE_CN" -eq 1 ]
+    || [ "$SEL_TRAE" -eq 1 ] || [ "$SEL_TRAE_CN" -eq 1 ] || [ "$SEL_QODER" -eq 1 ]
 }
 
 tui_finish_selection() {
@@ -782,6 +803,7 @@ tui_finish_selection() {
   [ "$SEL_CURSOR_APP" -eq 1 ] && SELECTED_HARNESSES="${SELECTED_HARNESSES:+$SELECTED_HARNESSES,}cursor"
   [ "$SEL_TRAE" -eq 1 ] && SELECTED_HARNESSES="${SELECTED_HARNESSES:+$SELECTED_HARNESSES,}trae"
   [ "$SEL_TRAE_CN" -eq 1 ] && SELECTED_HARNESSES="${SELECTED_HARNESSES:+$SELECTED_HARNESSES,}trae-cn"
+  [ "$SEL_QODER" -eq 1 ] && SELECTED_HARNESSES="${SELECTED_HARNESSES:+$SELECTED_HARNESSES,}qoder"
   return 0
 }
 
@@ -852,6 +874,7 @@ select_harnesses() {
   [ "$HAVE_TRAE_CN" -eq 1 ] && detected="${detected:+$detected,}trae-cn"
   [ "$HAVE_OPENCODE" -eq 1 ] && detected="${detected:+$detected,}opencode"
   [ "$HAVE_PI" -eq 1 ] && detected="${detected:+$detected,}pi"
+  [ "$HAVE_QODER" -eq 1 ] && detected="${detected:+$detected,}qoder"
 
   if [ -n "$REQUESTED_HARNESSES" ]; then
     SELECTED_HARNESSES="$REQUESTED_HARNESSES"
@@ -897,7 +920,7 @@ validate_selected_harnesses() {
   local h bad=0
   while IFS= read -r h; do
     case "$h" in
-      claude|codex|cursor|trae|trae-cn|opencode|pi) ;;
+      claude|codex|cursor|trae|trae-cn|opencode|pi|qoder) ;;
       *) err "Unsupported harness: $h"; bad=1 ;;
     esac
   done <<EOF
@@ -934,6 +957,7 @@ EOF
   fi
   if contains_harness opencode && command -v opencode >/dev/null 2>&1; then ok=1; fi
   if contains_harness pi && command -v pi >/dev/null 2>&1; then ok=1; fi
+  if contains_harness qoder && command -v qodercli >/dev/null 2>&1; then ok=1; fi
   # Cursor and TRAE are config-driven integrations. They may be installed
   # before the desktop app itself, so a CLI in PATH is not required.
   if contains_harness cursor || contains_harness trae || contains_harness trae-cn; then ok=1; fi
@@ -2098,6 +2122,9 @@ uninstall_agent_integrations() {
     rm -rf "$OV_HOME/agent-integrations/trae-cn"
     info "$(t 'Removed TRAE CN OpenViking hooks and MCP config.' '已移除 TRAE CN OpenViking hooks 与 MCP 配置。')"
   fi
+  if contains_harness qoder; then
+    uninstall_qoder
+  fi
   if [ ! -d "$OV_HOME/agent-integrations/cursor" ] \
     && [ ! -d "$OV_HOME/agent-integrations/trae" ] \
     && [ ! -d "$OV_HOME/agent-integrations/trae-cn" ]; then
@@ -2618,6 +2645,63 @@ install_pi() {
   info "$(t 'pi extension installed:' 'pi 扩展已安装：') $dest"
 }
 
+install_qoder() {
+  heading "$(t '4. Qoder plugin' '4. Qoder 插件')"
+  if ! command -v qodercli >/dev/null 2>&1; then
+    warn "$(t 'qodercli CLI not found; skipping Qoder install.' '未找到 qodercli 命令，跳过 Qoder 安装。')"
+    return 0
+  fi
+  local plugin_dir
+  plugin_dir="$(plugin_dir_on_disk claude-code-memory-plugin)" || {
+    warn "$(t 'Qoder plugin sources not found; skipping.' '未找到 Qoder 插件源码，跳过。')"
+    return 0
+  }
+  info "qodercli plugin install ($plugin_dir)"
+  qodercli plugin install "$plugin_dir" --scope user || {
+    err "qodercli plugin install failed"
+    return 1
+  }
+  # Install auto-enables; this is a belt-and-braces no-op when already enabled.
+  qodercli plugin enable "$QODER_PLUGIN_ID" >/dev/null 2>&1 || true
+  info "$(t 'Qoder plugin installed:' 'Qoder 插件已安装：') $QODER_PLUGIN_ID"
+}
+
+uninstall_qoder() {
+  heading "$(t 'Remove Qoder plugin' '移除 Qoder 插件')"
+  if command -v qodercli >/dev/null 2>&1; then
+    qodercli plugin uninstall "$QODER_PLUGIN_ID" --scope user >/dev/null 2>&1 || true
+  fi
+  # qodercli leaves a ghost enabledPlugins entry plus a cache dir behind on
+  # uninstall; scrub both so the plugin does not revive on the next launch.
+  if [ -f "$QODER_SETTINGS" ] && command -v node >/dev/null 2>&1; then
+    local changed
+    changed="$(node - "$QODER_SETTINGS" "$QODER_PLUGIN_ID" "$(date +%Y%m%d-%H%M%S)" 2>/dev/null <<'NODE' || true
+const fs = require("node:fs");
+const [settingsPath, pluginId, ts] = process.argv.slice(2);
+const s = JSON.parse(fs.readFileSync(settingsPath, "utf8"));
+if (s.enabledPlugins && Object.prototype.hasOwnProperty.call(s.enabledPlugins, pluginId)) {
+  const backup = `${settingsPath}.bak.${ts}`;
+  const mode = fs.statSync(settingsPath).mode;
+  fs.copyFileSync(settingsPath, backup);
+  fs.chmodSync(backup, mode);
+  delete s.enabledPlugins[pluginId];
+  fs.writeFileSync(settingsPath, JSON.stringify(s, null, 2) + "\n");
+  process.stdout.write("1");
+} else {
+  process.stdout.write("0");
+}
+NODE
+    )"
+    case "$changed" in
+      1) info "$(t 'Cleaned the Qoder enabledPlugins entry' '已清理 Qoder enabledPlugins 残留条目') ($QODER_SETTINGS)" ;;
+      0) ;;
+      *) warn "$(t 'Could not clean the Qoder enabledPlugins entry (malformed JSON or write failure); the plugin may revive on restart' '清理 Qoder enabledPlugins 残留失败（JSON 非法或写入失败），插件可能在重启后复活') ($QODER_SETTINGS)" ;;
+    esac
+  fi
+  rm -rf "$QODER_CACHE_DIR"
+  info "$(t 'Removed the Qoder OpenViking plugin.' '已移除 Qoder OpenViking 插件。')"
+}
+
 # ---------------------------------------------------------------------------
 # Validation
 # ---------------------------------------------------------------------------
@@ -2799,6 +2883,27 @@ EOF
       node --check "$HOME/.pi/agent/extensions/openviking/shared/recall-core.mjs" || ok=0
     fi
   fi
+  if contains_harness qoder; then
+    if command -v qodercli >/dev/null 2>&1; then
+      list="$(qodercli plugin list 2>/dev/null || true)"
+      if str_contains "$list" "$PLUGIN_NAME"; then
+        info "qoder: $PLUGIN_NAME $(t 'visible in plugin list' '已出现在插件列表')"
+      else
+        warn "qoder: $PLUGIN_NAME $(t 'not visible in plugin list' '未出现在插件列表')"
+        ok=0
+      fi
+      cached=$(find "$QODER_CACHE_DIR" -name 'mcp-proxy.mjs' -path '*/servers/*' 2>/dev/null | sort | tail -n 1)
+      if [ -n "$cached" ]; then
+        node --check "$cached" && info "qoder: $(t 'cached stdio proxy parses' '缓存中的 stdio 代理语法正常')" || ok=0
+      else
+        warn "qoder: $PLUGIN_NAME $(t 'cached stdio proxy not found' '未找到缓存的 stdio 代理')"
+        ok=0
+      fi
+    else
+      warn "qoder: $(t 'qodercli not found; plugin not validated' '未找到 qodercli，插件未校验')"
+      ok=0
+    fi
+  fi
   if [ -n "$MKT_DIR" ] && [ -f "$MKT_DIR/claude-code-memory-plugin/scripts/marketplace.test.mjs" ] && [ -d "$MKT_DIR/../.git" ]; then
     node --test "$MKT_DIR/claude-code-memory-plugin/scripts/marketplace.test.mjs" \
       "$MKT_DIR/codex-memory-plugin/scripts/marketplace.test.mjs" || ok=0
@@ -2875,6 +2980,7 @@ if contains_harness trae; then install_trae_variant trae; fi
 if contains_harness trae-cn; then install_trae_variant trae-cn; fi
 if contains_harness opencode; then install_opencode; fi
 if contains_harness pi; then install_pi; fi
+if contains_harness qoder; then install_qoder; fi
 validate_install
 
 heading "$(t 'Done' '完成')"
@@ -2890,3 +2996,4 @@ if contains_harness trae; then info "TRAE: ~/.trae/hooks.json + MCP"; fi
 if contains_harness trae-cn; then info "TRAE CN: ~/.trae-cn/hooks.json + MCP"; fi
 if contains_harness opencode; then info "OpenCode: @openviking/opencode-plugin"; fi
 if contains_harness pi; then info "pi: ~/.pi/agent/extensions/openviking"; fi
+if contains_harness qoder; then info "Qoder: $QODER_PLUGIN_ID (user scope)"; fi

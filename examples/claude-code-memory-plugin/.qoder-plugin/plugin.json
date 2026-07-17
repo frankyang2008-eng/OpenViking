@@ -1,0 +1,26 @@
+{
+  "name": "openviking-memory",
+  "displayName": "OpenViking Memory",
+  "version": "0.4.2",
+  "description": "Long-term semantic memory for Qoder, powered by OpenViking. Auto-recall relevant memories at session start and capture important information during conversations.",
+  "descriptionZh": "由 OpenViking 驱动的 Qoder 长期语义记忆。会话开始时自动召回相关记忆，并在对话过程中捕获重要信息。",
+  "author": {
+    "name": "OpenViking",
+    "url": "https://github.com/volcengine/OpenViking"
+  },
+  "homepage": "https://github.com/volcengine/OpenViking",
+  "repository": "https://github.com/volcengine/OpenViking",
+  "license": "Apache-2.0",
+  "keywords": [
+    "memory",
+    "openviking",
+    "semantic-search",
+    "long-term-memory",
+    "context-engine"
+  ],
+  "category": "developer-tools",
+  "commands": "./commands/",
+  "hooks": "./hooks/hooks.json",
+  "mcpServers": "./.mcp.json",
+  "preserveUpstreamMetadata": true
+}
