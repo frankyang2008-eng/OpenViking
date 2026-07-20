@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 #
 # OpenViking Memory Plugin shared installer for Claude Code, Codex, Cursor,
-# TRAE / TRAE CN, OpenCode, pi, and Qoder.
+# TRAE / TRAE CN, OpenCode, pi, Qoder, and CodeBuddy.
 #
 # One-liner (GitHub):
 #   bash <(curl -fsSL https://raw.githubusercontent.com/volcengine/OpenViking/main/examples/memory-plugin-shared/install.sh)
 # One-liner (TOS mirror, for regions where GitHub is unreachable):
 #   bash <(curl -fsSL https://ovrelease.tos-cn-beijing.volces.com/memory-plugin-shared/install.sh) --dist tos
 # Non-interactive:
-#   bash install.sh --harness claude,codex,cursor,trae,trae-cn,opencode,pi,qoder --dist github --lang en --url http://127.0.0.1:1933 --api-key ''
+#   bash install.sh --harness claude,codex,cursor,trae,trae-cn,opencode,pi,qoder,codebuddy --dist github --lang en --url http://127.0.0.1:1933 --api-key ''
 # Format-compatible CLI aliases:
 #   bash install.sh --harness codex --codex-bin codex,traex
 #   bash install.sh --harness claude --claude-bin claude,seed
@@ -80,6 +80,15 @@ CC_SETTINGS="$HOME/.claude/settings.json"
 CC_KNOWN_MARKETPLACES="$HOME/.claude/plugins/known_marketplaces.json"
 QODER_SETTINGS="$HOME/.qoder/settings.json"
 QODER_CACHE_DIR="$HOME/.qoder/plugins/cache/local/$PLUGIN_NAME"
+
+# CodeBuddy uses a real local marketplace (directory type) under
+# ~/.codebuddy/marketplaces; install copies into a versioned cache and
+# auto-enables. CODEBUDDY_CONFIG_DIR overrides the config root if set.
+CODEBUDDY_DIR="${CODEBUDDY_CONFIG_DIR:-$HOME/.codebuddy}"
+CODEBUDDY_MKT_NAME="openviking-local"
+CODEBUDDY_MKT_DIR="$CODEBUDDY_DIR/marketplaces/$CODEBUDDY_MKT_NAME"
+CODEBUDDY_PLUGIN_ID="${PLUGIN_NAME}@${CODEBUDDY_MKT_NAME}"
+CODEBUDDY_CACHE_DIR="$CODEBUDDY_DIR/plugins/cache/$CODEBUDDY_MKT_NAME"
 MKT_DIR_ARCHIVE="$OV_HOME/memory-plugin-marketplace"
 # Directory-shaped on purpose: Claude Code's file-type marketplaces
 # mis-derive installLocation and fail `marketplace update` with EISDIR.
@@ -151,7 +160,7 @@ usage() {
 Usage: install.sh [options]
 
 Options:
-  --harness LIST     Comma-separated harnesses: claude, codex, cursor, trae, trae-cn, opencode, pi, qoder.
+  --harness LIST     Comma-separated harnesses: claude, codex, cursor, trae, trae-cn, opencode, pi, qoder, codebuddy.
   --claude-bin LIST  Comma-separated Claude-format CLI commands (default: claude).
   --codex-bin LIST   Comma-separated Codex-format CLI commands (default: codex).
   --dist CHANNEL     github (default) | tos (mirror for GitHub-blocked regions).
@@ -163,7 +172,7 @@ Options:
   --user ID          Optional OpenViking user.
   --statusline       Register the Claude Code statusline without asking.
   --no-statusline    Skip the statusline prompt.
-  --uninstall        Remove Cursor/TRAE/Qoder OpenViking integration files and config.
+  --uninstall        Remove Cursor/TRAE/Qoder/CodeBuddy OpenViking integration files and config.
   --yes, -y          Use defaults for prompts when possible.
 EOF
 }
@@ -377,7 +386,7 @@ EOF
 }
 
 refresh_available_harnesses() {
-  HAVE_CLAUDE=0; HAVE_CODEX=0; HAVE_CURSOR=0; HAVE_TRAE=0; HAVE_TRAE_CN=0; HAVE_OPENCODE=0; HAVE_PI=0; HAVE_QODER=0
+  HAVE_CLAUDE=0; HAVE_CODEX=0; HAVE_CURSOR=0; HAVE_TRAE=0; HAVE_TRAE_CN=0; HAVE_OPENCODE=0; HAVE_PI=0; HAVE_QODER=0; HAVE_CODEBUDDY=0
   has_available_bin "$CLAUDE_BINS" && HAVE_CLAUDE=1
   has_available_bin "$CODEX_BINS" && HAVE_CODEX=1
   { command -v cursor >/dev/null 2>&1 || command -v cursor-agent >/dev/null 2>&1 || [ -d "/Applications/Cursor.app" ] || [ -d "$HOME/.cursor" ]; } && HAVE_CURSOR=1
@@ -386,6 +395,7 @@ refresh_available_harnesses() {
   command -v opencode >/dev/null 2>&1 && HAVE_OPENCODE=1
   command -v pi >/dev/null 2>&1 && HAVE_PI=1
   command -v qodercli >/dev/null 2>&1 && HAVE_QODER=1
+  command -v codebuddy >/dev/null 2>&1 && HAVE_CODEBUDDY=1
   return 0
 }
 
@@ -452,7 +462,7 @@ NODE
 CLAUDE_BINS="$(normalize_bin_list "$CLAUDE_BINS_ARG" claude)"
 CODEX_BINS="$(normalize_bin_list "$CODEX_BINS_ARG" codex)"
 
-HAVE_CLAUDE=0; HAVE_CODEX=0; HAVE_CURSOR=0; HAVE_TRAE=0; HAVE_TRAE_CN=0; HAVE_OPENCODE=0; HAVE_PI=0; HAVE_QODER=0
+HAVE_CLAUDE=0; HAVE_CODEX=0; HAVE_CURSOR=0; HAVE_TRAE=0; HAVE_TRAE_CN=0; HAVE_OPENCODE=0; HAVE_PI=0; HAVE_QODER=0; HAVE_CODEBUDDY=0
 refresh_available_harnesses
 
 TUI_CLAUDE_BINS="$CLAUDE_BINS"
@@ -465,6 +475,7 @@ SEL_CURSOR_APP=0
 SEL_TRAE=0
 SEL_TRAE_CN=0
 SEL_QODER=0
+SEL_CODEBUDDY=0
 TUI_CURSOR=0; TUI_LINES=0
 
 list_count() {
@@ -478,7 +489,7 @@ EOF
 }
 
 tui_selectable_count() {
-  printf '%s' $(( $(list_count "$TUI_CLAUDE_BINS") + $(list_count "$TUI_CODEX_BINS") + 6 ))
+  printf '%s' $(( $(list_count "$TUI_CLAUDE_BINS") + $(list_count "$TUI_CODEX_BINS") + 7 ))
 }
 
 tui_total_count() {
@@ -512,6 +523,8 @@ EOF
   if [ "$i" -eq "$idx" ]; then printf 'trae-cn|trae-cn'; return 0; fi
   i=$((i + 1))
   if [ "$i" -eq "$idx" ]; then printf 'qoder|qoder'; return 0; fi
+  i=$((i + 1))
+  if [ "$i" -eq "$idx" ]; then printf 'codebuddy|codebuddy'; return 0; fi
   printf 'add|'
 }
 
@@ -542,6 +555,7 @@ tui_bin_label() {
     trae:*) printf 'TRAE' ;;
     trae-cn:*) printf 'TRAE CN' ;;
     qoder:*) printf 'Qoder' ;;
+    codebuddy:*) printf 'CodeBuddy' ;;
     claude:*) printf '%s %s' "$bin" "$(t '(Claude-format)' '（Claude 格式）')" ;;
     codex:*) printf '%s %s' "$bin" "$(t '(Codex-format)' '（Codex 格式）')" ;;
   esac
@@ -563,8 +577,10 @@ tui_bin_selected() {
     [ "$SEL_TRAE" -eq 1 ]
   elif [ "$kind" = "trae-cn" ]; then
     [ "$SEL_TRAE_CN" -eq 1 ]
-  else
+  elif [ "$kind" = "qoder" ]; then
     [ "$SEL_QODER" -eq 1 ]
+  else
+    [ "$SEL_CODEBUDDY" -eq 1 ]
   fi
 }
 
@@ -574,6 +590,7 @@ tui_bin_detected() { # tui_bin_detected <kind> <bin>
     trae) [ "$HAVE_TRAE" -eq 1 ] ;;
     trae-cn) [ "$HAVE_TRAE_CN" -eq 1 ] ;;
     qoder) [ "$HAVE_QODER" -eq 1 ] ;;
+    codebuddy) [ "$HAVE_CODEBUDDY" -eq 1 ] ;;
     *) command -v "$2" >/dev/null 2>&1 ;;
   esac
 }
@@ -587,6 +604,7 @@ tui_set_all_bins() {
   SEL_TRAE=1
   SEL_TRAE_CN=1
   SEL_QODER=1
+  SEL_CODEBUDDY=1
 }
 
 tui_toggle_bin() {
@@ -607,8 +625,10 @@ tui_toggle_bin() {
     SEL_TRAE=$((1 - SEL_TRAE)); return 0
   elif [ "$kind" = "trae-cn" ]; then
     SEL_TRAE_CN=$((1 - SEL_TRAE_CN)); return 0
-  else
+  elif [ "$kind" = "qoder" ]; then
     SEL_QODER=$((1 - SEL_QODER)); return 0
+  else
+    SEL_CODEBUDDY=$((1 - SEL_CODEBUDDY)); return 0
   fi
   if list_contains_line "$selected" "$bin"; then
     while IFS= read -r item; do
@@ -678,6 +698,7 @@ tui_reset_bin_selection() {
   SEL_TRAE=0
   SEL_TRAE_CN=0
   SEL_QODER=0
+  SEL_CODEBUDDY=0
   while IFS= read -r bin; do
     [ -n "$bin" ] || continue
     if command -v "$bin" >/dev/null 2>&1; then
@@ -702,6 +723,7 @@ EOF
   if [ "$HAVE_TRAE" -eq 1 ]; then SEL_TRAE=1; any=1; fi
   if [ "$HAVE_TRAE_CN" -eq 1 ]; then SEL_TRAE_CN=1; any=1; fi
   if [ "$HAVE_QODER" -eq 1 ]; then SEL_QODER=1; any=1; fi
+  if [ "$HAVE_CODEBUDDY" -eq 1 ]; then SEL_CODEBUDDY=1; any=1; fi
   if [ "$any" -ne 1 ]; then
     SEL_CLAUDE_BINS="$TUI_CLAUDE_BINS"
     SEL_CODEX_BINS="$TUI_CODEX_BINS"
@@ -789,7 +811,7 @@ tui_add_compatible_cli() {
 tui_has_selection() {
   [ -n "$(list_words "$SEL_CLAUDE_BINS")" ] || [ -n "$(list_words "$SEL_CODEX_BINS")" ] \
     || [ "$SEL_OPENCODE" -eq 1 ] || [ "$SEL_PI" -eq 1 ] || [ "$SEL_CURSOR_APP" -eq 1 ] \
-    || [ "$SEL_TRAE" -eq 1 ] || [ "$SEL_TRAE_CN" -eq 1 ] || [ "$SEL_QODER" -eq 1 ]
+    || [ "$SEL_TRAE" -eq 1 ] || [ "$SEL_TRAE_CN" -eq 1 ] || [ "$SEL_QODER" -eq 1 ] || [ "$SEL_CODEBUDDY" -eq 1 ]
 }
 
 tui_finish_selection() {
@@ -804,6 +826,7 @@ tui_finish_selection() {
   [ "$SEL_TRAE" -eq 1 ] && SELECTED_HARNESSES="${SELECTED_HARNESSES:+$SELECTED_HARNESSES,}trae"
   [ "$SEL_TRAE_CN" -eq 1 ] && SELECTED_HARNESSES="${SELECTED_HARNESSES:+$SELECTED_HARNESSES,}trae-cn"
   [ "$SEL_QODER" -eq 1 ] && SELECTED_HARNESSES="${SELECTED_HARNESSES:+$SELECTED_HARNESSES,}qoder"
+  [ "$SEL_CODEBUDDY" -eq 1 ] && SELECTED_HARNESSES="${SELECTED_HARNESSES:+$SELECTED_HARNESSES,}codebuddy"
   return 0
 }
 
@@ -875,6 +898,7 @@ select_harnesses() {
   [ "$HAVE_OPENCODE" -eq 1 ] && detected="${detected:+$detected,}opencode"
   [ "$HAVE_PI" -eq 1 ] && detected="${detected:+$detected,}pi"
   [ "$HAVE_QODER" -eq 1 ] && detected="${detected:+$detected,}qoder"
+  [ "$HAVE_CODEBUDDY" -eq 1 ] && detected="${detected:+$detected,}codebuddy"
 
   if [ -n "$REQUESTED_HARNESSES" ]; then
     SELECTED_HARNESSES="$REQUESTED_HARNESSES"
@@ -920,7 +944,7 @@ validate_selected_harnesses() {
   local h bad=0
   while IFS= read -r h; do
     case "$h" in
-      claude|codex|cursor|trae|trae-cn|opencode|pi|qoder) ;;
+      claude|codex|cursor|trae|trae-cn|opencode|pi|qoder|codebuddy) ;;
       *) err "Unsupported harness: $h"; bad=1 ;;
     esac
   done <<EOF
@@ -958,6 +982,7 @@ EOF
   if contains_harness opencode && command -v opencode >/dev/null 2>&1; then ok=1; fi
   if contains_harness pi && command -v pi >/dev/null 2>&1; then ok=1; fi
   if contains_harness qoder && command -v qodercli >/dev/null 2>&1; then ok=1; fi
+  if contains_harness codebuddy && command -v codebuddy >/dev/null 2>&1; then ok=1; fi
   # Cursor and TRAE are config-driven integrations. They may be installed
   # before the desktop app itself, so a CLI in PATH is not required.
   if contains_harness cursor || contains_harness trae || contains_harness trae-cn; then ok=1; fi
@@ -2125,6 +2150,9 @@ uninstall_agent_integrations() {
   if contains_harness qoder; then
     uninstall_qoder
   fi
+  if contains_harness codebuddy; then
+    uninstall_codebuddy
+  fi
   if [ ! -d "$OV_HOME/agent-integrations/cursor" ] \
     && [ ! -d "$OV_HOME/agent-integrations/trae" ] \
     && [ ! -d "$OV_HOME/agent-integrations/trae-cn" ]; then
@@ -2702,6 +2730,75 @@ NODE
   info "$(t 'Removed the Qoder OpenViking plugin.' '已移除 Qoder OpenViking 插件。')"
 }
 
+# CodeBuddy uses a real local marketplace (directory type) under
+# ~/.codebuddy/marketplaces. We materialize the plugin into it (version read
+# from the plugin manifest, DRY), register it, then `plugin install` copies a
+# versioned snapshot into the cache and auto-enables it (no manual JSON merge,
+# unlike Qoder). Official `plugin uninstall` self-cleans settings + ledger but
+# leaves the cache dir behind, so we rm it ourselves.
+materialize_codebuddy_marketplace() {
+  local plugin_dir="$1" version
+  version="$(json_get "$plugin_dir/.claude-plugin/plugin.json" version)"
+  [ -n "$version" ] || version="0.0.0"
+  rm -rf "$CODEBUDDY_MKT_DIR"
+  mkdir -p "$CODEBUDDY_MKT_DIR/plugins/openviking-memory" "$CODEBUDDY_MKT_DIR/.codebuddy-plugin" || return 1
+  (cd "$plugin_dir" && tar --exclude node_modules --exclude .git --exclude .omc --exclude package-lock.json -cf - .) \
+    | (cd "$CODEBUDDY_MKT_DIR/plugins/openviking-memory" && tar -xf -) || return 1
+  cat > "$CODEBUDDY_MKT_DIR/.codebuddy-plugin/marketplace.json" <<EOF
+{
+  "name": "$CODEBUDDY_MKT_NAME",
+  "description": "OpenViking local marketplace (dev)",
+  "owner": { "name": "OpenViking", "url": "https://github.com/volcengine/OpenViking" },
+  "plugins": [
+    {
+      "name": "$PLUGIN_NAME",
+      "description": "Long-term semantic memory powered by OpenViking",
+      "version": "$version",
+      "source": "./plugins/openviking-memory",
+      "license": "Apache-2.0"
+    }
+  ]
+}
+EOF
+}
+
+install_codebuddy() {
+  heading "$(t '4. CodeBuddy plugin' '4. CodeBuddy 插件')"
+  if ! command -v codebuddy >/dev/null 2>&1; then
+    warn "$(t 'codebuddy CLI not found; skipping CodeBuddy install.' '未找到 codebuddy 命令，跳过 CodeBuddy 安装。')"
+    return 0
+  fi
+  if pgrep -f "CodeBuddy CN" >/dev/null 2>&1; then
+    warn "$(t 'CodeBuddy IDE is running; restart it after install to load the plugin.' 'CodeBuddy IDE 正在运行：安装后需重启 IDE 以加载插件。')"
+  fi
+  local plugin_dir
+  plugin_dir="$(plugin_dir_on_disk claude-code-memory-plugin)" || {
+    warn "$(t 'CodeBuddy plugin sources not found; skipping.' '未找到 CodeBuddy 插件源码，跳过。')"
+    return 0
+  }
+  codebuddy plugin validate "$plugin_dir" || warn "$(t 'CodeBuddy manifest validation did not pass' 'CodeBuddy manifest 校验未通过')"
+  materialize_codebuddy_marketplace "$plugin_dir" || { err "$(t 'Failed to materialize the CodeBuddy marketplace' '物化 CodeBuddy 市场失败')"; return 1; }
+  codebuddy plugin marketplace remove "$CODEBUDDY_MKT_NAME" >/dev/null 2>&1 || true
+  codebuddy plugin marketplace add "$CODEBUDDY_MKT_DIR" || { err "codebuddy plugin marketplace add failed"; return 1; }
+  codebuddy plugin uninstall "$CODEBUDDY_PLUGIN_ID" --scope user >/dev/null 2>&1 || true
+  codebuddy plugin install "$CODEBUDDY_PLUGIN_ID" --scope user || { err "codebuddy plugin install failed"; return 1; }
+  info "$(t 'CodeBuddy plugin installed and enabled:' 'CodeBuddy 插件已安装并启用：') $CODEBUDDY_PLUGIN_ID ($(t 'cache snapshot; rerun install.sh after changing the source' 'cache 快照，改动源码后需重跑 install.sh'))"
+}
+
+uninstall_codebuddy() {
+  heading "$(t 'Remove CodeBuddy plugin' '移除 CodeBuddy 插件')"
+  if pgrep -f "CodeBuddy CN" >/dev/null 2>&1; then
+    warn "$(t 'CodeBuddy IDE is running and may rewrite settings.json, reviving the entry; quit the IDE first.' 'CodeBuddy IDE 正在运行，可能回写 settings.json 致条目复活，建议先退出 IDE。')"
+  fi
+  if command -v codebuddy >/dev/null 2>&1; then
+    codebuddy plugin uninstall "$CODEBUDDY_PLUGIN_ID" --scope user >/dev/null 2>&1 || true
+    codebuddy plugin marketplace remove "$CODEBUDDY_MKT_NAME" >/dev/null 2>&1 || true
+  fi
+  rm -rf "$CODEBUDDY_CACHE_DIR"
+  rm -rf "$CODEBUDDY_MKT_DIR"
+  info "$(t 'Removed the CodeBuddy OpenViking plugin.' '已移除 CodeBuddy OpenViking 插件。')"
+}
+
 # ---------------------------------------------------------------------------
 # Validation
 # ---------------------------------------------------------------------------
@@ -2904,6 +3001,33 @@ EOF
       ok=0
     fi
   fi
+  if contains_harness codebuddy; then
+    if command -v codebuddy >/dev/null 2>&1; then
+      if codebuddy plugin marketplace list 2>/dev/null | grep -q "$CODEBUDDY_MKT_NAME"; then
+        info "codebuddy: $(t 'marketplace registered' '市场已注册') ($CODEBUDDY_MKT_NAME)"
+      else
+        warn "codebuddy: $(t 'marketplace not registered' '市场未注册') ($CODEBUDDY_MKT_NAME)"
+        ok=0
+      fi
+      list="$(codebuddy plugin list 2>/dev/null || true)"
+      if str_contains "$list" "$CODEBUDDY_PLUGIN_ID"; then
+        info "codebuddy: $CODEBUDDY_PLUGIN_ID $(t 'visible in plugin list' '已出现在插件列表')"
+      else
+        warn "codebuddy: $CODEBUDDY_PLUGIN_ID $(t 'not visible in plugin list' '未出现在插件列表')"
+        ok=0
+      fi
+      cached=$(find "$CODEBUDDY_CACHE_DIR" -name 'mcp-proxy.mjs' -path '*/servers/*' 2>/dev/null | sort | tail -n 1)
+      if [ -n "$cached" ]; then
+        node --check "$cached" && info "codebuddy: $(t 'cached stdio proxy parses' '缓存中的 stdio 代理语法正常')" || ok=0
+      else
+        warn "codebuddy: $PLUGIN_NAME $(t 'cached stdio proxy not found' '未找到缓存的 stdio 代理')"
+        ok=0
+      fi
+    else
+      warn "codebuddy: $(t 'codebuddy not found; plugin not validated' '未找到 codebuddy，插件未校验')"
+      ok=0
+    fi
+  fi
   if [ -n "$MKT_DIR" ] && [ -f "$MKT_DIR/claude-code-memory-plugin/scripts/marketplace.test.mjs" ] && [ -d "$MKT_DIR/../.git" ]; then
     node --test "$MKT_DIR/claude-code-memory-plugin/scripts/marketplace.test.mjs" \
       "$MKT_DIR/codex-memory-plugin/scripts/marketplace.test.mjs" || ok=0
@@ -2981,6 +3105,7 @@ if contains_harness trae-cn; then install_trae_variant trae-cn; fi
 if contains_harness opencode; then install_opencode; fi
 if contains_harness pi; then install_pi; fi
 if contains_harness qoder; then install_qoder; fi
+if contains_harness codebuddy; then install_codebuddy; fi
 validate_install
 
 heading "$(t 'Done' '完成')"
@@ -2997,3 +3122,4 @@ if contains_harness trae-cn; then info "TRAE CN: ~/.trae-cn/hooks.json + MCP"; f
 if contains_harness opencode; then info "OpenCode: @openviking/opencode-plugin"; fi
 if contains_harness pi; then info "pi: ~/.pi/agent/extensions/openviking"; fi
 if contains_harness qoder; then info "Qoder: $QODER_PLUGIN_ID (user scope)"; fi
+if contains_harness codebuddy; then info "CodeBuddy: $CODEBUDDY_PLUGIN_ID (user scope)"; fi
