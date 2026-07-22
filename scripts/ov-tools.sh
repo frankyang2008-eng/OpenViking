@@ -5,7 +5,8 @@
 #   ov-tools.sh start        Start the server (with --with-bot by default)
 #   ov-tools.sh stop         Stop server and bot gracefully
 #   ov-tools.sh restart      Stop then start
-#   ov-tools.sh status       ov health + recent server/bot log tails
+#   ov-tools.sh status       ov health
+#   ov-tools.sh statusjson   ov status --verbose as JSON (machine-readable; used by netopt UI)
 #   ov-tools.sh svrlogs [-f] Last 50 lines of openviking.log (-f to follow)
 #   ov-tools.sh botlogs [-f] Last 50 lines of vikingbot.log (-f to follow)
 #   ov-tools.sh help         Show this message
@@ -65,7 +66,7 @@ Commands:
   start           Start the server (with --with-bot by default).
   stop            Stop the server and bot gracefully.
   restart         Stop then start.
-  status          Show ov health + recent server/bot log tails.
+  status          Show ov health.
   svrlogs [-f]    Last 50 lines of openviking.log (-f to follow).
   botlogs [-f]    Last 50 lines of vikingbot.log (-f to follow).
   help            Show this message.
@@ -251,21 +252,15 @@ show_status() {
     else
         echo "(ov binary not found at $OV_BIN)"
     fi
+}
 
-    echo ""
-    echo "openviking server info："
-    if [ -f "$SVR_LOG" ]; then
-        tail -n 20 "$SVR_LOG" 2>/dev/null || echo "(failed to read $SVR_LOG)"
+# Machine-readable status for the netopt web UI. Always emits valid JSON so the
+# frontend can JSON.parse it even when the ov binary is missing.
+status_json() {
+    if [ -x "$OV_BIN" ]; then
+        "$OV_BIN" status --verbose -o json
     else
-        echo "(server log not found: $SVR_LOG)"
-    fi
-
-    echo ""
-    echo "openviking bot info:"
-    if [ -f "$BOT_LOG" ]; then
-        tail -n 20 "$BOT_LOG" 2>/dev/null || echo "(failed to read $BOT_LOG)"
-    else
-        echo "(bot log not found: $BOT_LOG - bot may not have started yet)"
+        printf '{"ok":false,"result":{"is_healthy":false,"errors":["ov binary not found at %s"],"components":{}}}\n' "$OV_BIN"
     fi
 }
 
@@ -309,6 +304,7 @@ case "$cmd" in
     stop|--stop)         stop_server ;;
     restart|--restart)   restart_server ;;
     status|--status)     show_status ;;
+    statusjson)          status_json ;;
     svrlogs|server-logs) svrlogs "${1:-}" ;;
     botlogs|bot-logs)    botlogs "${1:-}" ;;
     help|-h|--help)      usage ;;
