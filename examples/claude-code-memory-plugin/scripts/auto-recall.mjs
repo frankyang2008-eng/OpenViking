@@ -454,6 +454,11 @@ async function main() {
     tokens_used: built?.budgetUsed ?? 0,
     tokens_budget: cfg.recallTokenBudget,
     top_score: topScore,
+    items: picked.map((it) => ({
+      type: it._sourceType,
+      uri: it.uri,
+      score: Number(clampScore(it.score).toFixed(4)),
+    })),
     cc_session_id: sessionId,
     reason: "ok",
   });

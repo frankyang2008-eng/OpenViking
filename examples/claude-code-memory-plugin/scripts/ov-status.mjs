@@ -101,6 +101,12 @@ async function main() {
       `Last auto-recall: ${fmtAge(recall.ts)} — ${recall.count ?? 0} items, ` +
       `top ${top}, ${used}/${budget} tokens (${recall.reason || "ok"})`,
     );
+    if (Array.isArray(recall.items) && recall.items.length > 0) {
+      for (const it of recall.items) {
+        const pct = typeof it.score === "number" ? Math.round(it.score * 100) : "?";
+        console.log(`    - [${it.type} ${pct}%] ${it.uri}`);
+      }
+    }
   } else {
     console.log("Last auto-recall: (none yet)");
   }
