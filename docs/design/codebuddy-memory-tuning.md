@@ -28,7 +28,7 @@ Server：v0.4.11.dev20 @ http://127.0.0.1:1933
 
 关键观察：
 
-- 真实命中（Q2–Q5）top 在 0.79–0.81，所有 pick finalScore ≥ 0.67（Q4 尾部 0.49 为 harness 记忆本身，属相关）。
+- 真实命中（Q2–Q5）top 在 0.79–0.81，主体 pick finalScore ≥ 0.67，但尾部下探至 Q3=0.52、Q4=0.49（Q4 尾部 0.49 为 harness 记忆本身，属相关）。
 - nonsense（Q6）raw max 仅 0.23，在默认 0.35 下已被正确过滤。
 - 边界噪音（Q7）"全新项目" 触发了 brainstorming/writing-plans 等通用 skill，top finalScore=0.5121，其余 0.47–0.50；picks 里有 2 个 HTTP 404 已删文件，实际注入 51KB 通用模板，属主要 token 浪费源。
 - 真实命中 tail（Q3 末尾 0.52、Q4 末尾 0.49）与 Q7 top（0.51）基本对齐，但 Q4 尾部 0.49 是 harness 记忆本身（相关），Q3 尾部 0.52 是 AGFS 概念（相关）。故 clean separation 出现在 0.51 与 0.67 之间，约 0.16 的空白带。
@@ -37,14 +37,14 @@ Server：v0.4.11.dev20 @ http://127.0.0.1:1933
 
 | 参数 | 默认 | 选定 | 理由 |
 |---|---|---|---|
-| `scoreThreshold` | 0.35 | **0.5** | 位于规则候选区间 0.45–0.5 上沿。高于 Q7 边界噪音中 5/6 条（0.47–0.50），仅让 top=0.5121 的 brainstorming skill 通过（对"全新项目"query 本身是有用的），其余 5 条通用模板/404 噪音被滤（51KB 注入大幅缩小）；远低于真实命中尾部 0.67，不会漏掉任何真实记忆。nonsense（raw max 0.23）早已远离。 |
+| `scoreThreshold` | 0.35 | **0.5** | 位于规则候选区间 0.45–0.5 上沿。高于 Q7 边界噪音中 5/6 条（0.47–0.50），仅让 top=0.5121 的 brainstorming skill 通过（对"全新项目"query 本身是有用的），其余 5 条通用模板/404 噪音被滤（51KB 注入大幅缩小）；低于绝大多数真实命中（主体 ≥0.67）；代价是会滤掉 Q4 尾部 0.49 那 1 条边界 harness 记忆——以漏 1 条弱相关边界项换取滤除 Q7 的 51KB 通用模板噪音，可接受。nonsense（raw max 0.23）早已远离。 |
 | `profileTokenBudget` | 10000 | **4000** | session-start profile 注入是最大 token 来源；4000 足以覆盖目录摘要 + 最近 trajectory 概览，砍掉 60% profile 体积。召回侧已受 `recallTokenBudget=2000` 约束，不在这里压。 |
 
 ## 4. 其余保持默认的键
 
 | 键 | 默认值 | 不改的理由 |
 |---|---|---|
-| `recallLimit` | 6 | top-6 覆盖 L0+L1 足够，真实命中分布前 6 条均 ≥0.67 |
+| `recallLimit` | 6 | top-6 覆盖 L0+L1 足够，真实命中主体分布 ≥0.67（尾部最低至 Q4 0.49） |
 | `recallTokenBudget` | 2000 | 已约束 per-recall 上限 |
 | `recallMaxContentChars` | 500 | 已截断 L2 正文 |
 | `recallPreferAbstract` | true | L0 摘要优先，符合 RAGFS 三层模型 |
