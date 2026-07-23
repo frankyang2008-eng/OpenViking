@@ -30,7 +30,7 @@
 
 | 动作 | 路径 | 职责 |
 |------|------|------|
-| Modify | `examples/claude-code-memory-plugin/scripts/auto-recall.mjs` | 多源召回 ok 路径的 `writeRecallState` 增加 `items` 字段（B2） |
+| Modify | `examples/claude-code-memory-plugin/scripts/auto-recall.mjs` | endpoint + 多源两条 ok 路径的 `writeRecallState` 增加 `items` 字段；endpoint 路径 `count`/`top_score` 记真实值（B2） |
 | Modify | `examples/claude-code-memory-plugin/scripts/ov-status.mjs` | 渲染 `last-recall.json` 的 `items` 列表（B2） |
 | Modify | `examples/memory-plugin-shared/install.sh` | 新增 `--sync`（C1）、`--verify`（C3+B3）、`verify_codebuddy()`、快路径、usage、变量初始化、更新 2785 过期提示 |
 | Create | `docs/design/codebuddy-memory-tuning.md` | 测量记录 + 推荐阈值（A，Task 4 产出） |
@@ -48,7 +48,7 @@
 
 **Interfaces:**
 - Consumes: 现有 `writeRecallState(extra)`（auto-recall.mjs:334）、`picked`（433，`{ _sourceType, uri, score }`）、`clampScore`（47）、`readJsonState`（ov-status.mjs）。
-- Produces: `~/.openviking/state/last-recall.json` 在 ok 路径多一个**可选**字段 `items: [{ type: string, uri: string, score: number(0..1, 4 位小数) }]`。`/ov`（ov-status.mjs）逐行渲染。Task 4 可读 `items` 观察命中分布。**不改** `approve(built?.block)` 的注入内容（D4）。
+- Produces: `~/.openviking/state/last-recall.json` 在两条 ok 路径都多一个**可选**字段 `items: [{ type: string, uri: string, score: number(0..1, 4 位小数) }]`——endpoint 路径从 `res.result.entries` 取（服务端 `RecallEntry` 含 `{uri,score,type,mode,rank}`），多源回退路径从 `picked` 取；endpoint 路径同时把 `count`/`top_score` 从硬编码 `1`/`0` 改为真实值。`/ov`（ov-status.mjs）逐行渲染。Task 4 可读 `items` 观察命中分布。**不改** `approve(...)` 的注入内容（D4）。
 
 **前置条件：** OpenViking server 在跑（`curl -fsS -m 5 http://127.0.0.1:1933/health` 通），否则 auto-recall 走 `reason:"offline"` 分支不产生 `items`，测试会因错误原因失败。
 
@@ -94,7 +94,102 @@ new_string 为：
   approve(built?.block);
 ```
 
-注意：此 old_string 在该文件**唯一**（endpoint 路径 406-415 的 `writeRecallState` 没有 `top_score: topScore` 且字段不同，不会误匹配）。endpoint 路径（398-418）保持不加 `items`——它是单一整块注入，无逐 URI 命中，加了反而误导。
+注意：此 old_string 在该文件**唯一**（endpoint 路径的 `writeRecallState` 没有 `top_score: topScore` 且字段不同，不会误匹配）。endpoint 路径的 `items` 由下一步 Step 2b 补上。
+
+- [ ] **Step 2b: 改 auto-recall.mjs（endpoint 路径也记 `items` + 真实 `count`/`top_score`）**
+
+已实测 `/api/v1/search/recall` 响应 `result` 除 `rendered` 外还有 `entries[]`（服务端 `openviking/retrieve/type_quota_recall.py` 的 `RecallResult.to_dict()`，每条 `RecallEntry` 含 `{uri,score,type,mode,rank}`；`rendered` 即由这些 entry 拼接，故 `rendered` 非空 ⇒ `entries` 非空）。endpoint 路径是生产默认路径（直连 server 即命中，无需代理），此步让 B2 在真实使用中真正可见。分两处 Edit。
+
+Edit 1 — `recallViaTypeQuotaEndpoint` 改为返回 `{ block, entries }`（不再丢 `entries`）。old_string：
+
+```js
+  const rendered = String(res.result?.rendered || "").trim();
+  if (!rendered) return "";
+  return [
+    "<openviking-context>",
+    "Relevant memory from OpenViking. Use the recall/read MCP tools to expand URIs.",
+    rendered,
+    "</openviking-context>",
+  ].join("\n");
+}
+```
+
+new_string：
+
+```js
+  const rendered = String(res.result?.rendered || "").trim();
+  if (!rendered) return { block: "", entries: [] };
+  const entries = Array.isArray(res.result?.entries) ? res.result.entries : [];
+  const block = [
+    "<openviking-context>",
+    "Relevant memory from OpenViking. Use the recall/read MCP tools to expand URIs.",
+    rendered,
+    "</openviking-context>",
+  ].join("\n");
+  return { block, entries };
+}
+```
+
+Edit 2 — endpoint 调用方记 `items` 与真实 `count`/`top_score`。old_string：
+
+```js
+  const endpointBlock = await recallViaTypeQuotaEndpoint(userPrompt, effectivePeer.peerId);
+  if (endpointBlock !== null) {
+    if (!endpointBlock) {
+      log("skip", { reason: "recall_endpoint_no_results" });
+      writeRecallState({ count: 0, reason: "no_results", cc_session_id: sessionId });
+      approve();
+      return;
+    }
+    writeRecallState({
+      count: 1,
+      content_items: 1,
+      hint_items: 0,
+      tokens_used: estimateTokens(endpointBlock),
+      tokens_budget: cfg.recallTokenBudget,
+      top_score: 0,
+      cc_session_id: sessionId,
+      reason: "ok",
+    });
+    approve(endpointBlock);
+    return;
+  }
+```
+
+new_string：
+
+```js
+  const endpointResult = await recallViaTypeQuotaEndpoint(userPrompt, effectivePeer.peerId);
+  if (endpointResult !== null) {
+    if (!endpointResult.block) {
+      log("skip", { reason: "recall_endpoint_no_results" });
+      writeRecallState({ count: 0, reason: "no_results", cc_session_id: sessionId });
+      approve();
+      return;
+    }
+    const endpointItems = endpointResult.entries.map((e) => ({
+      type: e.type,
+      uri: e.uri,
+      score: Number(clampScore(e.score).toFixed(4)),
+    }));
+    const hintItems = endpointResult.entries.filter((e) => e.mode === "uri").length;
+    writeRecallState({
+      count: endpointItems.length,
+      content_items: endpointItems.length - hintItems,
+      hint_items: hintItems,
+      tokens_used: estimateTokens(endpointResult.block),
+      tokens_budget: cfg.recallTokenBudget,
+      top_score: endpointResult.entries.reduce((m, e) => Math.max(m, clampScore(e.score)), 0),
+      items: endpointItems,
+      cc_session_id: sessionId,
+      reason: "ok",
+    });
+    approve(endpointResult.block);
+    return;
+  }
+```
+
+D4：`approve(endpointResult.block)` 的注入内容与之前完全一致，只多记了状态字段。`count` 语义从「1 个聚合块」改为「命中条目数」，与多源路径 `count: picked.length` 对齐，`/ov` 的「N items」与下方列表条数一致。
 
 - [ ] **Step 3: 改 ov-status.mjs（渲染 `items`）**
 
@@ -136,7 +231,7 @@ node -e 'const j=require(require("node:os").homedir()+"/.openviking/state/last-r
 node scripts/ov-status.mjs
 ```
 
-Expected: `SYNTAX OK`；`items: <N>`（N≥1，若该 query 有命中）；逐行 `  - <type> <score> <uri>`；`ov-status.mjs` 输出末尾 `Last auto-recall:` 行下出现 `    - [<type> <pct>%] <uri>` 列表。
+Expected: `SYNTAX OK`；`items: <N>`（N≥1，若该 query 有命中）；逐行 `  - <type> <score> <uri>`；`ov-status.mjs` 输出末尾 `Last auto-recall:` 行下出现 `    - [<type> <pct>%] <uri>` 列表。直连 server（默认走 endpoint 路径）即可看到 `items`，无需代理；此时 `count` 等于命中数、`top_score` 为真实最高分。
 
 - [ ] **Step 5: Commit**
 
@@ -696,4 +791,4 @@ Expected: `verify exit=0`（server + mcp-proxy 在跑、源码已同步时）。
 - **Spec 覆盖：** 设计 §3 三组件全覆盖——组件 A 调参→Task 4；组件 B 可观测（B1 状态可视/B2 召回可见/B3 活动检测）→Task 1（B2）+Task 3（B3 并入 verify 检查④）+Task 5 手动（B1）；组件 C 源码同步（C1/C2/C3）→Task 2（C1）+Task 3（C3）；C2 符号链接全自动在设计 D2 已定为「留研究项」，本计划不含。决策 D1（配置共用 claude_code.*）→Task 4；D2→Task 2 走一键 sync 非符号链接；D3（测量先行）→Task 4 Step 1-2；D4（不动召回逻辑）→Task 1 仅加状态字段、Global Constraint 明确。
 - **Placeholder 扫描：** 各 Task 的代码均为完整可落地片段（auto-recall/ov-status 的 Edit 前后串、install.sh 的 6 处 Edit、verify_codebuddy 全函数、ov.conf 合并命令）。唯一「运行时才定」的是 Task 4 的 `scoreThreshold` 数值——这是设计 D3 明确要求的测量驱动，非占位符，且给出了决策规则与候选区间。
 - **类型一致：** `items` 元素 `{type, uri, score}` 在 auto-recall.mjs 产出与 ov-status.mjs 消费两处字段名一致；`verify_codebuddy` 引用的常量/函数（`CODEBUDDY_PLUGIN_ID`/`CODEBUDDY_MKT_DIR`/`OVCLI_CONF`/`json_get`/`plugin_dir_on_disk`/`cmp`/`pgrep`/`curl`）均已核实存在于 install.sh 或实测环境。
-- **风险与备注：** ① Task 2/3 测试会重装本机 CodeBuddy 插件（幂等，dev-loop 可接受）并已用 `git restore` 保证源码零残留。② `--verify` 退出码是整体健康（含 server/proxy 是否存活），判读脱节时看 `differs:` 行而非仅退出码。③ endpoint 召回路径（auto-recall.mjs 398-418）不记 `items`（单块注入无逐 URI），有意为之。
+- **风险与备注：** ① Task 2/3 测试会重装本机 CodeBuddy 插件（幂等，dev-loop 可接受）并已用 `git restore` 保证源码零残留。② `--verify` 退出码是整体健康（含 server/proxy 是否存活），判读脱节时看 `differs:` 行而非仅退出码。③ endpoint 召回路径（auto-recall.mjs 398-418）与多源回退路径都记 `items`——已实测 `/api/v1/search/recall` 响应 `result.entries[]` 带逐条 `{uri,score,type,mode,rank}`（`rendered` 由其拼接），故 endpoint 路径同样可观测，且 `count`/`top_score` 记真实值。
