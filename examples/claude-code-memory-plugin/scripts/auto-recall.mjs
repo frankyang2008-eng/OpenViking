@@ -313,13 +313,15 @@ async function recallViaTypeQuotaEndpoint(query, actorPeerId = "") {
     return null;
   }
   const rendered = String(res.result?.rendered || "").trim();
-  if (!rendered) return "";
-  return [
+  if (!rendered) return { block: "", entries: [] };
+  const entries = Array.isArray(res.result?.entries) ? res.result.entries : [];
+  const block = [
     "<openviking-context>",
     "Relevant memory from OpenViking. Use the recall/read MCP tools to expand URIs.",
     rendered,
     "</openviking-context>",
   ].join("\n");
+  return { block, entries };
 }
 
 // ---------------------------------------------------------------------------
@@ -395,25 +397,32 @@ async function main() {
     return;
   }
 
-  const endpointBlock = await recallViaTypeQuotaEndpoint(userPrompt, effectivePeer.peerId);
-  if (endpointBlock !== null) {
-    if (!endpointBlock) {
+  const endpointResult = await recallViaTypeQuotaEndpoint(userPrompt, effectivePeer.peerId);
+  if (endpointResult !== null) {
+    if (!endpointResult.block) {
       log("skip", { reason: "recall_endpoint_no_results" });
       writeRecallState({ count: 0, reason: "no_results", cc_session_id: sessionId });
       approve();
       return;
     }
+    const endpointItems = endpointResult.entries.map((e) => ({
+      type: e.type,
+      uri: e.uri,
+      score: Number(clampScore(e.score).toFixed(4)),
+    }));
+    const hintItems = endpointResult.entries.filter((e) => e.mode === "uri").length;
     writeRecallState({
-      count: 1,
-      content_items: 1,
-      hint_items: 0,
-      tokens_used: estimateTokens(endpointBlock),
+      count: endpointItems.length,
+      content_items: endpointItems.length - hintItems,
+      hint_items: hintItems,
+      tokens_used: estimateTokens(endpointResult.block),
       tokens_budget: cfg.recallTokenBudget,
-      top_score: 0,
+      top_score: endpointResult.entries.reduce((m, e) => Math.max(m, clampScore(e.score)), 0),
+      items: endpointItems,
       cc_session_id: sessionId,
       reason: "ok",
     });
-    approve(endpointBlock);
+    approve(endpointResult.block);
     return;
   }
 
