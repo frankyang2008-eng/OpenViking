@@ -2829,7 +2829,7 @@ verify_codebuddy() {
   if pgrep -f "codebuddy.*mcp-proxy.mjs" >/dev/null 2>&1; then
     info "✓ mcp-proxy running (codebuddy)"
   elif pgrep -f "mcp-proxy.mjs" >/dev/null 2>&1; then
-    info "✓ mcp-proxy running (shared/other harness)"
+    info "✓ mcp-proxy running (not codebuddy-scoped — may be another harness)"
   else
     warn "✗ mcp-proxy not running"; fail=1
   fi
@@ -3143,11 +3143,6 @@ NODE_MAJOR="$("$NODE_BIN" -p 'Number(process.versions.node.split(".")[0])')"
 [ "$NODE_MAJOR" -ge 18 ] || { err "Node.js 18+ required; found $("$NODE_BIN" --version)."; exit 1; }
 command -v curl >/dev/null 2>&1 || warn "curl not found; archive installs may fail."
 
-# Scrub stale legacy Claude Code settings entries on every run (not only
-# `--harness claude`) so the old plugin ids stop reviving on restart. Done
-# early — before any network step — so it still runs if a later step fails.
-scrub_claude_legacy_settings
-
 resolve_self_checkout
 
 # Fast paths: `--sync codebuddy` / `--verify codebuddy` run without the wizard,
@@ -3163,6 +3158,14 @@ if [ -n "$VERIFY_TARGET" ]; then
   [ "$VERIFY_TARGET" = "codebuddy" ] || { err "Unsupported --verify target: $VERIFY_TARGET (expected: codebuddy)"; exit 2; }
   if verify_codebuddy; then exit 0; else exit 1; fi
 fi
+
+# Scrub stale legacy Claude Code settings entries on every wizard run (not only
+# `--harness claude`) so the old plugin ids stop reviving on restart. Runs before
+# any network step so it still runs if a later step fails — but AFTER the
+# `--sync`/`--verify` fast paths above, which exit first and must stay
+# side-effect-free (`--verify` is read-only; neither should rewrite Claude's
+# settings.json during a CodeBuddy dev-loop operation).
+scrub_claude_legacy_settings
 
 select_harnesses
 validate_selected_harnesses
