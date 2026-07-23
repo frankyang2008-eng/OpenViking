@@ -108,6 +108,8 @@ USER_ARG="__OPENVIKING_UNSET__"
 STATUSLINE_ARG=""   # "", yes, no
 YES=0
 UNINSTALL=0
+SYNC_TARGET=""
+VERIFY_TARGET=""
 NODE_BIN=""
 
 CHECKOUT_DIR=""     # repo checkout the script itself lives in, when applicable
@@ -173,6 +175,8 @@ Options:
   --statusline       Register the Claude Code statusline without asking.
   --no-statusline    Skip the statusline prompt.
   --uninstall        Remove Cursor/TRAE/Qoder/CodeBuddy OpenViking integration files and config.
+  --sync codebuddy   Dev loop: re-materialize + reinstall the CodeBuddy plugin from this checkout, skip wizard.
+  --verify codebuddy Check CodeBuddy plugin health + source/installed sync; exit 0 if OK.
   --yes, -y          Use defaults for prompts when possible.
 EOF
 }
@@ -192,6 +196,8 @@ while [ "$#" -gt 0 ]; do
     --statusline) STATUSLINE_ARG="yes"; shift ;;
     --no-statusline) STATUSLINE_ARG="no"; shift ;;
     --uninstall) UNINSTALL=1; shift ;;
+    --sync) SYNC_TARGET="${2:-}"; YES=1; shift 2 ;;
+    --verify) VERIFY_TARGET="${2:-}"; YES=1; shift 2 ;;
     --yes|-y) YES=1; shift ;;
     --help|-h) usage; exit 0 ;;
     *) err "Unknown argument: $1"; usage; exit 2 ;;
@@ -2782,7 +2788,7 @@ install_codebuddy() {
   codebuddy plugin marketplace add "$CODEBUDDY_MKT_DIR" || { err "codebuddy plugin marketplace add failed"; return 1; }
   codebuddy plugin uninstall "$CODEBUDDY_PLUGIN_ID" --scope user >/dev/null 2>&1 || true
   codebuddy plugin install "$CODEBUDDY_PLUGIN_ID" --scope user || { err "codebuddy plugin install failed"; return 1; }
-  info "$(t 'CodeBuddy plugin installed and enabled:' 'CodeBuddy 插件已安装并启用：') $CODEBUDDY_PLUGIN_ID ($(t 'cache snapshot; rerun install.sh after changing the source' 'cache 快照，改动源码后需重跑 install.sh'))"
+  info "$(t 'CodeBuddy plugin installed and enabled:' 'CodeBuddy 插件已安装并启用：') $CODEBUDDY_PLUGIN_ID ($(t 'cache snapshot; after editing sources run: bash install.sh --sync codebuddy' 'cache 快照，改动源码后执行：bash install.sh --sync codebuddy'))"
 }
 
 uninstall_codebuddy() {
@@ -3064,6 +3070,21 @@ command -v curl >/dev/null 2>&1 || warn "curl not found; archive installs may fa
 scrub_claude_legacy_settings
 
 resolve_self_checkout
+
+# Fast paths: `--sync codebuddy` / `--verify codebuddy` run without the wizard,
+# harness selection, connection config, or install validation. Dev-loop only —
+# they rely on resolve_self_checkout having located the plugin sources in this
+# checkout. `--sync`/`--verify` set YES=1 at parse time so nothing prompts.
+if [ -n "$SYNC_TARGET" ]; then
+  [ "$SYNC_TARGET" = "codebuddy" ] || { err "Unsupported --sync target: $SYNC_TARGET (expected: codebuddy)"; exit 2; }
+  install_codebuddy
+  exit 0
+fi
+if [ -n "$VERIFY_TARGET" ]; then
+  [ "$VERIFY_TARGET" = "codebuddy" ] || { err "Unsupported --verify target: $VERIFY_TARGET (expected: codebuddy)"; exit 2; }
+  if verify_codebuddy; then exit 0; else exit 1; fi
+fi
+
 select_harnesses
 validate_selected_harnesses
 select_compatible_bins
