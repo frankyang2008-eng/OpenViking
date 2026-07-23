@@ -2805,6 +2805,85 @@ uninstall_codebuddy() {
   info "$(t 'Removed the CodeBuddy OpenViking plugin.' '已移除 CodeBuddy OpenViking 插件。')"
 }
 
+# verify_codebuddy: read-only health + sync check for the CodeBuddy plugin.
+# Prints one ✓/✗ line per check; returns 0 when all hard checks pass, 1 otherwise.
+# Check 4 (recall activity) is informational only — a fresh install legitimately
+# has no recall state yet. Check 5 (desync) compares checkout sources against the
+# materialized marketplace copy over the files that drive runtime behavior.
+verify_codebuddy() {
+  heading "$(t 'CodeBuddy verify' 'CodeBuddy 校验')"
+  local fail=0 f desync src_ver mkt_ver base src_dir
+  local settings="$CODEBUDDY_DIR/settings.json"
+  local mkt_plugin="$CODEBUDDY_MKT_DIR/plugins/openviking-memory"
+  local recall_state="$OV_HOME/state/last-recall.json"
+  src_dir="$(plugin_dir_on_disk claude-code-memory-plugin 2>/dev/null)" || src_dir=""
+
+  # 1. Enabled in settings.json
+  if [ -f "$settings" ] && grep -q "\"$CODEBUDDY_PLUGIN_ID\"[[:space:]]*:[[:space:]]*true" "$settings"; then
+    info "✓ enabled: $CODEBUDDY_PLUGIN_ID"
+  else
+    warn "✗ not enabled in $settings"; fail=1
+  fi
+
+  # 2. MCP proxy process alive (codebuddy-scoped first, then any)
+  if pgrep -f "codebuddy.*mcp-proxy.mjs" >/dev/null 2>&1; then
+    info "✓ mcp-proxy running (codebuddy)"
+  elif pgrep -f "mcp-proxy.mjs" >/dev/null 2>&1; then
+    info "✓ mcp-proxy running (shared/other harness)"
+  else
+    warn "✗ mcp-proxy not running"; fail=1
+  fi
+
+  # 3. Server /health
+  base="$(json_get "$OVCLI_CONF" url)"; [ -n "$base" ] || base="http://127.0.0.1:1933"
+  if curl -fsS -m 5 "$base/health" >/dev/null 2>&1; then
+    info "✓ server healthy: $base"
+  else
+    warn "✗ server unreachable: $base/health"; fail=1
+  fi
+
+  # 4. Recall pipeline has fired (informational — absence only means "no prompt yet")
+  if [ -f "$recall_state" ]; then
+    info "✓ recall state present: $recall_state"
+  else
+    warn "· no recall recorded yet (send a prompt in CodeBuddy to exercise auto-recall)"
+  fi
+
+  # 5. Source vs installed copy sync (C3)
+  # ponytail: targeted cmp on 7 behavior files; switch to diff -r --exclude if full-tree guarantee is needed
+  if [ -z "$src_dir" ]; then
+    warn "✗ plugin sources not found (run from a repo checkout)"; fail=1
+  elif [ ! -d "$mkt_plugin" ]; then
+    warn "✗ marketplace not materialized — run: bash install.sh --sync codebuddy"; fail=1
+  else
+    desync=0
+    for f in hooks/hooks.json scripts/auto-recall.mjs scripts/auto-capture.mjs \
+             scripts/session-start.mjs scripts/config.mjs servers/mcp-proxy.mjs \
+             .codebuddy-plugin/plugin.json; do
+      if ! cmp -s "$src_dir/$f" "$mkt_plugin/$f" 2>/dev/null; then
+        warn "  differs: $f"; desync=1
+      fi
+    done
+    src_ver="$(json_get "$src_dir/.claude-plugin/plugin.json" version)"
+    mkt_ver="$(json_get "$mkt_plugin/.claude-plugin/plugin.json" version)"
+    if [ "$src_ver" != "$mkt_ver" ]; then
+      warn "  version: src=$src_ver installed=$mkt_ver"; desync=1
+    fi
+    if [ "$desync" -eq 0 ]; then
+      info "✓ source in sync with installed copy (v$src_ver)"
+    else
+      warn "✗ source differs from installed copy — run: bash install.sh --sync codebuddy"; fail=1
+    fi
+  fi
+
+  if [ "$fail" -eq 0 ]; then
+    info "$(t 'CodeBuddy plugin OK' 'CodeBuddy 插件正常')"
+  else
+    warn "$(t 'CodeBuddy plugin has issues (see above)' 'CodeBuddy 插件存在问题（见上）')"
+  fi
+  return $fail
+}
+
 # ---------------------------------------------------------------------------
 # Validation
 # ---------------------------------------------------------------------------
