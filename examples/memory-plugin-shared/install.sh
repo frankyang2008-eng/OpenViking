@@ -2846,7 +2846,7 @@ verify_codebuddy() {
   if [ -f "$recall_state" ]; then
     info "✓ recall state present: $recall_state"
   else
-    warn "· no recall recorded yet (send a prompt in CodeBuddy to exercise auto-recall)"
+    info "· no recall recorded yet (send a prompt in CodeBuddy to exercise auto-recall)"
   fi
 
   # 5. Source vs installed copy sync (C3)
@@ -2864,8 +2864,8 @@ verify_codebuddy() {
         warn "  differs: $f"; desync=1
       fi
     done
-    src_ver="$(json_get "$src_dir/.claude-plugin/plugin.json" version)"
-    mkt_ver="$(json_get "$mkt_plugin/.claude-plugin/plugin.json" version)"
+    src_ver="$(json_get "$src_dir/.codebuddy-plugin/plugin.json" version)"
+    mkt_ver="$(json_get "$mkt_plugin/.codebuddy-plugin/plugin.json" version)"
     if [ "$src_ver" != "$mkt_ver" ]; then
       warn "  version: src=$src_ver installed=$mkt_ver"; desync=1
     fi
