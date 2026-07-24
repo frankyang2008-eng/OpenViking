@@ -37,8 +37,8 @@ Server：v0.4.11.dev20 @ http://127.0.0.1:1933
 
 | 参数 | 默认 | 选定 | 理由 |
 |---|---|---|---|
-| `scoreThreshold` | 0.35 | **0.5** | 位于规则候选区间 0.45–0.5 上沿。高于 Q7 边界噪音中 5/6 条（0.47–0.50），仅让 top=0.5121 的 brainstorming skill 通过（对"全新项目"query 本身是有用的），其余 5 条通用模板/404 噪音被滤（51KB 注入大幅缩小）；低于绝大多数真实命中（主体 ≥0.67）；代价是会滤掉 Q4 尾部 0.49 那 1 条边界 harness 记忆——以漏 1 条弱相关边界项换取滤除 Q7 的 51KB 通用模板噪音，可接受。nonsense（raw max 0.23）早已远离。 |
-| `profileTokenBudget` | 10000 | **4000** | session-start profile 注入是最大 token 来源；4000 足以覆盖目录摘要 + 最近 trajectory 概览，砍掉 60% profile 体积。召回侧已受 `recallTokenBudget=2000` 约束，不在这里压。 |
+| `scoreThreshold` | 0.35 | **0.35**（保持默认） | **2026-07-24 实测推翻 0.5 建议**。Q4（install.sh harness）Final Picks finalScore 实测分布 0.4345–0.5404：`shell-installer-cli-flag-addition`=0.5404、`install.sh交互退出bug检测`=0.4907、`openviking_add_new_harness`=0.4589、`openviking_tui_exit_bug_fix`=0.4345。0.5 阈值只留 top 0.5404 一条开发轨迹，滤掉 0.4907/0.4589/0.4345 三条核心相关记忆（add_new_harness/交互退出bug 均为 install.sh harness 主题核心），误杀。Q7 边界噪音 top finalScore <0.5，0.5 下 0 picks，但代价是 Q4 误杀。clean separation 不存在：Q4 真实命中尾部 0.4345 与 Q7 噪音重叠，无法用单阈值分离。0.35 默认合理，Q7 噪音 ~20KB 注入是保留 Q4 核心的必要代价。 |
+| `profileTokenBudget` | 10000 | **10000**（保持默认） | 2026-07-23 建议 4000 未实施：debug-recall 只测 recall 不测 session-start profile 注入，4000 无新数据支撑。保持 10000，待单独测 profile 注入大小后再定。 |
 
 ## 4. 其余保持默认的键
 
@@ -55,19 +55,12 @@ Server：v0.4.11.dev20 @ http://127.0.0.1:1933
 
 ## 5. 应用方式
 
-写入 `~/.openviking/ov.conf` 的 `claude_code` 对象（仓库外、用户运行时配置，不入库）：
+**2026-07-24 修正**：原建议写入 `~/.openviking/ov.conf` 的 `claude_code` 块——**此法不可行，会让 server 启动崩溃**。`openviking_cli/utils/config/open_viking_config.py` 的 `OpenVikingConfig.from_dict` 调用 `raise_unknown_config_fields`，valid_fields = `model_fields | {server, bot, parsers}`，不含 `claude_code`；ov.conf 顶层出现 `claude_code` 即被拒。插件端 `config.mjs` 的 `loadConfig` 虽用 `JSON.parse` 宽松读取 `claude_code`（line 111），但与 server 共享同一 ov.conf，无法绕过 server 的 pydantic 校验。
 
-```json
-"claude_code": {
-  "scoreThreshold": 0.5,
-  "profileTokenBudget": 4000
-}
-```
+**结论**：0.35 默认值已合理（见 §3），无需覆盖。如需临时实验，走 env 覆盖（需重启 CodeBuddy 会话使 env 注入生效）：`OPENVIKING_SCORE_THRESHOLD=0.5`。改源码默认值需编辑 `examples/claude-code-memory-plugin/scripts/config.mjs` 并 `bash examples/memory-plugin-shared/install.sh --sync codebuddy`（版本号未 bump 时须先删 `~/.codebuddy/plugins/cache/openviking-local/openviking-memory/<ver>/` 再 sync，否则 cache 命中旧快照）。
 
-合并时保留 `claude_code` 下其它已有键（本次为首次写入，原 `claude_code = null`）。改前已备份至 `~/.openviking/ov.conf.bak.<timestamp>`。
+## 6. 同步说明
 
-如需临时实验而不改文件，可走 env 覆盖：`OPENVIKING_SCORE_THRESHOLD=0.5 OPENVIKING_PROFILE_TOKEN_BUDGET=4000`。
+**2026-07-24 修正**：原"无需重启"结论错误。(1) env 覆盖方式需重启 CodeBuddy 会话——env 在会话启动时注入 hook 子进程，运行中的会话不会重读。(2) ov.conf `claude_code` 方式不可用（见 §5，崩 server）。(3) 改源码默认值需 `install.sh --sync codebuddy` 重新物化 + 重装，且版本号未 bump 时须先删 cache 目录强制重拷。
 
-## 6. 免同步说明
-
-`examples/claude-code-memory-plugin/scripts/config.mjs` 在每次召回前现读 `ov.conf` 的 `claude_code.*` 并与 env 覆盖合并；无需重启 server、无需重启 CodeBuddy、无需执行 sync。改完立即生效，debug-recall config summary 已确认新值被打印。
+`config.mjs` 的 `loadConfig` 确实每次召回现读 ov.conf（line 82 `readFileSync`），插件 hook 每次是新进程读最新文件——但这只对"不崩 server 的字段"有效；`claude_code` 不在此列。
