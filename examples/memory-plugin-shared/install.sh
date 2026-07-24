@@ -2574,35 +2574,41 @@ function setNestedObjectProperty(s, parentName, childName, childValue, fallbackP
   return setPropertyInObject(s, parentRange, childName, childValue);
 }
 
-function appendStringToTopLevelArray(s, name, value) {
+function rewriteTopLevelStringArray(s, name, values) {
   let objectRange = findTopLevelObject(s);
   if (!objectRange) {
     s = "{\n}\n";
     objectRange = findTopLevelObject(s);
   }
   const prop = findTopLevelProperty(s, objectRange, name);
-  if (!prop) return setPropertyInObject(s, objectRange, name, [value]);
+  if (!prop) {
+    return values.length ? setPropertyInObject(s, objectRange, name, values) : s;
+  }
   const arrayRange = findArrayRangeAt(s, prop.valueStart, prop.replaceEnd);
-  if (!arrayRange) return setPropertyInObject(s, objectRange, name, [value]);
+  if (!arrayRange || values.length === 0) {
+    return setPropertyInObject(s, objectRange, name, values);
+  }
   const propIndent = findLineIndent(s, prop.keyStart) || detectPropertyIndent(s, objectRange);
   const itemIndent = `${propIndent}  `;
   const closeIndent = findLineIndent(s, arrayRange.end) || propIndent;
-  const needsComma = rangeHasValue(s, arrayRange) && !s.slice(arrayRange.start + 1, arrayRange.end).trimEnd().endsWith(",");
-  const prefix = needsComma ? "," : "";
-  const insertion = `${prefix}\n${itemIndent}${JSON.stringify(value)}\n${closeIndent}`;
-  return `${s.slice(0, arrayRange.end)}${insertion}${s.slice(arrayRange.end)}`;
+  const body = "\n" + values.map((v) => `${itemIndent}${JSON.stringify(v)}`).join(",\n") + "\n";
+  return `${s.slice(0, arrayRange.start + 1)}${body}${closeIndent}${s.slice(arrayRange.end)}`;
 }
 
 let data = {};
 try { data = raw.trim() ? JSON.parse(stripJsonc(raw)) : {}; } catch { data = {}; }
 let nextRaw = raw.trim() ? raw : "{\n}\n";
-if (pluginSpec) {
-  const next = Array.isArray(data.plugin) ? data.plugin.slice() : [];
-  if (!next.includes(pluginSpec)) {
-    next.push(pluginSpec);
-    nextRaw = appendStringToTopLevelArray(nextRaw, "plugin", pluginSpec);
+{
+  const knownOpenViking = ["openviking-opencode", "@openviking/opencode-plugin"];
+  const origPlugin = Array.isArray(data.plugin) ? data.plugin : null;
+  const removeSet = knownOpenViking.filter((p) => p !== pluginSpec);
+  let nextPlugin = origPlugin ? origPlugin.filter((p) => !removeSet.includes(p)) : [];
+  if (pluginSpec && !nextPlugin.includes(pluginSpec)) nextPlugin.push(pluginSpec);
+  const sameAsOrig = origPlugin && JSON.stringify(origPlugin) === JSON.stringify(nextPlugin);
+  if ((nextPlugin.length > 0 && !origPlugin) || (origPlugin && !sameAsOrig)) {
+    nextRaw = rewriteTopLevelStringArray(nextRaw, "plugin", nextPlugin);
+    data.plugin = nextPlugin;
   }
-  data.plugin = next;
 }
 if (mcpProxy) {
   data.mcp = data.mcp && typeof data.mcp === "object" && !Array.isArray(data.mcp) ? data.mcp : {};
