@@ -2787,6 +2787,7 @@ install_codebuddy() {
   codebuddy plugin marketplace remove "$CODEBUDDY_MKT_NAME" >/dev/null 2>&1 || true
   codebuddy plugin marketplace add "$CODEBUDDY_MKT_DIR" || { err "codebuddy plugin marketplace add failed"; return 1; }
   codebuddy plugin uninstall "$CODEBUDDY_PLUGIN_ID" --scope user >/dev/null 2>&1 || true
+  rm -rf "$CODEBUDDY_CACHE_DIR"
   codebuddy plugin install "$CODEBUDDY_PLUGIN_ID" --scope user || { err "codebuddy plugin install failed"; return 1; }
   info "$(t 'CodeBuddy plugin installed and enabled:' 'CodeBuddy 插件已安装并启用：') $CODEBUDDY_PLUGIN_ID ($(t 'cache snapshot; after editing sources run: bash install.sh --sync codebuddy' 'cache 快照，改动源码后执行：bash install.sh --sync codebuddy'))"
 }
