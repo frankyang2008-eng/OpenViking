@@ -330,6 +330,8 @@ class AsyncOpenViking:
         args: Optional[Dict[str, Any]] = None,
         telemetry: TelemetryRequest = False,
         processing_mode: str = "semantic_and_vectors",
+        tags: Optional[List[str]] = None,
+        tag_mode: str = "replace",
         **kwargs,
     ) -> Dict[str, Any]:
         """
@@ -372,6 +374,8 @@ class AsyncOpenViking:
             telemetry=telemetry,
             watch_interval=watch_interval,
             args=args,
+            tags=tags,
+            tag_mode=tag_mode,
             **kwargs,
         )
 

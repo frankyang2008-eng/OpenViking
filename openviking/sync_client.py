@@ -238,6 +238,8 @@ class SyncOpenViking:
         args: Optional[Dict[str, Any]] = None,
         telemetry: TelemetryRequest = False,
         processing_mode: str = "semantic_and_vectors",
+        tags: Optional[List[str]] = None,
+        tag_mode: str = "replace",
         **kwargs,
     ) -> Dict[str, Any]:
         """Add resource to OpenViking (resources scope only)
@@ -270,6 +272,8 @@ class SyncOpenViking:
                 summarize=summarize,
                 processing_mode=processing_mode,
                 args=args,
+                tags=tags,
+                tag_mode=tag_mode,
                 telemetry=telemetry,
                 **kwargs,
             )

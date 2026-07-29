@@ -642,6 +642,8 @@ class AsyncHTTPClient:
         args: Optional[Dict[str, Any]] = None,
         telemetry: Any = False,
         processing_mode: Optional[str] = None,
+        tags: Optional[List[str]] = None,
+        tag_mode: str = "replace",
     ) -> Dict[str, Any]:
         if to and parent:
             raise ValueError("Cannot specify both 'to' and 'parent' at the same time.")
@@ -664,6 +666,9 @@ class AsyncHTTPClient:
         }
         if processing_mode is not None:
             request_data["processing_mode"] = processing_mode
+        if tags is not None:
+            request_data["tags"] = tags
+            request_data["tag_mode"] = tag_mode
         if preserve_structure is not None:
             request_data["preserve_structure"] = preserve_structure
 
@@ -1842,6 +1847,8 @@ class SyncHTTPClient:
         args: Optional[Dict[str, Any]] = None,
         telemetry: Any = False,
         processing_mode: Optional[str] = None,
+        tags: Optional[List[str]] = None,
+        tag_mode: str = "replace",
     ) -> Dict[str, Any]:
         return run_async(
             self._async_client.add_resource(
@@ -1861,6 +1868,8 @@ class SyncHTTPClient:
                 watch_interval=watch_interval,
                 processing_mode=processing_mode,
                 args=args,
+                tags=tags,
+                tag_mode=tag_mode,
                 telemetry=telemetry,
             )
         )

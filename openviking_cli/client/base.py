@@ -46,6 +46,8 @@ class BaseClient(ABC):
         processing_mode: str = "semantic_and_vectors",
         args: Optional[Dict[str, Any]] = None,
         telemetry: TelemetryRequest = False,
+        tags: Optional[List[str]] = None,
+        tag_mode: str = "replace",
     ) -> Dict[str, Any]:
         """Add resource to OpenViking."""
         ...
