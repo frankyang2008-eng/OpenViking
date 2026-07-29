@@ -31,10 +31,17 @@ class AddResourceRequest(BaseModel):
             Either path or temp_file_id must be provided.
         temp_file_id: Temporary upload id returned by /api/v1/resources/temp_upload.
             Either path or temp_file_id must be provided.
+        add_type: Explicit Connector source type (e.g. "tos", "git"). When set, the
+            request routes to the Connector integration: the type must be enabled in
+            connector.allowed_add_types, and args are forwarded to the source plugin
+            (credentials under args.auth_config). Never degrades to the standard
+            pipeline. Requires 'path' and an exact 'to' target; cannot be combined
+            with 'temp_file_id' or 'parent'.
         to: Target URI for the resource (e.g., "viking://resources/my_resource").
-            If not specified, an auto-generated URI will be used.
+            Required when add_type is set. Otherwise, if not specified, an
+            auto-generated URI will be used.
         parent: Parent URI under which the resource will be stored.
-            Cannot be used together with 'to'.
+            Cannot be used together with 'to' or 'add_type'.
         create_parent: Whether to automatically create the parent directory if it doesn't exist.
             Default is False.
         reason: Reason for adding the resource. Used for documentation and monitoring.
@@ -69,6 +76,7 @@ class AddResourceRequest(BaseModel):
 
     path: Optional[str] = None
     temp_file_id: Optional[str] = None
+    add_type: Optional[str] = None
     to: Optional[str] = None
     parent: Optional[str] = None
     create_parent: bool = False
@@ -94,6 +102,20 @@ class AddResourceRequest(BaseModel):
     def check_path_or_temp_file_id(self):
         if not self.path and not self.temp_file_id:
             raise ValueError("Either 'path' or 'temp_file_id' must be provided")
+        return self
+
+    @model_validator(mode="after")
+    def check_add_type(self):
+        if self.add_type is not None:
+            self.add_type = self.add_type.strip() or None
+        if self.add_type and self.temp_file_id:
+            raise ValueError("'add_type' cannot be combined with 'temp_file_id'")
+        if self.add_type and not self.path:
+            raise ValueError("'add_type' requires 'path'")
+        if self.add_type and self.parent:
+            raise ValueError("'add_type' cannot be combined with 'parent'")
+        if self.add_type and not self.to:
+            raise ValueError("'add_type' requires an exact 'to' target")
         return self
 
 
@@ -209,7 +231,7 @@ async def add_resource(
         original_filename = resolved.original_filename
         allow_local_path_resolution = True
     elif path is not None:
-        path = require_remote_resource_source(path)
+        path = require_remote_resource_source(path, declared_connector_add_type=request.add_type)
     if path is None:
         raise InvalidArgumentError("Either 'path' or 'temp_file_id' must be provided.")
 
@@ -243,6 +265,7 @@ async def add_resource(
             result = await service.resources.add_resource(
                 path=path,
                 ctx=_ctx,
+                add_type=request.add_type,
                 to=request.to,
                 parent=request.parent,
                 reason=request.reason,

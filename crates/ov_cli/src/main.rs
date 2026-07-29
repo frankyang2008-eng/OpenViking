@@ -282,6 +282,18 @@ enum Commands {
         /// Local path or URL to import
         #[arg(value_name = "path-or-url")]
         path: String,
+        /// Explicit Connector source type (e.g. "tos", "git"). Routes the import
+        /// through the Connector integration (must be enabled server-side); the
+        /// path is sent verbatim and never treated as a local file. Requires --to
+        /// and cannot be combined with --parent or --parent-auto-create
+        #[arg(
+            long = "add-type",
+            value_name = "type",
+            requires = "to",
+            conflicts_with_all = ["parent", "parent_auto_create"],
+            help_heading = "Common options"
+        )]
+        add_type: Option<String>,
         /// Exact target URI (must not exist yet) (cannot be used with --parent)
         #[arg(long, value_name = "uri", help_heading = "Common options")]
         to: Option<String>,
@@ -2798,6 +2810,7 @@ async fn main() {
     let result = match cli.command {
         Commands::AddResource {
             path,
+            add_type,
             to,
             parent,
             parent_auto_create,
@@ -2821,6 +2834,7 @@ async fn main() {
                 ctx.with_upload_options(upload_options.merged_with_legacy(legacy_upload_options));
             handlers::handle_add_resource(
                 path,
+                add_type,
                 to,
                 parent,
                 parent_auto_create,
@@ -4034,6 +4048,61 @@ mod tests {
 
         assert!(Cli::try_parse_from(["ov", "skills", "add", "./skill", "--progress"]).is_err());
         assert!(Cli::try_parse_from(["ov", "skills", "update", "--progress"]).is_err());
+    }
+
+    #[test]
+    fn cli_add_resource_add_type_requires_exact_to() {
+        assert!(
+            Cli::try_parse_from(["ov", "add-resource", "space:home", "--add-type", "feishu"])
+                .is_err()
+        );
+        assert!(
+            Cli::try_parse_from([
+                "ov",
+                "add-resource",
+                "space:home",
+                "--add-type",
+                "feishu",
+                "--to",
+                "viking://resources/feishu",
+                "--parent",
+                "viking://resources/imports",
+            ])
+            .is_err()
+        );
+        assert!(
+            Cli::try_parse_from([
+                "ov",
+                "add-resource",
+                "space:home",
+                "--add-type",
+                "feishu",
+                "--to",
+                "viking://resources/feishu",
+                "--parent-auto-create",
+                "viking://resources/imports",
+            ])
+            .is_err()
+        );
+
+        let cli = Cli::try_parse_from([
+            "ov",
+            "add-resource",
+            "space:home",
+            "--add-type",
+            "feishu",
+            "--to",
+            "viking://resources/feishu",
+        ])
+        .expect("declared add type with an exact target should parse");
+
+        match cli.command {
+            Commands::AddResource { add_type, to, .. } => {
+                assert_eq!(add_type.as_deref(), Some("feishu"));
+                assert_eq!(to.as_deref(), Some("viking://resources/feishu"));
+            }
+            _ => panic!("expected add-resource command"),
+        }
     }
 
     #[test]
