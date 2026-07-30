@@ -511,6 +511,31 @@ class SemanticProcessor(DequeueHandlerBase):
                     self.report_error(str(e), data)
             return None
 
+    async def on_cancelled(self, data: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        """Release a queued semantic lock before cancelled work is ACKed."""
+        try:
+            import json
+
+            payload = data.get("data", data) if isinstance(data, dict) else data
+            if isinstance(payload, str):
+                payload = json.loads(payload)
+            msg = SemanticMsg.from_dict(payload)
+        except (TypeError, ValueError) as exc:
+            self.report_error(str(exc), data)
+            return None
+
+        if msg.telemetry_id and msg.id:
+            get_request_wait_tracker().mark_semantic_done(msg.telemetry_id, msg.id)
+        if msg.lock_handoff is not None:
+            try:
+                viking_fs = get_viking_fs()
+                lock = await viking_fs._async_agfs.pathlock_adopt(msg.lock_handoff)
+                await viking_fs._async_agfs.pathlock_release(lock)
+            except Exception as exc:
+                logger.warning("Failed to release cancelled semantic lock: %s", exc)
+        self.report_success()
+        return None
+
     def get_dag_stats(self) -> Optional["DagStats"]:
         return SemanticDagExecutor.get_active_stats()
 
