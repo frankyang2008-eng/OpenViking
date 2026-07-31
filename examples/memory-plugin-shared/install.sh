@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 #
 # OpenViking Memory Plugin shared installer for Claude Code, Codex, Cursor,
-# TRAE / TRAE CN, OpenCode, pi, Qoder, and CodeBuddy.
+# TRAE / TRAE CN, OpenCode, pi, Qoder, CodeBuddy, and omp (oh-my-pi).
 #
 # One-liner (GitHub):
 #   bash <(curl -fsSL https://raw.githubusercontent.com/volcengine/OpenViking/main/examples/memory-plugin-shared/install.sh)
 # One-liner (TOS mirror, for regions where GitHub is unreachable):
 #   bash <(curl -fsSL https://ovrelease.tos-cn-beijing.volces.com/memory-plugin-shared/install.sh) --dist tos
 # Non-interactive:
-#   bash install.sh --harness claude,codex,cursor,trae,trae-cn,opencode,pi,qoder,codebuddy --dist github --lang en --url http://127.0.0.1:1933 --api-key ''
+#   bash install.sh --harness claude,codex,cursor,trae,trae-cn,opencode,pi,qoder,codebuddy,omp --dist github --lang en --url http://127.0.0.1:1933 --api-key ''
 # Format-compatible CLI aliases:
 #   bash install.sh --harness codex --codex-bin codex,traex
 #   bash install.sh --harness claude --claude-bin claude,seed
@@ -162,7 +162,7 @@ usage() {
 Usage: install.sh [options]
 
 Options:
-  --harness LIST     Comma-separated harnesses: claude, codex, cursor, trae, trae-cn, opencode, pi, qoder, codebuddy.
+  --harness LIST     Comma-separated harnesses: claude, codex, cursor, trae, trae-cn, opencode, pi, qoder, codebuddy, omp.
   --claude-bin LIST  Comma-separated Claude-format CLI commands (default: claude).
   --codex-bin LIST   Comma-separated Codex-format CLI commands (default: codex).
   --dist CHANNEL     github (default) | tos (mirror for GitHub-blocked regions).
@@ -392,7 +392,7 @@ EOF
 }
 
 refresh_available_harnesses() {
-  HAVE_CLAUDE=0; HAVE_CODEX=0; HAVE_CURSOR=0; HAVE_TRAE=0; HAVE_TRAE_CN=0; HAVE_OPENCODE=0; HAVE_PI=0; HAVE_QODER=0; HAVE_CODEBUDDY=0
+  HAVE_CLAUDE=0; HAVE_CODEX=0; HAVE_CURSOR=0; HAVE_TRAE=0; HAVE_TRAE_CN=0; HAVE_OPENCODE=0; HAVE_PI=0; HAVE_QODER=0; HAVE_CODEBUDDY=0; HAVE_OMP=0
   has_available_bin "$CLAUDE_BINS" && HAVE_CLAUDE=1
   has_available_bin "$CODEX_BINS" && HAVE_CODEX=1
   { command -v cursor >/dev/null 2>&1 || command -v cursor-agent >/dev/null 2>&1 || [ -d "/Applications/Cursor.app" ] || [ -d "$HOME/.cursor" ]; } && HAVE_CURSOR=1
@@ -402,6 +402,7 @@ refresh_available_harnesses() {
   command -v pi >/dev/null 2>&1 && HAVE_PI=1
   command -v qodercli >/dev/null 2>&1 && HAVE_QODER=1
   command -v codebuddy >/dev/null 2>&1 && HAVE_CODEBUDDY=1
+  command -v omp >/dev/null 2>&1 && HAVE_OMP=1
   return 0
 }
 
@@ -468,7 +469,7 @@ NODE
 CLAUDE_BINS="$(normalize_bin_list "$CLAUDE_BINS_ARG" claude)"
 CODEX_BINS="$(normalize_bin_list "$CODEX_BINS_ARG" codex)"
 
-HAVE_CLAUDE=0; HAVE_CODEX=0; HAVE_CURSOR=0; HAVE_TRAE=0; HAVE_TRAE_CN=0; HAVE_OPENCODE=0; HAVE_PI=0; HAVE_QODER=0; HAVE_CODEBUDDY=0
+HAVE_CLAUDE=0; HAVE_CODEX=0; HAVE_CURSOR=0; HAVE_TRAE=0; HAVE_TRAE_CN=0; HAVE_OPENCODE=0; HAVE_PI=0; HAVE_QODER=0; HAVE_CODEBUDDY=0; HAVE_OMP=0
 refresh_available_harnesses
 
 TUI_CLAUDE_BINS="$CLAUDE_BINS"
@@ -482,6 +483,7 @@ SEL_TRAE=0
 SEL_TRAE_CN=0
 SEL_QODER=0
 SEL_CODEBUDDY=0
+SEL_OMP=0
 TUI_CURSOR=0; TUI_LINES=0
 
 list_count() {
@@ -495,7 +497,7 @@ EOF
 }
 
 tui_selectable_count() {
-  printf '%s' $(( $(list_count "$TUI_CLAUDE_BINS") + $(list_count "$TUI_CODEX_BINS") + 7 ))
+  printf '%s' $(( $(list_count "$TUI_CLAUDE_BINS") + $(list_count "$TUI_CODEX_BINS") + 8 ))
 }
 
 tui_total_count() {
@@ -531,6 +533,8 @@ EOF
   if [ "$i" -eq "$idx" ]; then printf 'qoder|qoder'; return 0; fi
   i=$((i + 1))
   if [ "$i" -eq "$idx" ]; then printf 'codebuddy|codebuddy'; return 0; fi
+  i=$((i + 1))
+  if [ "$i" -eq "$idx" ]; then printf 'omp|omp'; return 0; fi
   printf 'add|'
 }
 
@@ -562,6 +566,7 @@ tui_bin_label() {
     trae-cn:*) printf 'TRAE CN' ;;
     qoder:*) printf 'Qoder' ;;
     codebuddy:*) printf 'CodeBuddy' ;;
+    omp:*) printf 'oh-my-pi (omp)' ;;
     claude:*) printf '%s %s' "$bin" "$(t '(Claude-format)' '（Claude 格式）')" ;;
     codex:*) printf '%s %s' "$bin" "$(t '(Codex-format)' '（Codex 格式）')" ;;
   esac
@@ -585,6 +590,8 @@ tui_bin_selected() {
     [ "$SEL_TRAE_CN" -eq 1 ]
   elif [ "$kind" = "qoder" ]; then
     [ "$SEL_QODER" -eq 1 ]
+  elif [ "$kind" = "omp" ]; then
+    [ "$SEL_OMP" -eq 1 ]
   else
     [ "$SEL_CODEBUDDY" -eq 1 ]
   fi
@@ -597,6 +604,7 @@ tui_bin_detected() { # tui_bin_detected <kind> <bin>
     trae-cn) [ "$HAVE_TRAE_CN" -eq 1 ] ;;
     qoder) [ "$HAVE_QODER" -eq 1 ] ;;
     codebuddy) [ "$HAVE_CODEBUDDY" -eq 1 ] ;;
+    omp) [ "$HAVE_OMP" -eq 1 ] ;;
     *) command -v "$2" >/dev/null 2>&1 ;;
   esac
 }
@@ -611,6 +619,7 @@ tui_set_all_bins() {
   SEL_TRAE_CN=1
   SEL_QODER=1
   SEL_CODEBUDDY=1
+  SEL_OMP=1
 }
 
 tui_toggle_bin() {
@@ -633,6 +642,8 @@ tui_toggle_bin() {
     SEL_TRAE_CN=$((1 - SEL_TRAE_CN)); return 0
   elif [ "$kind" = "qoder" ]; then
     SEL_QODER=$((1 - SEL_QODER)); return 0
+  elif [ "$kind" = "omp" ]; then
+    SEL_OMP=$((1 - SEL_OMP)); return 0
   else
     SEL_CODEBUDDY=$((1 - SEL_CODEBUDDY)); return 0
   fi
@@ -705,6 +716,7 @@ tui_reset_bin_selection() {
   SEL_TRAE_CN=0
   SEL_QODER=0
   SEL_CODEBUDDY=0
+  SEL_OMP=0
   while IFS= read -r bin; do
     [ -n "$bin" ] || continue
     if command -v "$bin" >/dev/null 2>&1; then
@@ -730,6 +742,7 @@ EOF
   if [ "$HAVE_TRAE_CN" -eq 1 ]; then SEL_TRAE_CN=1; any=1; fi
   if [ "$HAVE_QODER" -eq 1 ]; then SEL_QODER=1; any=1; fi
   if [ "$HAVE_CODEBUDDY" -eq 1 ]; then SEL_CODEBUDDY=1; any=1; fi
+  if [ "$HAVE_OMP" -eq 1 ]; then SEL_OMP=1; any=1; fi
   if [ "$any" -ne 1 ]; then
     SEL_CLAUDE_BINS="$TUI_CLAUDE_BINS"
     SEL_CODEX_BINS="$TUI_CODEX_BINS"
@@ -817,7 +830,7 @@ tui_add_compatible_cli() {
 tui_has_selection() {
   [ -n "$(list_words "$SEL_CLAUDE_BINS")" ] || [ -n "$(list_words "$SEL_CODEX_BINS")" ] \
     || [ "$SEL_OPENCODE" -eq 1 ] || [ "$SEL_PI" -eq 1 ] || [ "$SEL_CURSOR_APP" -eq 1 ] \
-    || [ "$SEL_TRAE" -eq 1 ] || [ "$SEL_TRAE_CN" -eq 1 ] || [ "$SEL_QODER" -eq 1 ] || [ "$SEL_CODEBUDDY" -eq 1 ]
+    || [ "$SEL_TRAE" -eq 1 ] || [ "$SEL_TRAE_CN" -eq 1 ] || [ "$SEL_QODER" -eq 1 ] || [ "$SEL_CODEBUDDY" -eq 1 ] || [ "$SEL_OMP" -eq 1 ]
 }
 
 tui_finish_selection() {
@@ -833,6 +846,7 @@ tui_finish_selection() {
   [ "$SEL_TRAE_CN" -eq 1 ] && SELECTED_HARNESSES="${SELECTED_HARNESSES:+$SELECTED_HARNESSES,}trae-cn"
   [ "$SEL_QODER" -eq 1 ] && SELECTED_HARNESSES="${SELECTED_HARNESSES:+$SELECTED_HARNESSES,}qoder"
   [ "$SEL_CODEBUDDY" -eq 1 ] && SELECTED_HARNESSES="${SELECTED_HARNESSES:+$SELECTED_HARNESSES,}codebuddy"
+  [ "$SEL_OMP" -eq 1 ] && SELECTED_HARNESSES="${SELECTED_HARNESSES:+$SELECTED_HARNESSES,}omp"
   return 0
 }
 
@@ -905,6 +919,7 @@ select_harnesses() {
   [ "$HAVE_PI" -eq 1 ] && detected="${detected:+$detected,}pi"
   [ "$HAVE_QODER" -eq 1 ] && detected="${detected:+$detected,}qoder"
   [ "$HAVE_CODEBUDDY" -eq 1 ] && detected="${detected:+$detected,}codebuddy"
+  [ "$HAVE_OMP" -eq 1 ] && detected="${detected:+$detected,}omp"
 
   if [ -n "$REQUESTED_HARNESSES" ]; then
     SELECTED_HARNESSES="$REQUESTED_HARNESSES"
@@ -950,7 +965,7 @@ validate_selected_harnesses() {
   local h bad=0
   while IFS= read -r h; do
     case "$h" in
-      claude|codex|cursor|trae|trae-cn|opencode|pi|qoder|codebuddy) ;;
+      claude|codex|cursor|trae|trae-cn|opencode|pi|qoder|codebuddy|omp) ;;
       *) err "Unsupported harness: $h"; bad=1 ;;
     esac
   done <<EOF
@@ -989,6 +1004,7 @@ EOF
   if contains_harness pi && command -v pi >/dev/null 2>&1; then ok=1; fi
   if contains_harness qoder && command -v qodercli >/dev/null 2>&1; then ok=1; fi
   if contains_harness codebuddy && command -v codebuddy >/dev/null 2>&1; then ok=1; fi
+  if contains_harness omp && command -v omp >/dev/null 2>&1; then ok=1; fi
   # Cursor and TRAE are config-driven integrations. They may be installed
   # before the desktop app itself, so a CLI in PATH is not required.
   if contains_harness cursor || contains_harness trae || contains_harness trae-cn; then ok=1; fi
@@ -1168,6 +1184,18 @@ resolve_self_checkout() {
   if [ -d "$dir/../../.git" ] && [ -d "$dir/../claude-code-memory-plugin" ]; then
     CHECKOUT_DIR="$(cd "$dir/../.." >/dev/null 2>&1 && pwd -P)"
   fi
+}
+
+# Re-sync the vendored shared-lib copies (claude-code/codex/opencode/pi) from
+# memory-plugin-shared/lib before a --sync install, so the materialized snapshot
+# picks up the latest shared modules. sync.mjs is a sibling of this script.
+run_shared_sync() {
+  local self_dir sync_mjs
+  self_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd -P)" || return 0
+  sync_mjs="$self_dir/sync.mjs"
+  [ -f "$sync_mjs" ] || return 0
+  info "$(t 'Syncing shared lib into vendored copies' '正在将 shared lib 同步到各 vendored 副本')"
+  "$NODE_BIN" "$sync_mjs" || { err "$(t 'shared lib sync (sync.mjs) failed' 'shared lib 同步（sync.mjs）失败')"; return 1; }
 }
 
 resolve_source_mode() {
@@ -2674,7 +2702,7 @@ install_pi() {
   [ -f "$dest/config.json" ] && keep_config="$dest/config.json"
   rm -rf "$tmp"
   mkdir -p "$tmp"
-  (cd "$plugin_dir" && tar --exclude node_modules --exclude .git -cf - .) | (cd "$tmp" && tar -xf -)
+  (cd "$plugin_dir" && tar --exclude node_modules --exclude .git --exclude .omc --exclude .qoder -cf - .) | (cd "$tmp" && tar -xf -)
   if [ -n "$keep_config" ]; then
     cp "$keep_config" "$tmp/config.json"
   fi
@@ -2683,6 +2711,50 @@ install_pi() {
   mv "$tmp" "$dest"
   pi install "$dest" || warn "$(t 'pi extension copied but pi install registration failed; run pi install manually.' 'pi 扩展文件已复制，但 pi install 注册失败；请手动运行 pi install。')"
   info "$(t 'pi extension installed:' 'pi 扩展已安装：') $dest"
+}
+
+resolve_omp_agent_dir() {
+  # omp 真实优先级（v17.1.5 DirResolver 取证：profile 激活时
+  # `agentDirOverride = profile ? undefined : options.agentDirOverride`，
+  # 即 PI_CODING_AGENT_DIR 被忽略）。故 profile(OMP_PROFILE > PI_PROFILE) 优先，
+  # PI_CODING_AGENT_DIR 仅在无 profile 时作为 override 生效。
+  if [ -n "${OMP_PROFILE:-}" ]; then
+    printf '%s' "$HOME/.omp/profiles/$OMP_PROFILE/agent"
+  elif [ -n "${PI_PROFILE:-}" ]; then
+    printf '%s' "$HOME/.omp/profiles/$PI_PROFILE/agent"
+  elif [ -n "${PI_CODING_AGENT_DIR:-}" ]; then
+    printf '%s' "$PI_CODING_AGENT_DIR"
+  else
+    printf '%s' "$HOME/.omp/agent"
+  fi
+}
+
+install_omp() {
+  heading "$(t '4. omp extension' '4. omp 扩展')"
+  if ! command -v omp >/dev/null 2>&1; then
+    warn "$(t 'omp CLI not found; skipping omp extension install.' '未找到 omp 命令，跳过 omp 扩展安装。')"
+    return 0
+  fi
+  local plugin_dir dest tmp keep_config omp_agent_dir
+  plugin_dir="$(plugin_dir_on_disk pi-coding-agent-extension)" || {
+    warn "$(t 'omp extension sources not found; skipping.' '未找到 omp 扩展源码，跳过。')"
+    return 0
+  }
+  omp_agent_dir="$(resolve_omp_agent_dir)"
+  dest="$omp_agent_dir/extensions/openviking"
+  tmp="$dest.tmp"
+  keep_config=""
+  [ -f "$dest/config.json" ] && keep_config="$dest/config.json"
+  rm -rf "$tmp"
+  mkdir -p "$tmp"
+  (cd "$plugin_dir" && tar --exclude node_modules --exclude .git --exclude .omc --exclude .qoder -cf - .) | (cd "$tmp" && tar -xf -)
+  if [ -n "$keep_config" ]; then
+    cp "$keep_config" "$tmp/config.json"
+  fi
+  rm -rf "$dest"
+  mkdir -p "$(dirname "$dest")"
+  mv "$tmp" "$dest"
+  info "$(t 'omp extension installed:' 'omp 扩展已安装：') $dest"
 }
 
 install_qoder() {
@@ -2857,22 +2929,26 @@ verify_codebuddy() {
   fi
 
   # 5. Source vs installed copy sync (C3)
-  # ponytail: targeted cmp on 7 behavior files; switch to diff -r --exclude if full-tree guarantee is needed
+  # Full-tree recursive diff (minus build/local-state dirs) so vendored shared
+  # modules (scripts/shared), .mcp.json, and every hooked script are covered —
+  # the old 7-file cmp list missed those and could report a false in-sync.
   if [ -z "$src_dir" ]; then
     warn "✗ plugin sources not found (run from a repo checkout)"; fail=1
   elif [ ! -d "$mkt_plugin" ]; then
     warn "✗ marketplace not materialized — run: bash install.sh --sync codebuddy"; fail=1
   else
     desync=0
-    for f in hooks/hooks.json scripts/auto-recall.mjs scripts/auto-capture.mjs \
-             scripts/session-start.mjs scripts/config.mjs servers/mcp-proxy.mjs \
-             .codebuddy-plugin/plugin.json; do
-      if ! cmp -s "$src_dir/$f" "$mkt_plugin/$f" 2>/dev/null; then
-        warn "  differs: $f"; desync=1
-      fi
-    done
-    src_ver="$(json_get "$src_dir/.codebuddy-plugin/plugin.json" version)"
-    mkt_ver="$(json_get "$mkt_plugin/.codebuddy-plugin/plugin.json" version)"
+    # diff -r exits non-zero on any difference; capture the differing paths.
+    local diff_out
+    diff_out="$(diff -r --exclude node_modules --exclude .git --exclude .omc --exclude .qoder --exclude package-lock.json \
+      "$src_dir" "$mkt_plugin" 2>/dev/null)"
+    if [ -n "$diff_out" ]; then
+      printf '%s\n' "$diff_out" | grep -E '^(diff|Only in)' | sed 's/^/  differs: /' | head -20 >&2
+      desync=1
+    fi
+    # Version source matches materialize_codebuddy_marketplace (.claude-plugin/plugin.json).
+    src_ver="$(json_get "$src_dir/.claude-plugin/plugin.json" version)"
+    mkt_ver="$(json_get "$mkt_plugin/.claude-plugin/plugin.json" version)"
     if [ "$src_ver" != "$mkt_ver" ]; then
       warn "  version: src=$src_ver installed=$mkt_ver"; desync=1
     fi
@@ -3072,6 +3148,23 @@ EOF
       node --check "$HOME/.pi/agent/extensions/openviking/shared/recall-core.mjs" || ok=0
     fi
   fi
+  if contains_harness omp; then
+    local omp_agent_dir="$(resolve_omp_agent_dir)"
+    if [ -f "$omp_agent_dir/extensions/openviking/index.ts" ] || [ -f "$omp_agent_dir/extensions/openviking/index.js" ]; then
+      info "omp: $PLUGIN_NAME $(t 'extension files present' '扩展文件已存在')"
+    else
+      warn "omp: $PLUGIN_NAME $(t 'extension files not found' '未找到扩展文件')"
+      ok=0
+    fi
+    if [ -f "$omp_agent_dir/extensions/openviking/shared/recall-core.mjs" ]; then
+      if "$NODE_BIN" --check "$omp_agent_dir/extensions/openviking/shared/recall-core.mjs" 2>/dev/null; then
+        info "omp: $(t 'shared recall-core.mjs syntax OK' 'shared/recall-core.mjs 语法正常')"
+      else
+        warn "omp: $(t 'shared recall-core.mjs syntax check failed' 'shared/recall-core.mjs 语法检查失败')"
+        ok=0
+      fi
+    fi
+  fi
   if contains_harness qoder; then
     if command -v qodercli >/dev/null 2>&1; then
       list="$(qodercli plugin list 2>/dev/null || true)"
@@ -3158,6 +3251,7 @@ resolve_self_checkout
 # checkout. `--sync`/`--verify` set YES=1 at parse time so nothing prompts.
 if [ -n "$SYNC_TARGET" ]; then
   [ "$SYNC_TARGET" = "codebuddy" ] || { err "Unsupported --sync target: $SYNC_TARGET (expected: codebuddy)"; exit 2; }
+  run_shared_sync || exit 1
   install_codebuddy
   exit 0
 fi
@@ -3214,6 +3308,7 @@ if contains_harness trae; then install_trae_variant trae; fi
 if contains_harness trae-cn; then install_trae_variant trae-cn; fi
 if contains_harness opencode; then install_opencode; fi
 if contains_harness pi; then install_pi; fi
+if contains_harness omp; then install_omp; fi
 if contains_harness qoder; then install_qoder; fi
 if contains_harness codebuddy; then install_codebuddy; fi
 validate_install
@@ -3231,5 +3326,6 @@ if contains_harness trae; then info "TRAE: ~/.trae/hooks.json + MCP"; fi
 if contains_harness trae-cn; then info "TRAE CN: ~/.trae-cn/hooks.json + MCP"; fi
 if contains_harness opencode; then info "OpenCode: @openviking/opencode-plugin"; fi
 if contains_harness pi; then info "pi: ~/.pi/agent/extensions/openviking"; fi
+if contains_harness omp; then info "omp: $(resolve_omp_agent_dir)/extensions/openviking"; fi
 if contains_harness qoder; then info "Qoder: $QODER_PLUGIN_ID (user scope)"; fi
 if contains_harness codebuddy; then info "CodeBuddy: $CODEBUDDY_PLUGIN_ID (user scope)"; fi

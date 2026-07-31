@@ -2,6 +2,7 @@ import { Type } from "typebox";
 import { StringEnum } from "@earendil-works/pi-ai";
 import type { OVClient } from "./client.js";
 import type { SyncManager } from "./sync.js";
+import { enqueue } from "./shared/pending-queue.mjs";
 
 export function registerTools(pi: any, client: OVClient, sync?: SyncManager): void {
 
@@ -136,15 +137,28 @@ export function registerTools(pi: any, client: OVClient, sync?: SyncManager): vo
       const category = params.category ?? "general";
       const tagged = `[Remember — ${category}] ${params.content}`;
 
-      // Directly add to OV session if available
+      // Directly add to OV session if available. On failure, enqueue into the
+      // pending queue (same replay path as SyncManager.addPayload) so the memory
+      // is retried instead of being silently dropped while claiming "Queued".
       let stored = false;
+      let queued = false;
       if (sync?.sessionId) {
         stored = await client.addMessage(sync.sessionId, "user", tagged);
+        if (!stored) {
+          await enqueue("addMessage", sync.sessionId, { role: "user", content: tagged });
+          queued = true;
+        }
       }
 
+      const text = stored
+        ? `Remembered in OpenViking: "${params.content}" (${category})`
+        : queued
+          ? `Queued for OpenViking (will retry on reconnect): "${params.content}" (${category})`
+          : `Not stored (no active OpenViking session): "${params.content}" (${category})`;
+
       return {
-        content: [{ type: "text", text: stored ? `Remembered in OpenViking: "${params.content}" (${category})` : `Queued for OpenViking: "${params.content}" (${category})` }],
-        details: { stored, category, tagged },
+        content: [{ type: "text", text }],
+        details: { stored, queued, category, tagged },
       };
     },
   });

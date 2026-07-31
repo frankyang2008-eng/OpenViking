@@ -113,6 +113,11 @@ export class OVClient {
       }
       return { ok: true, result: (body.result ?? body) as T };
     } catch (err: any) {
+      // Network-level failure (DNS / refused / abort): the server is unreachable.
+      // Flip connected off so gating tools stop taking the live path; health()
+      // will flip it back on once the server recovers. (HTTP 4xx/5xx above mean
+      // the server IS up, so those don't touch connected.)
+      this.connected = false;
       return { ok: false, result: null, status: 0, error: { message: err?.message || String(err) } };
     }
   }
