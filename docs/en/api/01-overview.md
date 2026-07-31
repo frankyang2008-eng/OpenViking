@@ -472,7 +472,7 @@ This catalog follows the routes actually mounted by the server. Each group headi
 | POST | `/api/v1/sessions/{session_id}/used` | Record context or skills actually used |
 | POST | `/api/v1/search/recall` | Recall memory as injection-ready context |
 
-### [Retrieval](06-retrieval.md), [Code Retrieval](21-code.md), and [Relations](13-relations.md)
+### [Retrieval](06-retrieval.md) and [Relations](13-relations.md)
 
 | Method | Path | Description |
 |--------|------|-------------|
@@ -480,9 +480,6 @@ This catalog follows the routes actually mounted by the server. Each group headi
 | POST | `/api/v1/search/search` | Context-aware search |
 | POST | `/api/v1/search/grep` | Content pattern search |
 | POST | `/api/v1/search/glob` | File pattern matching |
-| POST | `/api/v1/code/outline` | Extract code structure |
-| POST | `/api/v1/code/search` | Search code |
-| POST | `/api/v1/code/expand` | Expand code context |
 | GET | `/api/v1/relations` | Get resource relations |
 | POST | `/api/v1/relations/link` | Create a resource link |
 | DELETE | `/api/v1/relations/link` | Delete a resource link |

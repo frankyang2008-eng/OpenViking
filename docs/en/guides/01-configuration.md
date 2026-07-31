@@ -793,39 +793,9 @@ Configuration for Feishu/Lark cloud document parsing. See [Resources](../api/02-
 
 ### code
 
-Controls how code files are summarized via `code_summary_mode`. Both config formats are equivalent:
+Code skeleton extraction is built into the code summary pipeline and has no parser-level configuration. OpenViking first uses maintained `tags.scm` queries when one exists for the language; if no corresponding `tags.scm` exists, it uses `tree-sitter-language-pack.process()`; when the current extraction route produces no useful skeleton, it invokes `semantic.code_summary` as fallback.
 
-```json
-{
-  "code": {
-    "code_summary_mode": "ast"
-  }
-}
-```
-
-```json
-{
-  "parsers": {
-    "code": {
-      "code_summary_mode": "ast"
-    }
-  }
-}
-```
-
-Set `code_summary_mode` to one of:
-
-| Value | Description | Default |
-|-------|-------------|---------|
-| `"ast"` | Extract AST skeleton (class names, method signatures, first-line docstrings, imports) for files ≥100 lines, skip LLM calls. **Recommended for large-scale code indexing** | ✓ |
-| `"llm"` | Always use LLM for summarization (higher cost) | |
-| `"ast_llm"` | Extract AST skeleton (with full docstrings) first, then pass it as context to LLM (highest quality, moderate cost) | |
-
-AST extraction supports: Python, JavaScript/TypeScript, Java, C/C++, Rust, Go, C#, PHP,
-and Lua. Other languages, extraction failures, or empty skeletons automatically fall back
-to LLM.
-
-See [Code Skeleton Extraction](../concepts/06-extraction.md#code-skeleton-extraction-ast-mode) for details.
+The remaining `code` configuration fields are for remote code resource network guards and code-hosting allowlists. See [Code Skeleton Extraction](../concepts/06-extraction.md#code-skeleton-extraction) for the extraction route.
 
 #### Remote resource network guard
 
@@ -1774,9 +1744,6 @@ For detailed encryption explanations, see [Data Encryption](../concepts/10-encry
       "url": "string",
       "project": "string"
     }
-  },
-  "code": {
-    "code_summary_mode": "ast"
   },
   "server": {
     "host": "127.0.0.1",

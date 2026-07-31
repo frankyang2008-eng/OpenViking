@@ -467,7 +467,7 @@ JSON 输出 - 错误：
 | POST | `/api/v1/sessions/{session_id}/used` | 记录实际使用的上下文或技能 |
 | POST | `/api/v1/search/recall` | 召回记忆并返回可直接注入的上下文 |
 
-### [检索](06-retrieval.md)、[代码检索](21-code.md)与[关系](13-relations.md)
+### [检索](06-retrieval.md)与[关系](13-relations.md)
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
@@ -475,9 +475,6 @@ JSON 输出 - 错误：
 | POST | `/api/v1/search/search` | 上下文感知搜索 |
 | POST | `/api/v1/search/grep` | 内容模式搜索 |
 | POST | `/api/v1/search/glob` | 文件模式匹配 |
-| POST | `/api/v1/code/outline` | 提取代码结构 |
-| POST | `/api/v1/code/search` | 代码搜索 |
-| POST | `/api/v1/code/expand` | 展开代码上下文 |
 | GET | `/api/v1/relations` | 获取资源关系 |
 | POST | `/api/v1/relations/link` | 创建资源链接 |
 | DELETE | `/api/v1/relations/link` | 删除资源链接 |

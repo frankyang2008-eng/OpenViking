@@ -188,8 +188,7 @@ const apiReferenceSidebar = {
         text: 'Retrieval & Relations',
         items: [
           ['06-retrieval.md', 'Retrieval'],
-          ['13-relations.md', 'Relations'],
-          ['21-code.md', 'Code Navigation']
+          ['13-relations.md', 'Relations']
         ]
       },
       {
@@ -248,8 +247,7 @@ const apiReferenceSidebar = {
         text: '检索与关系',
         items: [
           ['06-retrieval.md', '检索'],
-          ['13-relations.md', '关系'],
-          ['21-code.md', '代码导航']
+          ['13-relations.md', '关系']
         ]
       },
       {

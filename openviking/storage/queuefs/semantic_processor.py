@@ -179,7 +179,7 @@ class SemanticProcessor(DequeueHandlerBase):
 
     def _detect_file_type(self, file_name: str) -> str:
         """
-        Detect file type based on extension using constants from code parser.
+        Detect file type for summary prompt selection.
 
         Args:
             file_name: File name with extension
@@ -189,15 +189,21 @@ class SemanticProcessor(DequeueHandlerBase):
         """
         file_name_lower = file_name.lower()
 
-        # Check if file is a code file
-        for ext in CODE_EXTENSIONS:
-            if file_name_lower.endswith(ext):
-                return FILE_TYPE_CODE
-
-        # Check if file is a documentation file
+        # Documentation prompts should win over broad code skeleton recognition.
         for ext in DOCUMENTATION_EXTENSIONS:
             if file_name_lower.endswith(ext):
                 return FILE_TYPE_DOCUMENTATION
+
+        from openviking.parse.parsers.code.ast.providers import supports_code_skeleton
+
+        if supports_code_skeleton(file_name):
+            return FILE_TYPE_CODE
+
+        # Keep legacy extension-based routing for code-like text formats not
+        # covered by tags queries or tree-sitter-language-pack.
+        for ext in CODE_EXTENSIONS:
+            if file_name_lower.endswith(ext):
+                return FILE_TYPE_CODE
 
         # Default to other
         return FILE_TYPE_OTHER
@@ -1076,56 +1082,39 @@ class SemanticProcessor(DequeueHandlerBase):
         def result(summary: str) -> Dict[str, Any]:
             return {"name": file_name, "summary": summary, "content": full_content}
 
+        config = get_openviking_config()
+
         # Limit content length
-        max_chars = get_openviking_config().semantic.max_file_content_chars
+        max_chars = config.semantic.max_file_content_chars
         if len(content) > max_chars:
             content = content[:max_chars] + "\n...(truncated)"
-
-        # Generate summary
-        if not vlm.is_available():
-            logger.warning("VLM not available, using empty summary")
-            return result("")
-
-        from openviking.session.memory.utils.language import resolve_output_language
-
-        output_language = resolve_output_language(content)
 
         # Detect file type and select appropriate prompt
         file_type = self._detect_file_type(file_name)
 
         if file_type == FILE_TYPE_CODE:
-            code_mode = get_openviking_config().code.code_summary_mode
+            from openviking.parse.parsers.code.ast import extract_skeleton_result
 
-            if code_mode in ("ast", "ast_llm") and len(content.splitlines()) >= 100:
-                from openviking.parse.parsers.code.ast import extract_skeleton
+            extraction = extract_skeleton_result(file_name, content)
+            if extraction.text:
+                skeleton_text = extraction.text
+                max_skeleton_chars = config.semantic.max_skeleton_chars
+                if len(skeleton_text) > max_skeleton_chars:
+                    skeleton_text = skeleton_text[:max_skeleton_chars]
+                return result(skeleton_text)
+            logger.info(
+                "Code skeleton fallback to LLM for '%s': %s",
+                file_path,
+                extraction.reason,
+            )
 
-                verbose = code_mode == "ast_llm"
-                skeleton_text = extract_skeleton(file_name, content, verbose=verbose)
-                if skeleton_text:
-                    max_skeleton_chars = get_openviking_config().semantic.max_skeleton_chars
-                    if len(skeleton_text) > max_skeleton_chars:
-                        skeleton_text = skeleton_text[:max_skeleton_chars]
-                    if code_mode == "ast":
-                        return result(skeleton_text)
-                    else:  # ast_llm
-                        prompt = render_prompt(
-                            "semantic.code_ast_summary",
-                            {
-                                "file_name": file_name,
-                                "skeleton": skeleton_text,
-                                "output_language": output_language,
-                            },
-                        )
-                        async with llm_sem:
-                            with bind_telemetry_stage("resource_summarize"):
-                                summary = await vlm.get_completion_async(prompt)
-                        return result(summary.strip())
-                if skeleton_text is None:
-                    logger.info("AST unsupported language, fallback to LLM: %s", file_path)
-                else:
-                    logger.info("AST empty skeleton, fallback to LLM: %s", file_path)
+            if not vlm.is_available():
+                logger.warning("VLM not available for code summary fallback: %s", file_path)
+                return result("")
 
-            # "llm" mode or fallback when skeleton is None/empty
+            from openviking.session.memory.utils.language import resolve_output_language
+
+            output_language = resolve_output_language(content, config=config)
             prompt = render_prompt(
                 "semantic.code_summary",
                 {"file_name": file_name, "content": content, "output_language": output_language},
@@ -1135,7 +1124,14 @@ class SemanticProcessor(DequeueHandlerBase):
                     summary = await vlm.get_completion_async(prompt)
             return result(summary.strip())
 
-        elif file_type == FILE_TYPE_DOCUMENTATION:
+        if not vlm.is_available():
+            logger.warning("VLM not available, using empty summary")
+            return result("")
+
+        from openviking.session.memory.utils.language import resolve_output_language
+
+        output_language = resolve_output_language(content, config=config)
+        if file_type == FILE_TYPE_DOCUMENTATION:
             prompt_id = "semantic.document_summary"
         else:
             prompt_id = "semantic.file_summary"
