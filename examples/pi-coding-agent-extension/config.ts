@@ -6,6 +6,12 @@ import { resolveEffectivePeerId } from "./shared/workspace-peer.mjs";
 /** Hand-maintained: this extension ships no manifest to read a version from. */
 export const EXTENSION_VERSION = "0.1.0";
 
+function detectHarness(): string {
+  const exe = process.execPath || process.argv[0] || "";
+  const base = exe.split(/[/\\]/).pop() || "";
+  return base === "omp" || base.startsWith("omp") ? "omp" : "pi";
+}
+
 export interface OVConfig {
   enabled: boolean;
   endpoint: string;
@@ -97,7 +103,7 @@ export function loadConfig(extensionDir: string): OVConfig {
     account: creds.account,
     user: creds.user,
     peerId: creds.peerId,
-    userAgent: buildUserAgent("pi", EXTENSION_VERSION),
+    userAgent: buildUserAgent(detectHarness(), EXTENSION_VERSION),
     recallTokenBudget: file.recallTokenBudget ?? file.recallBudget ?? DEFAULT_CONFIG.recallTokenBudget,
     scoreThreshold: file.scoreThreshold ?? file.recallScoreThreshold ?? DEFAULT_CONFIG.scoreThreshold,
     minQueryLength: file.minQueryLength ?? file.recallMinQueryLength ?? DEFAULT_CONFIG.minQueryLength,
