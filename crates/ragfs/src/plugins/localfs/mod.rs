@@ -193,7 +193,7 @@ impl LocalFileSystem {
                 filelocks::LockKind::Exclusive,
                 filelocks::LockMode::NonBlocking,
             )
-            .map_err(|e| Error::plugin(format!("failed to lock for compare_and_write: {}", e)))?;
+            .map_err(|e| Self::map_lock_error("compare_and_write", &e.to_string()))?;
         let file = lock.file_mut();
         if !Self::open_file_matches_path(&file, &local_path)? {
             return Ok(false);
@@ -246,7 +246,7 @@ impl LocalFileSystem {
                 filelocks::LockKind::Exclusive,
                 filelocks::LockMode::NonBlocking,
             )
-            .map_err(|e| Error::plugin(format!("failed to lock for compare_and_remove: {}", e)))?;
+            .map_err(|e| Self::map_lock_error("compare_and_remove", &e.to_string()))?;
         let file = lock.file_mut();
         if !Self::open_file_matches_path(&file, &local_path)? {
             return Ok(false);
@@ -264,6 +264,14 @@ impl LocalFileSystem {
         fs::remove_file(&local_path)
             .map_err(|e| Error::plugin(format!("failed to remove for compare_and_remove: {}", e)))?;
         Ok(true)
+    }
+
+    /// Map a non-blocking file-lock acquisition error into a retryable filesystem error.
+    fn map_lock_error(operation: &str, error: &str) -> Error {
+        if error.to_ascii_lowercase().contains("would block") {
+            return Error::would_block(format!("failed to lock for {operation}: {error}"));
+        }
+        Error::plugin(format!("failed to lock for {operation}: {error}"))
     }
 
     /// Run blocking local filesystem work on a dedicated thread.
@@ -1501,6 +1509,15 @@ mod tests {
             let err = fs.write("/missing", b"data", 0, flag).await.unwrap_err();
             assert!(matches!(err, Error::NotFound(_)));
         }
+    }
+
+    #[test]
+    fn test_localfs_maps_would_block_lock_errors() {
+        let err = LocalFileSystem::map_lock_error(
+            "compare_and_remove",
+            "failed to lock for compare_and_remove: lock would block",
+        );
+        assert!(matches!(err, Error::WouldBlock(_)));
     }
 
     /// Install a fake rg executable and prepend it to PATH for the current test.
