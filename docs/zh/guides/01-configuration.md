@@ -1611,14 +1611,31 @@ openviking add-resource ./docs --exclude "*.tmp"
 
 ## storage.transaction 段
 
-路径锁默认启用，通常无需配置。**默认行为是不等待**：若目标路径已被其他操作锁定，操作立即失败并抛出 `LockAcquisitionError`。若需要等待重试，请将 `lock_timeout` 设为正数。
+`storage.transaction` 已废弃，仅保留为兼容旧配置。新配置请使用 `storage.agfs.pathlock`。若旧字段仍然出现，OpenViking 会在运行时给出 warning；其中 `lock_timeout` 和 `lock_expire` 会在未显式配置新字段时自动映射到新的 `pathlock` 配置，`redo_recovery_enabled` 则会被忽略。
+
+推荐写法：
+
+```json
+{
+  "storage": {
+    "agfs": {
+      "pathlock": {
+        "lock_timeout_secs": 5.0,
+        "lock_expire_secs": 1800.0
+      }
+    }
+  }
+}
+```
+
+兼容旧写法（不推荐新项目继续使用）：
 
 ```json
 {
   "storage": {
     "transaction": {
       "lock_timeout": 5.0,
-      "lock_expire": 300.0
+      "lock_expire": 1800.0
     }
   }
 }
@@ -1626,8 +1643,9 @@ openviking add-resource ./docs --exclude "*.tmp"
 
 | 参数 | 类型 | 说明 | 默认值 |
 |------|------|------|--------|
-| `lock_timeout` | float | 获取路径锁的等待超时（秒）。`0` = 立即失败（默认）；`> 0` = 最多等待此时间后抛出 `LockAcquisitionError` | `0.0` |
-| `lock_expire` | float | 锁失活阈值（秒）。超过此时间未被 refresh 的锁会被视为陈旧锁并回收 | `300.0` |
+| `lock_timeout` | float | 已废弃。改用 `storage.agfs.pathlock.lock_timeout_secs`。未显式配置新字段时会自动映射。 | `0.0` |
+| `lock_expire` | float | 已废弃。改用 `storage.agfs.pathlock.lock_expire_secs`。未显式配置新字段时会自动映射。 | `1800.0` |
+| `redo_recovery_enabled` | bool | 已废弃且忽略。当前版本的 `session.commit` phase-2 恢复由持久化 `session_commit` 队列负责。 | `true` |
 
 路径锁机制的详细说明见 [路径锁与崩溃恢复](../concepts/09-transaction.md)。
 

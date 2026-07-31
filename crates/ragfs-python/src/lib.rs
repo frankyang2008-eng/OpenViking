@@ -1167,10 +1167,18 @@ impl RAGFSBindingClient {
                     pl_value
                         .get("lock_expire_secs")
                         .and_then(|v| v.as_f64())
-                        .unwrap_or(300.0),
+                        .unwrap_or(1800.0),
                 )?;
+                let lock_timeout_secs = validate_timeout_secs(
+                    pl_value
+                        .get("lock_timeout_secs")
+                        .and_then(|v| v.as_f64())
+                        .unwrap_or(0.0),
+                )?
+                .as_secs_f64();
                 ragfs_cfg.pathlock = PathLockConfig {
                     provider: provider.to_string(),
+                    lock_timeout_secs,
                     lock_expire_secs,
                 };
             }

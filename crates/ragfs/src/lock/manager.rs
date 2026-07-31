@@ -28,6 +28,8 @@ use super::types::{
 pub struct PathLockConfig {
     /// Built-in provider name: `filesystem` or `memory`.
     pub provider: String,
+    /// Default wait timeout for auto-acquired locks.
+    pub lock_timeout_secs: f64,
     /// Seconds after which a lock token is considered stale.
     pub lock_expire_secs: f64,
 }
@@ -36,7 +38,8 @@ impl Default for PathLockConfig {
     fn default() -> Self {
         Self {
             provider: "filesystem".to_string(),
-            lock_expire_secs: 300.0,
+            lock_timeout_secs: 0.0,
+            lock_expire_secs: 1800.0,
         }
     }
 }
@@ -267,6 +270,11 @@ pub struct PathLockManager {
 }
 
 impl PathLockManager {
+    /// Return the configured default timeout for automatic lock acquisition.
+    pub fn default_lock_timeout(&self) -> Duration {
+        Duration::from_secs_f64(self.config.lock_timeout_secs)
+    }
+
     /// Create a new PathLockManager.
     pub fn new(
         fs: Arc<dyn FileSystem>,

@@ -64,6 +64,11 @@
         "agfs": {
             "backend": "local",
             "timeout": 10,
+            "pathlock": {
+                "provider": "filesystem",
+                "lock_timeout_secs": 0.0,
+                "lock_expire_secs": 1800.0
+            },
             "s3": {
                 "bucket": null,
                 "region": null,
