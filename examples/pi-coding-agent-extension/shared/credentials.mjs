@@ -39,6 +39,45 @@ export function buildUserAgent(harness, version) {
 }
 
 /**
+ * Detect which harness loaded this plugin, from the plugin's own install path.
+ * Materialized installs land under the harness's config dir (~/.claude/...,
+ * ~/.codebuddy/marketplaces/..., ~/.qoder/plugins/...), so the module URL
+ * carries the harness identity. Falls back to "claude-code" — the historical
+ * default — when no marker matches (e.g. running from a dev checkout), which
+ * preserves pre-detection behavior instead of failing open to a wrong label.
+ *
+ * OPENVIKING_HARNESS overrides detection for non-standard install layouts.
+ *
+ * `moduleUrl` accepts an import.meta.url (file:// URL) or a plain path string.
+ */
+export function detectHarness({ moduleUrl, env = process.env } = {}) {
+  const override = str(env?.OPENVIKING_HARNESS, "");
+  if (override) {
+    // The override lands verbatim in a User-Agent HTTP header. Strip anything
+    // outside the UA-token charset — control chars (e.g. CR/LF) make undici
+    // reject the header, which would fail every plugin request. Mirrors
+    // safePart() in agent-hook-runtime.mjs. Path detection below returns
+    // hardcoded literals, so only this env path needs sanitizing.
+    const safe = override.replace(/[^A-Za-z0-9._-]/g, "-");
+    if (safe) return safe;
+  }
+
+  let modulePath = "";
+  try {
+    modulePath = fileURLToPath(moduleUrl);
+  } catch {
+    modulePath = str(moduleUrl, "");
+  }
+  const normalized = modulePath.replace(/\\/g, "/");
+
+  // Markers are disjoint config-dir names, so check order only sets precedence
+  // when a path somehow carries both (codebuddy wins). No marker → fallback.
+  if (normalized.includes("/.codebuddy/")) return "codebuddy";
+  if (normalized.includes("/.qoder/")) return "qoder";
+  return "claude-code";
+}
+
+/**
  * Read a plugin manifest's `version` field. Accepts a path or a URL (so callers
  * can resolve relative to import.meta.url). Returns "" when unreadable so the
  * User-Agent falls back to 0.0.0 instead of throwing inside a short-lived hook.

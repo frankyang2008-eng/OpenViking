@@ -36,19 +36,22 @@
  *     OPENVIKING_SKILL_EXPERIENCE, OPENVIKING_SKILL_EXPERIENCE_LIMIT
  *   Misc:
  *     OPENVIKING_MEMORY_ENABLED, OPENVIKING_DEBUG, OPENVIKING_DEBUG_LOG,
- *     OPENVIKING_CONFIG_FILE, OPENVIKING_CLI_CONFIG_FILE
+ *     OPENVIKING_CONFIG_FILE, OPENVIKING_CLI_CONFIG_FILE, OPENVIKING_HARNESS
  */
 
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve as resolvePath } from "node:path";
 
-import { buildUserAgent, readManifestVersion } from "./shared/credentials.mjs";
+import { buildUserAgent, detectHarness, readManifestVersion } from "./shared/credentials.mjs";
 
 const DEFAULT_OV_CONF_PATH = join(homedir(), ".openviking", "ov.conf");
 const DEFAULT_OVCLI_CONF_PATH = join(homedir(), ".openviking", "ovcli.conf");
+// Harness is detected from this plugin's own install path (~/.claude/...,
+// ~/.codebuddy/..., ~/.qoder/...); version stays pinned to the canonical
+// .claude-plugin manifest, which every materialized copy ships.
 const USER_AGENT = buildUserAgent(
-  "claude-code",
+  detectHarness({ moduleUrl: import.meta.url }),
   readManifestVersion(new URL("../.claude-plugin/plugin.json", import.meta.url)),
 );
 
