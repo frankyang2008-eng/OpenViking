@@ -342,6 +342,7 @@ async def vectorize_directory_meta(
     """
     enqueued = 0
     expected = 2 if include_overview else 1
+    first_enqueue_error: Optional[Exception] = None
     try:
         if not ctx:
             logger.warning("No context provided for vectorization")
@@ -395,6 +396,7 @@ async def vectorize_directory_meta(
                     f"Failed to enqueue directory L0 (abstract) for vectorization: {uri}: {e}",
                     exc_info=True,
                 )
+                first_enqueue_error = e
 
         if include_overview:
             # Vectorize L1: .overview.md (overview)
@@ -432,6 +434,10 @@ async def vectorize_directory_meta(
                         f"Failed to enqueue directory L1 (overview) for vectorization: {uri}: {e}",
                         exc_info=True,
                     )
+                    if first_enqueue_error is None:
+                        first_enqueue_error = e
+        if first_enqueue_error is not None:
+            raise first_enqueue_error
     except Exception as e:
         logger.error(
             f"Failed to vectorize directory metadata for {uri}: {e}",
@@ -607,6 +613,7 @@ async def vectorize_file(
                 registered_wait_root[1],
                 f"Failed to enqueue file vector for {file_path}: {e}",
             )
+        raise
     finally:
         if not enqueued:
             await _decrement_embedding_tracker(semantic_msg_id, 1)
@@ -688,3 +695,4 @@ async def index_resource(
 
     except Exception as e:
         logger.error(f"Failed to scan directory {uri} for indexing: {e}")
+        raise
