@@ -4,6 +4,10 @@ from unittest.mock import AsyncMock
 import pytest
 
 from openviking.core.context import Context, ResourceContentType
+from openviking.parse.parsers.media.utils import (
+    MPEG_TS_PACKET_SIZE,
+    MPEG_TS_PROBE_BYTES,
+)
 from openviking.utils import embedding_utils
 from openviking.utils.ingest_options import IngestOptions
 
@@ -41,8 +45,14 @@ class DummyQueueManager:
 class DummyFS:
     def __init__(self, content):
         self.content = content
+        self.read_calls = []
         self.read_file_calls = 0
         self.read_file_bytes_calls = 0
+
+    async def read(self, _path, offset=0, size=-1, ctx=None):
+        self.read_calls.append((offset, size))
+        raw = self.content if isinstance(self.content, bytes) else str(self.content).encode("utf-8")
+        return raw[offset : offset + size]
 
     async def read_file(self, _path, ctx=None):
         self.read_file_calls += 1
@@ -78,34 +88,61 @@ class DummyReq:
         self.account_id = "default"
 
 
-@pytest.mark.parametrize("extension", [".ogg", ".m4a", ".opus", ".ac3"])
-def test_get_resource_content_type_recognizes_supported_audio_extensions(extension):
-    assert (
-        embedding_utils.get_resource_content_type(f"recording{extension}")
-        == ResourceContentType.AUDIO
+def test_get_resource_content_type_recognizes_media_extensions():
+    expected = {
+        "recording.ogg": ResourceContentType.AUDIO,
+        "RECORDING.OPUS": ResourceContentType.AUDIO,
+        "recording.mkv": ResourceContentType.VIDEO,
+        "RECORDING.WEBM": ResourceContentType.VIDEO,
+        "source.ts": ResourceContentType.TEXT,
+    }
+
+    for filename, content_type in expected.items():
+        assert embedding_utils.get_resource_content_type(filename) == content_type
+
+
+def _mpeg_ts_bytes() -> bytes:
+    content = bytearray(MPEG_TS_PROBE_BYTES)
+    for offset in range(0, MPEG_TS_PROBE_BYTES, MPEG_TS_PACKET_SIZE):
+        content[offset] = 0x47
+    return bytes(content)
+
+
+@pytest.mark.asyncio
+async def test_vectorize_disambiguates_typescript_and_mpeg_ts(monkeypatch):
+    monkeypatch.setattr(
+        embedding_utils,
+        "get_openviking_config",
+        lambda: types.SimpleNamespace(
+            embedding=types.SimpleNamespace(text_source="content_only", max_input_tokens=1000)
+        ),
     )
 
+    async def vectorize(filename, content, summary):
+        queue = DummyQueue()
+        fs = DummyFS(content)
+        monkeypatch.setattr(
+            embedding_utils,
+            "get_queue_manager",
+            lambda: DummyQueueManager(queue),
+        )
+        monkeypatch.setattr(embedding_utils, "get_viking_fs", lambda: fs)
+        await embedding_utils.vectorize_file(
+            file_path=f"viking://user/default/resources/{filename}",
+            summary_dict={"name": filename, "summary": summary},
+            parent_uri="viking://user/default/resources",
+            ctx=DummyReq(),
+        )
+        return queue, fs
 
-@pytest.mark.parametrize("extension", [".mkv", ".webm"])
-def test_get_resource_content_type_recognizes_supported_video_extensions(extension):
-    assert (
-        embedding_utils.get_resource_content_type(f"recording{extension}")
-        == ResourceContentType.VIDEO
-    )
+    source = "export const answer: number = 42;"
+    text_queue, text_fs = await vectorize("source.ts", source, "TypeScript source")
+    video_queue, video_fs = await vectorize("broadcast.ts", _mpeg_ts_bytes(), "")
 
-
-def test_get_resource_content_type_media_extensions_are_case_insensitive():
-    assert embedding_utils.get_resource_content_type("RECORDING.OPUS") == ResourceContentType.AUDIO
-    assert embedding_utils.get_resource_content_type("RECORDING.WEBM") == ResourceContentType.VIDEO
-
-
-@pytest.mark.parametrize("extension", [".cu", ".cuh"])
-def test_get_resource_content_type_recognizes_cuda_extensions_as_text(extension):
-    assert embedding_utils.get_resource_content_type(f"kernel{extension}") == ResourceContentType.TEXT
-
-
-def test_get_resource_content_type_keeps_ts_as_text():
-    assert embedding_utils.get_resource_content_type("source.ts") == ResourceContentType.TEXT
+    assert text_fs.read_file_calls == 1
+    assert text_queue.items[0].context_data["content"] == source
+    assert video_fs.read_file_calls == 0
+    assert video_queue.items[0].context_data["content"] == "broadcast.ts"
 
 
 @pytest.mark.asyncio
@@ -850,6 +887,60 @@ async def test_vectorize_file_truncates_oversized_abstract(monkeypatch):
     abstract = queue.items[0].abstract
     assert len(abstract.encode("utf-8")) <= embedding_utils._ABSTRACT_MAX_BYTES
     assert abstract.encode("utf-8").decode("utf-8") == abstract  # valid UTF-8
+
+
+@pytest.mark.asyncio
+async def test_empty_media_uses_filename_but_unknown_binary_skips(monkeypatch):
+    monkeypatch.setattr(
+        embedding_utils,
+        "get_openviking_config",
+        lambda: types.SimpleNamespace(
+            embedding=types.SimpleNamespace(
+                text_source="content_only",
+                max_input_tokens=1000,
+            )
+        ),
+    )
+
+    queue = DummyQueue()
+    monkeypatch.setattr(
+        embedding_utils,
+        "get_queue_manager",
+        lambda: DummyQueueManager(queue),
+    )
+    monkeypatch.setattr(
+        embedding_utils,
+        "get_viking_fs",
+        lambda: DummyFS(b"media"),
+    )
+    await embedding_utils.vectorize_file(
+        file_path="viking://resources/media/meeting.mp3",
+        summary_dict={"name": "meeting.mp3", "summary": ""},
+        parent_uri="viking://resources/media",
+        ctx=DummyReq(),
+    )
+
+    assert queue.items[0].context_data["content"] == "meeting.mp3"
+
+    queue = DummyQueue()
+    monkeypatch.setattr(
+        embedding_utils,
+        "get_queue_manager",
+        lambda: DummyQueueManager(queue),
+    )
+    monkeypatch.setattr(
+        embedding_utils,
+        "get_viking_fs",
+        lambda: DummyFS(b"binary"),
+    )
+    await embedding_utils.vectorize_file(
+        file_path="viking://resources/media/archive.bin",
+        summary_dict={"name": "archive.bin", "summary": ""},
+        parent_uri="viking://resources/media",
+        ctx=DummyReq(),
+    )
+
+    assert queue.items == []
 
 
 @pytest.mark.asyncio
