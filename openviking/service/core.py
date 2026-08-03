@@ -429,10 +429,11 @@ class OpenVikingService:
             )
             await self._queue_manager.prepare_task_tracking(get_task_tracker())
 
-        # Do not let watches produce queue work while task ownership is being
-        # rebuilt from QueueFS. Consumers start only after the scheduler is ready.
-        await self._watch_scheduler.start()
-        logger.info("WatchScheduler started")
+        if self._config.enable_watch_scheduler:
+            await self._watch_scheduler.start()
+            logger.info("WatchScheduler started")
+        else:
+            logger.info("WatchScheduler disabled by config (enable_watch_scheduler=false)")
 
         if self._queue_manager:
             self._queue_manager.start()
