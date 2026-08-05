@@ -127,7 +127,7 @@ claude mcp add --transport http openviking \
 |------|------|----------|
 | `find` | 无 session 上下文的快速语义检索 | `query`, `target_uri`(可选), `limit`, `min_score`, `level`(可选), `context_type`(可选) |
 | `search` | 支持可选 session 上下文和意图分析的深度语义检索 | `query`, `target_uri`(可选), `session_id`(可选), `limit`, `min_score`, `level`(可选), `context_type`(可选) |
-| `recall` | 按记忆类别配额召回 | `query`, `quotas`(可选), `max_chars`, `min_score`, `peer_scope`, `other_peer_penalty`(可选) |
+| `recall` | 按记忆类别配额召回，服务端组装为带 URI 的扁平 `<memory>` 块 | `query`, `quotas`(可选), `max_chars`, `min_score`, `peer_scope`, `other_peer_penalty`(可选), `session_id`(可选), `detail`(可选), `max_tokens`(可选), `rewrite`(可选) |
 | `read` | 读取一个或多个 `viking://` URI 的内容 | `uris`（单个字符串或数组） |
 | `list` | 列出 `viking://` 目录下的条目 | `uri`, `recursive`(可选) |
 | `remember` | 存储消息到长期记忆（触发记忆提取） | `messages`（`{role, content}` 列表） |

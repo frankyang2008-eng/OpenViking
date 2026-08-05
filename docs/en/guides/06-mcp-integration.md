@@ -135,7 +135,7 @@ Once connected, OpenViking exposes 13 tools:
 |------|-------------|----------------|
 | `find` | Fast semantic retrieval without session context | `query`, `target_uri` (optional), `limit`, `min_score`, `level` (optional), `context_type` (optional) |
 | `search` | Deep semantic retrieval with optional session context and intent analysis | `query`, `target_uri` (optional), `session_id` (optional), `limit`, `min_score`, `level` (optional), `context_type` (optional) |
-| `recall` | Type-quota recall across memory categories | `query`, `quotas` (optional), `max_chars`, `min_score`, `peer_scope`, `other_peer_penalty` (optional) |
+| `recall` | Type-quota recall assembled server-side into flat `<memory>` blocks that always carry their URI | `query`, `quotas` (optional), `max_chars`, `min_score`, `peer_scope`, `other_peer_penalty` (optional), `session_id` (optional), `detail` (optional), `max_tokens` (optional), `rewrite` (optional) |
 | `read` | Read one or more `viking://` URIs | `uris` (single string or array) |
 | `list` | List entries under a `viking://` directory | `uri`, `recursive` (optional) |
 | `remember` | Store messages into long-term memory (triggers extraction) | `messages` (list of `{role, content}`) |
