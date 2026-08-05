@@ -1088,16 +1088,45 @@ RAGFS 默认使用 Rust binding 模式，通过 Rust 实现直接访问文件系
 | 参数 | 类型 | 说明 | 默认值 |
 |------|------|------|--------|
 | `mode` | str | QueueFS 命名空间模式：`"shared"` 使用 `/queue`；`"worker"` 为每个 worker 隔离到 `/queue/worker-<index\|pid>` | `"shared"` |
-| `backend` | str | QueueFS 后端：`"memory"`、`"sqlite"` 或 `"sqlite3"` | `"sqlite"` |
+| `backend` | str | QueueFS 后端：`"memory"`、`"sqlite"`、`"sqlite3"` 或 `"redis"` | `"sqlite"` |
 | `db_path` | str（可选） | 当 backend 为 `"sqlite"` 或 `"sqlite3"` 时使用的 QueueFS sqlite 数据库路径 | `null` |
 | `recover_stale_sec` | int | 启动时恢复超过该秒数的 `processing` 队列消息；`0` 表示恢复全部 stale processing 消息 | `0` |
 | `busy_timeout_ms` | int | QueueFS sqlite 的 busy timeout，单位毫秒 | `5000` |
+| `redis` | object | 当 backend 为 `"redis"` 时使用的连接参数 | 见下表 |
+
+QueueFS Redis 参数：
+
+| 参数 | 类型 | 说明 | 默认值 |
+|------|------|------|--------|
+| `mode` | str | Redis 拓扑模式：`"singleton"`、`"cluster"` 或 `"sentinel"` | `"singleton"` |
+| `endpoints` | array[str] | Singleton 的唯一数据节点、Cluster 初始节点或 Sentinel 节点；仅允许协议、主机和端口，认证与 DB 使用独立字段 | `["redis://127.0.0.1:6379"]` |
+| `master_name` | str（可选） | Sentinel master 名称；Sentinel 模式必须配置 | `null` |
+| `username` | str（可选） | Redis ACL 用户名 | `null` |
+| `password` | str（可选） | Redis ACL 密码 | `null` |
+| `sentinel_username` | str（可选） | Sentinel ACL 用户名 | `null` |
+| `sentinel_password` | str（可选） | Sentinel ACL 密码 | `null` |
+| `db` | int | Redis database 编号 | `0` |
+| `connect_timeout_ms` | int | Redis 数据节点物理建连超时，单位毫秒 | `3000` |
+| `command_timeout_ms` | int | 命令读写超时，单位毫秒 | `3000` |
+| `key_prefix` | str | Redis key 隔离前缀，不能为空；所有 QueueFS key 使用 `{key_prefix}:ov:*` | `"default"` |
+| `tls_enabled` | bool | 对 `redis://` endpoint 强制启用 TLS | `false` |
+| `tls_insecure_skip_verify` | bool | 跳过 TLS 证书校验，仅用于受控测试环境 | `false` |
 
 说明：
 
 - 即使主 AGFS 存储后端是 `local`、`s3` 或 `memory`，QueueFS 默认仍使用 `sqlite`。
 - `mode=shared` 会继续使用历史上的全局队列命名空间 `/queue`；`mode=worker` 会为每个 worker 隔离到 `/queue/worker-<index|pid>`。
 - `db_path` 仅在 QueueFS backend 为 `sqlite` 或 `sqlite3` 时生效。
+- `recover_stale_sec` 和 `busy_timeout_ms` 仅在 QueueFS backend 为 `sqlite` 或 `sqlite3` 时生效。
+- Redis Singleton 模式必须且只能配置一个 endpoint。
+- Redis Cluster 模式的 endpoints 是初始节点，且必须配置 `db=0`；slot 路由、`MOVED`/`ASK` 处理和节点重连由 redis-rs 完成。
+- Redis Sentinel 模式的 endpoints 是 Sentinel 节点，并且必须配置非空 `master_name`；master 发现和故障切换后的重连由 redis-rs 完成。
+- Redis Sentinel 模式下，`connect_timeout_ms` 作用于发现 Master 后的数据节点连接；redis-rs 同步 Sentinel discovery 不暴露物理建连 timeout，该阶段由内部固定 5 秒的 pool checkout timeout 限制调用方等待。
+- `username` 和 `password` 用于 Redis 数据节点；`sentinel_username` 和 `sentinel_password` 仅用于 Sentinel 节点。
+- Redis backend 使用 `{key_prefix}:ov:*` key；连接同一 Redis database 的不同业务必须配置不同的 `key_prefix`。
+- Redis backend 的实例心跳 TTL 为 30 秒，每 10 秒续约一次。
+- Redis backend 仅在启动时按实例心跳状态执行一次 `recover_stale`，运行期间不周期恢复。
+- `tls_insecure_skip_verify=true` 时必须同时设置 `tls_enabled=true`。
 - 如果同时设置了 `storage.agfs.queuefs.db_path` 和旧字段 `storage.agfs.queue_db_path`，以前者为准。
 - 如果 QueueFS backend 为 `memory`，则 `db_path` 和旧字段 `queue_db_path` 都会被忽略。
 
@@ -1113,6 +1142,95 @@ RAGFS 默认使用 Rust binding 模式，通过 Rust 实现直接访问文件系
         "mode": "shared",
         "backend": "sqlite",
         "db_path": "./data/_system/queue/custom-queue.db"
+      }
+    }
+  }
+}
+```
+
+Redis QueueFS 配置示例：
+
+```json
+{
+  "storage": {
+    "workspace": "./data",
+    "agfs": {
+      "backend": "local",
+      "queuefs": {
+        "mode": "shared",
+        "backend": "redis",
+        "redis": {
+          "mode": "singleton",
+          "endpoints": ["redis://127.0.0.1:6379"],
+          "master_name": null,
+          "username": null,
+          "password": null,
+          "sentinel_username": null,
+          "sentinel_password": null,
+          "db": 0,
+          "connect_timeout_ms": 3000,
+          "command_timeout_ms": 3000,
+          "key_prefix": "default",
+          "tls_enabled": false,
+          "tls_insecure_skip_verify": false
+        }
+      }
+    }
+  }
+}
+```
+
+Redis Cluster 只需配置可用于发现拓扑的初始节点：
+
+```json
+{
+  "storage": {
+    "workspace": "./data",
+    "agfs": {
+      "backend": "local",
+      "queuefs": {
+        "mode": "shared",
+        "backend": "redis",
+        "redis": {
+          "mode": "cluster",
+          "endpoints": [
+            "redis://redis-cluster-0:6379",
+            "redis://redis-cluster-1:6379"
+          ],
+          "db": 0,
+          "key_prefix": "default"
+        }
+      }
+    }
+  }
+}
+```
+
+Redis Sentinel 分别配置数据节点和 Sentinel 的 ACL：
+
+```json
+{
+  "storage": {
+    "workspace": "./data",
+    "agfs": {
+      "backend": "local",
+      "queuefs": {
+        "mode": "shared",
+        "backend": "redis",
+        "redis": {
+          "mode": "sentinel",
+          "endpoints": [
+            "redis://redis-sentinel-0:26379",
+            "redis://redis-sentinel-1:26379"
+          ],
+          "master_name": "mymaster",
+          "username": "queue-user",
+          "password": "queue-password",
+          "sentinel_username": "sentinel-user",
+          "sentinel_password": "sentinel-password",
+          "db": 0,
+          "key_prefix": "default"
+        }
       }
     }
   }
