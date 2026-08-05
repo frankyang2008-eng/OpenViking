@@ -3,7 +3,7 @@
 """Search endpoints for OpenViking HTTP Server."""
 
 import math
-from typing import Any, Dict, List, Literal, Optional, Union
+from typing import Any, Dict, List, Literal, Optional, Sequence, Union
 
 from fastapi import APIRouter, Depends
 from fastapi import Response as FastAPIResponse
@@ -16,6 +16,7 @@ from openviking.retrieve.context_assembler import (
     DEFAULT_LIMIT,
     DEFAULT_MAX_TOKENS,
     MAX_EXCLUDE_URIS,
+    REPORTED_CATEGORY_KEYS,
     AssembleParams,
     DetailRequest,
     assemble_context,
@@ -120,14 +121,21 @@ class FindRequest(BaseModel):
     telemetry: TelemetryRequest = False
 
 
-def _reject_unknown_categories(value: Any, label: str) -> None:
+def _reject_unknown_categories(value: Any, label: str, allowed: Sequence[str]) -> None:
     if not isinstance(value, dict):
         return
-    unknown = sorted(set(value) - set(CATEGORY_KEYS))
+    unknown = sorted(set(value) - set(allowed))
     if unknown:
         raise ValueError(
-            f"unknown {label} keys: {', '.join(unknown)}; allowed: {', '.join(CATEGORY_KEYS)}"
+            f"unknown {label} keys: {', '.join(unknown)}; allowed: {', '.join(allowed)}"
         )
+
+
+def _reject_unknown_quota_and_detail(quotas: Any, detail: Any) -> None:
+    # Quotas name a retrieval bucket, `detail` names a reported category: the
+    # catch-all memory category is reportable but owns no bucket to size.
+    _reject_unknown_categories(quotas, "quota", CATEGORY_KEYS)
+    _reject_unknown_categories(detail, "detail", REPORTED_CATEGORY_KEYS)
 
 
 CONTEXT_ONLY_FIELDS = (
@@ -200,8 +208,7 @@ class SearchRequest(BaseModel):
 
         if self.target_uri:
             raise ValueError("target_uri is not supported in mode='context'")
-        _reject_unknown_categories(self.quotas, "quota")
-        _reject_unknown_categories(self.detail, "detail")
+        _reject_unknown_quota_and_detail(self.quotas, self.detail)
         return self
 
 
@@ -237,8 +244,7 @@ class RecallRequest(BaseModel):
 
     @model_validator(mode="after")
     def _validate_quotas(self) -> "RecallRequest":
-        _reject_unknown_categories(self.quotas, "quota")
-        _reject_unknown_categories(self.detail, "detail")
+        _reject_unknown_quota_and_detail(self.quotas, self.detail)
         return self
 
 

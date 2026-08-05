@@ -105,7 +105,8 @@ recall(
       "origins": {"actor_peer": 0, "self": 1, "other_peer": 0},
       "deprecated": {
         "endpoint": "/api/v1/search/recall",
-        "successor": "/api/v1/search/search?mode=context",
+        "successor": "/api/v1/search/search",
+        "successor_body": {"mode": "context"},
         "aliases_used": ["max_chars"]
       }
     }

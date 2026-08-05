@@ -17,6 +17,9 @@ const DEFAULT_CONFIG = {
   peerId: "",
   workspacePeer: true,
   recallPeerScope: "all",
+  // Server-side query expansion costs a model call before retrieval starts, so
+  // it has to be switchable from the client that pays the latency.
+  recallQueryExpansion: "auto",
   enabled: true,
   timeoutMs: 30000,
   runtime: {
@@ -159,9 +162,11 @@ function applyBehaviorConfig(config, fileConfig = {}) {
     "debugLogPath",
     "workspacePeer",
     "recallPeerScope",
+    "recallQueryExpansion",
   ]) {
     if (fileConfig[key] !== undefined) config[key] = fileConfig[key]
   }
+  config.recallQueryExpansionConfigured = fileConfig.recallQueryExpansion !== undefined
 }
 
 function applyEnv(config) {
@@ -182,6 +187,10 @@ function applyEnv(config) {
     config.autoRecall.preferAbstract = envBool("OPENVIKING_RECALL_PREFER_ABSTRACT") ?? config.autoRecall.preferAbstract
   }
   if (process.env.OPENVIKING_RECALL_PEER_SCOPE) config.recallPeerScope = process.env.OPENVIKING_RECALL_PEER_SCOPE
+  if (process.env.OPENVIKING_RECALL_QUERY_EXPANSION) {
+    config.recallQueryExpansion = process.env.OPENVIKING_RECALL_QUERY_EXPANSION
+    config.recallQueryExpansionConfigured = true
+  }
   if (process.env.OPENVIKING_WORKSPACE_PEER !== undefined) {
     config.workspacePeer = envBool("OPENVIKING_WORKSPACE_PEER") ?? config.workspacePeer
   }
@@ -241,6 +250,7 @@ function normalizeConfig(config) {
   config.autoRecall.minQueryLength = Math.max(1, Math.min(64, Math.round(Number(config.autoRecall.minQueryLength) || 3)))
   config.captureMode = config.captureMode === "keyword" ? "keyword" : "semantic"
   config.recallPeerScope = config.recallPeerScope === "actor" ? "actor" : "all"
+  config.recallQueryExpansion = config.recallQueryExpansion === "off" ? "off" : "auto"
   config.captureMaxLength = Math.max(200, Math.min(100000, Math.round(Number(config.captureMaxLength) || 24000)))
   config.captureToolMaxChars = Math.max(200, Math.min(20000, Math.round(Number(config.captureToolMaxChars) || 2000)))
   config.commitTokenThreshold = Math.max(1000, Math.round(Number(config.commitTokenThreshold) || 20000))

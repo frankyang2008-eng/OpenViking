@@ -14,7 +14,16 @@ Tier = Literal["uri", "abstract", "overview", "full"]
 Purpose = Literal["chat", "coding"]
 
 MEMORY_CATEGORIES: Tuple[str, ...] = ("events", "entities", "preferences", "experiences")
+# Built-in memory types outside MEMORY_CATEGORIES — cases, patterns, tools,
+# trajectories and skill-usage memories — cannot own a quota bucket: their
+# retrieval scope is the memory root, which every other bucket already covers.
+# Flat retrieval still reaches them, so they report under one catch-all category
+# that carries a tier default and an other-peer penalty like any named one.
+OTHER_MEMORY_CATEGORY = "memories"
 CATEGORY_KEYS: Tuple[str, ...] = (*MEMORY_CATEGORIES, "resources", "skills")
+# Every category an entry may be reported as. Quotas take CATEGORY_KEYS only;
+# `detail` and per-category penalties accept the catch-all as well.
+REPORTED_CATEGORY_KEYS: Tuple[str, ...] = (*CATEGORY_KEYS, OTHER_MEMORY_CATEGORY)
 
 TIER_ORDER: Tuple[Tier, ...] = ("uri", "abstract", "overview", "full")
 TIER_RANK: Dict[str, int] = {tier: rank for rank, tier in enumerate(TIER_ORDER)}
@@ -47,8 +56,20 @@ DEFAULT_TIER_BY_CATEGORY: Dict[str, Tier] = {
     "experiences": "abstract",
     "resources": "abstract",
     "skills": "abstract",
+    OTHER_MEMORY_CATEGORY: "abstract",
 }
 DEFAULT_TIER: Tier = "abstract"
+
+# Categories whose stored ``abstract`` holds the whole file body, because the
+# memory writer reuses that scalar as embedding text. For them ``overview`` sits
+# *below* ``abstract`` on the content ladder, so standing in for a missing or
+# oversized abstract discloses less rather than more. A resource or skill
+# abstract is the short generated summary instead, and substituting overview
+# there would read a body the caller never asked for — the deepening those two
+# categories opt into explicitly.
+FULL_BODY_ABSTRACT_CATEGORIES: frozenset[str] = frozenset(
+    (*MEMORY_CATEGORIES, OTHER_MEMORY_CATEGORY)
+)
 
 # How far leftover budget may raise a category above its default tier. A
 # category absent here never deepens, which is what keeps the default path from
@@ -90,6 +111,7 @@ DEFAULT_OTHER_PEER_PENALTIES: Dict[str, float] = {
     "experiences": 0.02,
     "resources": 0.02,
     "skills": 0.02,
+    OTHER_MEMORY_CATEGORY: 0.1,
 }
 
 
@@ -163,7 +185,7 @@ def normalize_penalties(value: Any = None) -> Dict[str, float]:
             merged[key] = _clamp_penalty(penalty, merged[key])
         return merged
     penalty = _clamp_penalty(value, 0.0)
-    return dict.fromkeys(CATEGORY_KEYS, penalty)
+    return dict.fromkeys(REPORTED_CATEGORY_KEYS, penalty)
 
 
 def normalize_exclude_uris(values: Optional[Sequence[str]]) -> set[str]:
@@ -199,7 +221,7 @@ def normalize_detail(value: Any) -> DetailPins:
             by_category={
                 key: tier
                 for key, tier in value.items()
-                if key in CATEGORY_KEYS and tier in PINNABLE_TIERS
+                if key in REPORTED_CATEGORY_KEYS and tier in PINNABLE_TIERS
             }
         )
     return DetailPins(scalar=value if value in PINNABLE_TIERS else None)

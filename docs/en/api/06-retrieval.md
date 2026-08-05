@@ -655,10 +655,11 @@ Injecting context every turn used to mean searching per type, reading each hit b
   | `events` | overview | full | The one memory type whose body is long enough for `# Summary` extraction to be a real compression |
   | `entities` / `preferences` / `experiences` | abstract | abstract | Short bodies, and the writer stores the whole body in the abstract scalar, so abstract already is the complete file |
   | `resources` / `skills` | abstract | abstract | The 256-char abstract from semantic processing; bodies can be large or carry credentials, so deepening is opt-in |
+  | `memories` | abstract | abstract | Built-in memory types outside the four named ones — `cases`, `patterns`, `tools`, `trajectories`, skill-usage memories. Only quota-free retrieval reaches them; they own no bucket, so `quotas` cannot name them, but `detail` and `other_peer_penalty` can |
   | Directory hits | overview | overview | A directory has no abstract, so it reads the `.overview.md` sidecar; a full tier is meaningless for a subtree |
 
-- **Floor**: every result carries at least its `uri`. When a category's default tier yields nothing usable — a resource that never went through semantic processing, or an abstract that busts the per-entry cap — the entry falls back to overview instead of degrading to a bare pointer
-- **Explicit `detail`**: sets that tier as both the requested start and ceiling; entries that do not fit still step down a tier rather than being truncated
+- **Floor**: every result carries at least its `uri`. When a memory abstract is unavailable or busts the per-entry cap, the entry falls back to overview: the memory writer stores the whole body in that scalar, so for memory categories overview sits *below* abstract on the content ladder and the substitute discloses less. A `resources` or `skills` abstract is the short generated summary instead, so the same substitution would read a body the caller never asked for — those two degrade to a bare `uri` rather than deepen
+- **Explicit `detail`**: sets that tier as both the requested start and ceiling; entries that do not fit still step down a tier rather than being truncated. The memory overview substitute above is the one case where the served `detail` can outrank the pin, and only because it carries less content than the pinned tier would
 - **Overview by source type**: memory files use the leading `# Summary` section, code files use class and function signatures (reusing `code_outline`), long documents use the heading tree plus first paragraph
 - **Per-entry cap**: `max_tokens ÷ candidate_count × 2`, applied to every tier except the bare `uri`; a tier exceeding it falls back to the previous tier rather than being truncated. If budget is still left over, one final deepening pass ignores the cap and is bounded only by `max_tokens`
 
@@ -744,7 +745,7 @@ curl -X POST http://localhost:1933/api/v1/search/search \
 | Field | Type | Description |
 |-------|------|-------------|
 | `entries[].uri` | string | Entry URI, always present at every tier, expandable with the MCP `read` tool |
-| `entries[].category` | string | `events`/`entities`/`preferences`/`experiences`/`resources`/`skills` |
+| `entries[].category` | string | `events`/`entities`/`preferences`/`experiences`/`resources`/`skills`, or `memories` for a built-in memory type outside those four |
 | `entries[].detail` | string | Tier actually served: `full`, `overview`, `abstract` or `uri` |
 | `entries[].text` | string | Body for that tier; empty at the `uri` tier |
 | `rendered` | string | Flat XML context block, ready to inject; empty when rewrite reports `no_relevant` |
@@ -754,6 +755,8 @@ curl -X POST http://localhost:1933/api/v1/search/search \
 When `stats.rewrite` is `no_relevant`, the response keeps `entries` for
 inspection but returns both `digest` and `rendered` as empty strings. This makes
 the successful empty result safe for clients that predate the explicit status.
+Nothing was served that turn, so those URIs also stay out of the `dedup_turns`
+ledger and remain available to the later turn they are relevant to.
 
 **Validation rules**
 

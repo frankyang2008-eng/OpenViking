@@ -12,7 +12,7 @@ from __future__ import annotations
 from typing import Any, Dict, Optional
 
 from openviking.retrieve.context_assembler.budget import (
-    abstract_over_cap,
+    oversized_abstract_needs_body,
     per_entry_cap,
     plan_entries,
 )
@@ -100,7 +100,7 @@ async def assemble_context(
     readable = [
         c
         for c in candidates
-        if needs_content(c, pins.for_category(c.category)) or abstract_over_cap(c, cap)
+        if needs_content(c, pins.for_category(c.category)) or oversized_abstract_needs_body(c, cap)
     ]
     contents: Dict[str, str] = {}
     if readable:
@@ -128,9 +128,14 @@ async def assemble_context(
         if rewrite_status == "no_relevant":
             rendered = ""
 
-    if ledger and plan.entries:
+    # A digest that reports no relevant memory blanks the block, so this turn
+    # served nothing: recording those URIs would cool them for `dedup_turns`
+    # turns without the reader ever having seen them, and hold them back from
+    # the later turn they are relevant to.
+    served = plan.entries if rewrite_status != "no_relevant" else []
+    if ledger and served:
         try:
-            await ledger.record(plan.entries)
+            await ledger.record(served)
         except Exception as exc:
             logger.debug("Recall ledger record failed (%s); dedup stays best-effort", exc)
 

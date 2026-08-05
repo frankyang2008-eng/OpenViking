@@ -6,10 +6,23 @@ from types import SimpleNamespace
 
 from openviking.retrieve.context_assembler import pipeline as pipeline_module
 from openviking.retrieve.context_assembler import rewrite as rewrite_module
+from openviking.retrieve.context_assembler.budget import (
+    oversized_abstract_needs_body,
+    per_entry_cap,
+    plan_entries,
+)
+from openviking.retrieve.context_assembler.gather import Candidate, category_for
 from openviking.retrieve.context_assembler.models import AssembledEntry
-from openviking.retrieve.context_assembler.params import AssembleParams, normalize_quotas
+from openviking.retrieve.context_assembler.params import (
+    OTHER_MEMORY_CATEGORY,
+    AssembleParams,
+    normalize_detail,
+    normalize_penalties,
+    normalize_quotas,
+)
 from openviking.retrieve.context_assembler.pipeline import assemble_context
 from openviking.retrieve.context_assembler.render import render_entry
+from openviking.retrieve.context_assembler.tiers import tier_window
 from openviking.server.identity import RequestContext, Role
 from openviking_cli.session.user_id import UserIdentifier
 
@@ -230,7 +243,7 @@ async def test_purpose_quotas_are_not_truncated_by_global_limit():
                     {
                         "uri": f"{target_uri}/{index}.md",
                         "score": 0.9 - index * 0.01,
-                            "abstract": f"{target_uri} {index}",
+                        "abstract": f"{target_uri} {index}",
                         "level": 2,
                     }
                     for index in range(count)
@@ -446,3 +459,127 @@ async def test_only_candidates_that_can_deepen_are_read():
         "events": "full",
         "entities": "abstract",
     }
+
+
+def _resource_candidate(abstract, category="resources", uri=f"{USER_ROOT}/resources/creds.md"):
+    return Candidate(
+        uri=uri,
+        base_uri=uri,
+        category=category,
+        score=0.5,
+        ranked_score=0.5,
+        level=2,
+        abstract=abstract,
+        origin="actor_peer",
+        is_directory=False,
+        read_ctx=_ctx(),
+    )
+
+
+def test_resource_without_abstract_never_substitutes_its_body():
+    """A missing resource abstract degrades to `uri`, pinned or not.
+
+    Overview extraction of a short file returns the body almost verbatim, so
+    substituting it would disclose content the `resources` tier ceiling keeps
+    behind an explicit deepening request.
+    """
+    uri = f"{USER_ROOT}/resources/creds.md"
+    candidate = _resource_candidate("")
+    contents = {uri: "# Credentials\n\nTOKEN=secret"}
+
+    for detail in ("abstract", None):
+        assert tier_window(candidate, normalize_detail(detail).for_category("resources")) == (
+            "uri",
+            "uri",
+        )
+        plan = plan_entries([candidate], contents, max_tokens=1600, detail=detail)
+        assert [(e.detail, e.text) for e in plan.entries] == [("uri", "")]
+
+
+def test_oversized_resource_abstract_degrades_without_reading_the_body():
+    uri = f"{USER_ROOT}/resources/creds.md"
+    candidate = _resource_candidate("X " * 400)
+    cap = per_entry_cap(60, 1)
+
+    assert not oversized_abstract_needs_body(candidate, cap)
+    plan = plan_entries(
+        [candidate], {uri: "# Credentials\n\nTOKEN=secret"}, max_tokens=60, detail="abstract"
+    )
+    assert [(e.detail, e.text) for e in plan.entries] == [("uri", "")]
+
+
+def test_memory_keeps_overview_as_the_cheaper_abstract_substitute():
+    """Memory stores its whole body in `abstract`, so overview discloses less."""
+    uri = f"{USER_ROOT}/memories/entities/a.md"
+    body = "# Summary\n\nA thing happened.\n\n# Detail\n\nlong body"
+    candidate = _resource_candidate("Y " * 400, category="entities", uri=uri)
+
+    assert oversized_abstract_needs_body(candidate, per_entry_cap(60, 1))
+    plan = plan_entries([candidate], {uri: body}, max_tokens=60, detail=None)
+    assert [(e.detail, e.text) for e in plan.entries] == [("overview", "A thing happened.")]
+
+
+def test_built_in_memory_types_report_one_declared_category():
+    """Types outside MEMORY_CATEGORIES own no bucket but stay inside the contract."""
+    resolved = {
+        uri: category_for({"uri": uri}, None)
+        for uri in (
+            f"{USER_ROOT}/memories/trajectories/t.md",
+            f"{USER_ROOT}/memories/cases/c.md",
+            f"{USER_ROOT}/memories/skills/s.md",
+            f"{USER_ROOT}/memories/events/e.md",
+            f"{USER_ROOT}/skills/real.md",
+        )
+    }
+    assert resolved == {
+        f"{USER_ROOT}/memories/trajectories/t.md": OTHER_MEMORY_CATEGORY,
+        f"{USER_ROOT}/memories/cases/c.md": OTHER_MEMORY_CATEGORY,
+        f"{USER_ROOT}/memories/skills/s.md": OTHER_MEMORY_CATEGORY,
+        f"{USER_ROOT}/memories/events/e.md": "events",
+        f"{USER_ROOT}/skills/real.md": "skills",
+    }
+    # The undeclared category used to miss every table: no other-peer penalty
+    # and no way for a caller to pin its tier.
+    assert normalize_penalties(None)[OTHER_MEMORY_CATEGORY] > 0
+    assert normalize_penalties(0.3)[OTHER_MEMORY_CATEGORY] == 0.3
+    assert (
+        normalize_detail({OTHER_MEMORY_CATEGORY: "overview"}).for_category(OTHER_MEMORY_CATEGORY)
+        == "overview"
+    )
+
+
+async def test_no_relevant_digest_keeps_uris_out_of_the_dedup_ledger(monkeypatch):
+    """Nothing was injected, so nothing may enter the cooldown window."""
+    recorded = []
+    hits = [{"uri": f"{USER_ROOT}/memories/events/a.md", "score": 0.6, "abstract": "abs"}]
+    monkeypatch.setattr(pipeline_module, "server_rewrite_enabled", lambda mode: True)
+
+    async def empty_rewrite(**kwargs):
+        del kwargs
+        return "", "no_relevant", None
+
+    class _Ledger:
+        status = "on"
+        turn = 3
+
+        def cooled_uris(self):
+            return set()
+
+        async def record(self, entries):
+            recorded.extend(entry.uri for entry in entries)
+
+    async def fake_load(**kwargs):
+        del kwargs
+        return _Ledger()
+
+    monkeypatch.setattr(pipeline_module, "rewrite_context", empty_rewrite)
+    monkeypatch.setattr(pipeline_module.RecallLedger, "load", staticmethod(fake_load))
+    result = await assemble_context(
+        service=_service(hits=hits, bodies={}),
+        ctx=_ctx(),
+        params=AssembleParams(query="unrelated", rewrite=True, session_id="s", dedup_turns=5),
+    )
+
+    assert result.rendered == ""
+    assert len(result.entries) == 1
+    assert recorded == []

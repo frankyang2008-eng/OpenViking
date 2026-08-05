@@ -15,10 +15,11 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence, Set, Tuple
 from openviking.core.namespace import AGENT_SHARED_ROOTS, canonical_user_root
 from openviking.core.retrieval_targets import default_target_directories
 from openviking.retrieve.context_assembler.params import (
-    CATEGORY_KEYS,
     MEMORY_CATEGORIES,
     ORIGIN_ORDER,
+    OTHER_MEMORY_CATEGORY,
     OTHER_PEER_OVERFETCH,
+    REPORTED_CATEGORY_KEYS,
 )
 from openviking.server.identity import RequestContext
 from openviking.utils.search_filters import merge_context_type_filter
@@ -136,6 +137,13 @@ def strip_level_suffix(uri: str) -> Tuple[str, bool]:
 
 
 def category_for(item: Any, bucket: Optional[str]) -> str:
+    """Reported category for one hit; always one of ``REPORTED_CATEGORY_KEYS``.
+
+    Flat retrieval has no owning bucket, so it also reaches the built-in memory
+    types that own no quota bucket. Those report as ``OTHER_MEMORY_CATEGORY``
+    rather than as their directory name, which would be a value the response
+    contract does not declare and no tier or penalty table covers.
+    """
     if bucket:
         return bucket
     uri = _uri(item)
@@ -144,14 +152,15 @@ def category_for(item: Any, bucket: Optional[str]) -> str:
         segment = uri.split(marker, 1)[1].split("/", 1)[0]
         if segment in MEMORY_CATEGORIES:
             return segment
+        return OTHER_MEMORY_CATEGORY
     declared = str(_get_attr(item, "category", "") or "")
-    if declared in CATEGORY_KEYS:
+    if declared in REPORTED_CATEGORY_KEYS:
         return declared
     if "/skills/" in uri:
         return "skills"
     if "/resources/" in uri or uri.startswith("viking://resources"):
         return "resources"
-    return "memories"
+    return OTHER_MEMORY_CATEGORY
 
 
 def dedupe_keep_best(items: Sequence[Any]) -> List[Any]:

@@ -14,10 +14,6 @@
     "recallCompress": "auto",
 
     "claude_code": {},
-    "codex": {},
-    "opencode": {},
-    "cursor": {},
-    "trae": {},
-    "pi": {}
+    "codex": {}
   }
 }

@@ -20,6 +20,7 @@ from openviking.retrieve.context_assembler.params import (
     DEFAULT_TIER,
     DEFAULT_TIER_BY_CATEGORY,
     DEPTH_CEILING_BY_CATEGORY,
+    FULL_BODY_ABSTRACT_CATEGORIES,
     READ_CONCURRENCY,
     TIER_RANK,
     Tier,
@@ -193,10 +194,22 @@ def start_tier(candidate: Candidate, pin: Optional[Tier] = None) -> Tier:
         return "overview"
     tier = pin or DEFAULT_TIER_BY_CATEGORY.get(candidate.category, DEFAULT_TIER)
     if tier == "abstract" and not candidate.abstract.strip():
-        # Resources that never went through semantic processing have no stored
-        # abstract; overview keeps them from degrading to a bare URI.
-        return "overview"
+        return abstract_substitute(candidate)
     return tier
+
+
+def abstract_substitute(candidate: Candidate) -> Tier:
+    """Tier that stands in when ``abstract`` is unavailable or too expensive.
+
+    Only the full-body-abstract categories can spend ``overview`` here: their
+    abstract is the whole body, so the substitute discloses strictly less. A
+    resource or skill whose abstract is missing or oversized degrades to a bare
+    URI instead — reading its body would cross the opt-in deepening boundary
+    that keeps generated summaries, not raw content, on the default path.
+    """
+    if candidate.category in FULL_BODY_ABSTRACT_CATEGORIES:
+        return "overview"
+    return "uri"
 
 
 def tier_window(candidate: Candidate, pin: Optional[Tier] = None) -> Tuple[Tier, Tier]:

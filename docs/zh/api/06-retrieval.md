@@ -657,10 +657,11 @@ Agent 插件每轮注入上下文时，过去需要按类型逐个检索、再�
   | `events` | 概览档 | 全文档 | 唯一正文足够长、`# Summary` 抽取能真正压缩的类型 |
   | `entities` / `preferences` / `experiences` | 摘要档 | 摘要档 | 正文本身很短，且写入侧把整篇正文存进了摘要标量，摘要档即完整内容 |
   | `resources` / `skills` | 摘要档 | 摘要档 | 语义处理生成的 256 字符摘要；正文可能很大或含凭据，加深需显式指定 |
+  | `memories` | 摘要档 | 摘要档 | 四个具名类型之外的内置记忆类型——`cases`、`patterns`、`tools`、`trajectories`、技能使用记忆。只有 quota-free 检索会命中它们；它们没有自己的检索桶，`quotas` 不能指定，但 `detail` 和 `other_peer_penalty` 可以 |
   | 目录命中 | 概览档 | 概览档 | 目录没有摘要，读 `.overview.md` 侧车；全文档对目录无意义 |
 
-- **保底**：每条结果至少给出 `uri`；类别默认档拿不到可用内容时（例如资源尚未跑过语义处理，或摘要本身超出单条上限）自动回落到概览档，而不是退成裸指针
-- **显式 `detail`**：把该档作为全部结果请求的起点和上限；装不下的条目仍逐档退档而不截断
+- **保底**：每条结果至少给出 `uri`。记忆类摘要缺失或超出单条上限时回落到概览档：写入侧把整篇正文存进了摘要标量，所以对记忆类别而言概览档在内容阶梯上位于摘要档*之下*，这次替换披露得更少。而 `resources` / `skills` 的摘要是语义处理生成的短摘要，同样的替换会去读调用方没有请求的正文，因此这两类直接退成裸 `uri`，不向上加深
+- **显式 `detail`**：把该档作为全部结果请求的起点和上限；装不下的条目仍逐档退档而不截断。上述记忆类概览档替换是实际档位唯一可能高于指定档的情况，且仅因为它比指定档携带的内容更少
 - **概览档按来源取骨架**：记忆文件取开头的 `# Summary` 段，代码文件取函数与类签名（复用 `code_outline`），长文档取标题树加首段
 - **单条上限**：`max_tokens ÷ 候选条数 × 2`，对除裸 `uri` 外的所有档位一律生效；某一档超出该上限时退回上一档，不做截断。预算仍有剩余时，最后一轮加深不受该上限约束，只受 `max_tokens` 约束
 
@@ -746,7 +747,7 @@ curl -X POST http://localhost:1933/api/v1/search/search \
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | `entries[].uri` | string | 条目 URI，任何档位都必然存在，可用 MCP `read` 下钻 |
-| `entries[].category` | string | `events`/`entities`/`preferences`/`experiences`/`resources`/`skills` |
+| `entries[].category` | string | `events`/`entities`/`preferences`/`experiences`/`resources`/`skills`，或 `memories`（四个具名类型之外的内置记忆类型） |
 | `entries[].detail` | string | 实际档位：`full`、`overview`、`abstract` 或 `uri` |
 | `entries[].text` | string | 该档位的正文；`uri` 档为空 |
 | `rendered` | string | 扁平 XML 上下文块，可直接注入；重写返回 `no_relevant` 时为空 |
@@ -754,7 +755,9 @@ curl -X POST http://localhost:1933/api/v1/search/search \
 | `stats` | object | 预算用量、档位分布、扩展与重写状态（`off`、`ok`、`no_relevant`、`failed` 或 `timeout`）、去重账本状态；某个检索域失败时附带 `retrieval_errors`，用于区分「检索坏了」和「确实没有相关记忆」 |
 
 当 `stats.rewrite` 为 `no_relevant` 时，响应仍保留 `entries` 供检查，但 `digest` 和
-`rendered` 都为空字符串。这样即使客户端尚未识别新状态，也不会回退注入原文。
+`rendered` 都为空字符串。这样即使客户端尚未识别新状态，也不会回退注入原文。本轮
+没有交付任何内容，因此这些 URI 也不会进入 `dedup_turns` 账本，之后真正相关的那一轮
+仍能召回它们。
 
 **校验规则**
 
