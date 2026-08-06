@@ -233,6 +233,7 @@ This setting controls queue-job concurrency. It is separate from `vlm.media.max_
 | `host` | IP / hostname | `"127.0.0.1"` | Listen address |
 | `port` | integer | `1933` | Listen port |
 | `workers` | integer | `1` | Worker process count |
+| `timeout_keep_alive` | integer (seconds) | `5` | Idle HTTP keep-alive timeout; raise it above the upstream's idle-connection lifetime |
 | `auth_mode` | `dev`, `api_key`, `trusted` / `null` | `null` | Auth mode; null is inferred from `root_api_key` |
 | `root_api_key` | string / `null` | `null` | Root key; setting it defaults auth to `api_key` |
 | `cors_origins` | string[] | `["*"]` | Allowed origins |
