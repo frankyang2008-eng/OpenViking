@@ -134,7 +134,7 @@ export async function commitSession(fetchJSON, sessionId, payload = {}) {
   });
   if (!res.ok) {
     if (isRetryableFailure(res)) {
-      const queued = await enqueuePendingDirectly("commitSession", sessionId, {});
+      const queued = await enqueuePendingDirectly("commitSession", sessionId, payload || {});
       if (queued.ok) res.pendingQueued = true;
       else res.pendingEnqueueFailed = true;
     } else {
