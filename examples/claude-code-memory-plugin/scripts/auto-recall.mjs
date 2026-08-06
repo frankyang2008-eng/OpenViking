@@ -394,7 +394,7 @@ async function main() {
       return;
     }
     writeRecallState({
-      count: 1,
+      count: new Set(endpointBlock.match(/viking:\/\/[^\s<>"')\]]+/g) || []).size,
       content_items: 1,
       hint_items: 0,
       tokens_used: estimateTokens(endpointBlock),
