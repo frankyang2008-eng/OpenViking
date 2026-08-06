@@ -16,6 +16,7 @@ const HARNESS_SHARED_FILES = [
   "plugin-config.mjs",
   "recall-compress-core.mjs",
   "recall-core.mjs",
+  "retryable.mjs",
   "workspace-peer.mjs",
   "profile-inject.mjs",
   "uri-guard.mjs",

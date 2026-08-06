@@ -62,7 +62,7 @@ test("addMessage queues retryable failures", async () => {
 
 test("addMessage does not queue non-retryable client failures", async () => {
   await withPendingDir(async () => {
-    for (const status of [401, 403, 404, 422]) {
+    for (const status of [401, 403, 404, 409, 422]) {
       const res = await addMessage(
         async () => ({ ok: false, status, error: { message: `HTTP ${status}` } }),
         `cc-client-error-${status}`,
@@ -75,6 +75,39 @@ test("addMessage does not queue non-retryable client failures", async () => {
     }
 
     assert.deepEqual(await listPending(), []);
+  });
+});
+
+test("addMessage queues conflicts only when the server marks them retryable", async () => {
+  await withPendingDir(async () => {
+    const retryable = await addMessage(
+      async () => ({
+        ok: false,
+        status: 409,
+        error: {
+          code: "CONFLICT",
+          details: { conflict_type: "path_busy", retryable: true },
+        },
+      }),
+      "cc-retryable-conflict",
+      { role: "user", content: "retry after lock contention" },
+    );
+    assert.equal(retryable.pendingQueued, true);
+
+    const terminal = await addMessage(
+      async () => ({
+        ok: false,
+        status: 409,
+        error: {
+          code: "ALREADY_EXISTS",
+          details: { retryable: false },
+        },
+      }),
+      "cc-terminal-conflict",
+      { role: "user", content: "do not retry business conflict" },
+    );
+    assert.equal(terminal.pendingQueued, undefined);
+    assert.equal((await listPending()).length, 1);
   });
 });
 

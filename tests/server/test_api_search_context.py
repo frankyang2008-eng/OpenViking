@@ -322,3 +322,38 @@ async def test_context_mode_dedup_ledger_round_trips_through_agfs(
     second = await client.post("/api/v1/search/search", json=payload)
     assert second.json()["result"]["entries"] == []
     assert second.json()["result"]["stats"]["dedup"]["cooled"] == 1
+
+
+async def test_context_mode_unknown_session_does_not_create_recall_ledger(
+    client: httpx.AsyncClient,
+    service,
+    monkeypatch,
+):
+    file_uri = "viking://user/default/memories/events/unknown-session.md"
+    ctx = RequestContext(user=UserIdentifier.the_default_user("default"), role=Role.ROOT)
+    await service.viking_fs.write_file(uri=file_uri, content="# Summary\nrecalled fact", ctx=ctx)
+
+    async def fake_find(**kwargs):
+        del kwargs
+        return _FakeFindResult([_memory(file_uri, 0.7, "recall abstract")])
+
+    monkeypatch.setattr(service.search, "find", fake_find)
+    session_id = "context-before-capture"
+    response = await client.post(
+        "/api/v1/search/search",
+        json={
+            "query": "recall before capture",
+            "mode": "context",
+            "session_id": session_id,
+            "dedup_turns": 3,
+            "query_expansion": "off",
+        },
+    )
+
+    assert response.status_code == 200
+    assert [entry["uri"] for entry in response.json()["result"]["entries"]] == [file_uri]
+    assert response.json()["result"]["stats"]["dedup"]["status"] == "off"
+    assert not await service.viking_fs.exists(
+        f"viking://user/default/sessions/{session_id}/.recall_log.json",
+        ctx=ctx,
+    )

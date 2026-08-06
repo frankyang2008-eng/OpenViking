@@ -736,12 +736,29 @@ class Session:
                 raise
             return False
 
+    async def is_materialized(self) -> bool:
+        """Check whether the session's authoritative live-message file exists."""
+        try:
+            await self._viking_fs.stat(
+                f"{self._session_uri}/messages.jsonl",
+                ctx=self.ctx,
+            )
+            return True
+        except Exception as exc:
+            if not _is_storage_not_found(exc):
+                raise
+            return False
+
     async def ensure_exists(self) -> None:
         """Materialize session root and messages file if missing."""
         if await self.exists():
             return
         await self._viking_fs.mkdir(self._session_uri, exist_ok=True, ctx=self.ctx)
-        await self._viking_fs.write_file(f"{self._session_uri}/messages.jsonl", "", ctx=self.ctx)
+        await self._viking_fs.write_file(
+            f"{self._session_uri}/messages.jsonl",
+            "",
+            ctx=self.ctx,
+        )
         await self._save_meta()
 
     async def _save_meta(self, lease_ref: Optional[Any] = None) -> None:
@@ -1177,7 +1194,14 @@ class Session:
             session_path, timeout_secs=_SESSION_PHASE1_LOCK_TIMEOUT_SECONDS
         )
         try:
-            self._messages = await self._read_live_messages_strict()
+            live_messages_missing = False
+            try:
+                self._messages = await self._read_live_messages_strict()
+            except Exception as exc:
+                if not _is_storage_not_found(exc):
+                    raise
+                self._messages = []
+                live_messages_missing = True
             in_memory_meta = self._meta
             try:
                 meta_content = await self._viking_fs.read_file(
@@ -1192,12 +1216,20 @@ class Session:
 
             self._apply_appended_messages_to_state(messages)
             batch_content = "".join(message.to_jsonl() + "\n" for message in messages)
-            await self._viking_fs.append_file(
-                f"{self._session_uri}/messages.jsonl",
-                batch_content,
-                ctx=self.ctx,
-                lease_ref=lease,
-            )
+            if live_messages_missing:
+                await self._viking_fs.write_file(
+                    f"{self._session_uri}/messages.jsonl",
+                    batch_content,
+                    ctx=self.ctx,
+                    lease_ref=lease,
+                )
+            else:
+                await self._viking_fs.append_file(
+                    f"{self._session_uri}/messages.jsonl",
+                    batch_content,
+                    ctx=self.ctx,
+                    lease_ref=lease,
+                )
             await self._save_meta(lease_ref=lease)
         finally:
             await self._viking_fs._async_agfs.pathlock_release(lease)

@@ -187,6 +187,112 @@ async def test_legacy_session_uri_alias_reads_current_user_session(client: httpx
     assert "legacy alias message" in resp.json()["result"]
 
 
+@pytest.mark.parametrize("artifact", ["empty", "recall_ledger", "meta"])
+async def test_add_message_repairs_session_directory_without_live_messages(
+    client: httpx.AsyncClient,
+    service,
+    artifact: str,
+):
+    session_id = f"{artifact}-only-session"
+    ctx = RequestContext(user=DEFAULT_USER, role=Role.ROOT)
+    ledger_uri = f"viking://user/default/sessions/{session_id}/.recall_log.json"
+    meta_uri = f"viking://user/default/sessions/{session_id}/.meta.json"
+    await service.viking_fs.mkdir(
+        f"viking://user/default/sessions/{session_id}",
+        exist_ok=True,
+        ctx=ctx,
+    )
+    if artifact == "recall_ledger":
+        await service.viking_fs.write_file(
+            uri=ledger_uri,
+            content=json.dumps({"version": 1, "updated_turn": 0, "entries": {}}),
+            ctx=ctx,
+        )
+    elif artifact == "meta":
+        meta = service.sessions.session(ctx, session_id).meta.to_dict()
+        meta["last_commit_at"] = "preserve-existing-meta"
+        await service.viking_fs.write_file(
+            uri=meta_uri,
+            content=json.dumps(meta),
+            ctx=ctx,
+        )
+
+    resp = await client.post(
+        f"/api/v1/sessions/{session_id}/messages",
+        json=_message_request("user", content="first captured message"),
+    )
+
+    assert resp.status_code == 200
+    assert resp.json()["result"]["message_count"] == 1
+    messages = await service.viking_fs.read_file(
+        f"viking://user/default/sessions/{session_id}/messages.jsonl",
+        ctx=ctx,
+    )
+    assert "first captured message" in messages
+    assert await service.viking_fs.exists(ledger_uri, ctx=ctx) is (artifact == "recall_ledger")
+    persisted_meta = json.loads(await service.viking_fs.read_file(meta_uri, ctx=ctx))
+    if artifact == "meta":
+        assert persisted_meta["last_commit_at"] == "preserve-existing-meta"
+
+
+async def test_partial_session_remains_visible_and_deletable(
+    client: httpx.AsyncClient,
+    service,
+):
+    session_id = "partial-session-lifecycle"
+    ctx = RequestContext(user=DEFAULT_USER, role=Role.ROOT)
+    session_uri = f"viking://user/default/sessions/{session_id}"
+    await service.viking_fs.mkdir(session_uri, exist_ok=True, ctx=ctx)
+
+    get_resp = await client.get(f"/api/v1/sessions/{session_id}")
+    assert get_resp.status_code == 200
+    assert get_resp.json()["result"]["message_count"] == 0
+
+    duplicate = await client.post("/api/v1/sessions", json={"session_id": session_id})
+    assert duplicate.status_code == 409
+
+    delete_resp = await client.delete(f"/api/v1/sessions/{session_id}")
+    assert delete_resp.status_code == 200
+    assert not await service.viking_fs.exists(session_uri, ctx=ctx)
+
+
+async def test_add_message_recovers_after_interrupted_session_initialization(
+    client: httpx.AsyncClient,
+    service,
+    monkeypatch,
+):
+    session_id = "interrupted-initialization"
+    ctx = RequestContext(user=DEFAULT_USER, role=Role.ROOT)
+    session_uri = f"viking://user/default/sessions/{session_id}"
+    original_write_file = service.viking_fs.write_file
+    failed_once = False
+
+    async def fail_first_message_file(uri, content, **kwargs):
+        nonlocal failed_once
+        if uri == f"{session_uri}/messages.jsonl" and not failed_once:
+            failed_once = True
+            raise OSError("simulated initialization interruption")
+        return await original_write_file(uri, content, **kwargs)
+
+    monkeypatch.setattr(service.viking_fs, "write_file", fail_first_message_file)
+    first = await client.post(
+        f"/api/v1/sessions/{session_id}/messages",
+        json=_message_request("user", content="first attempt"),
+    )
+    assert first.status_code == 500
+    assert await service.viking_fs.exists(session_uri, ctx=ctx)
+    assert not await service.viking_fs.exists(f"{session_uri}/messages.jsonl", ctx=ctx)
+
+    second = await client.post(
+        f"/api/v1/sessions/{session_id}/messages",
+        json=_message_request("user", content="second attempt"),
+    )
+    assert second.status_code == 200
+    assert second.json()["result"]["message_count"] == 1
+    messages = await service.viking_fs.read_file(f"{session_uri}/messages.jsonl", ctx=ctx)
+    assert "second attempt" in messages
+
+
 async def test_get_session_context(client: httpx.AsyncClient):
     create_resp = await client.post("/api/v1/sessions", json={})
     session_id = create_resp.json()["result"]["session_id"]

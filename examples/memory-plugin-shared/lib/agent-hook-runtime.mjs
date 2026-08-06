@@ -9,6 +9,7 @@ import { sendSessionMessages } from "./batch-send.mjs";
 import { enqueue, replayPending } from "./pending-queue.mjs";
 import { buildProfileBlock } from "./profile-inject.mjs";
 import { buildRecallBlock } from "./recall-core.mjs";
+import { isRetryableFailure } from "./retryable.mjs";
 import { deriveHarnessSessionId, isBypassed } from "./session-model.mjs";
 import { resolveEffectivePeerId } from "./workspace-peer.mjs";
 
@@ -195,17 +196,12 @@ export function makeAgentFetchJSON(cfg, cwd = process.cwd()) {
   return { fetchJSON, effectivePeer };
 }
 
-function retryable(result) {
-  const status = Number(result?.status || 0);
-  return !status || status === 408 || status === 429 || status >= 500;
-}
-
 export async function addAgentMessage(fetchJSON, sessionId, payload) {
   const result = await fetchJSON(`/api/v1/sessions/${encodeURIComponent(sessionId)}/messages`, {
     method: "POST",
     body: JSON.stringify(payload),
   });
-  if (!result.ok && retryable(result)) await enqueue("addMessage", sessionId, payload);
+  if (!result.ok && isRetryableFailure(result)) await enqueue("addMessage", sessionId, payload);
   return result;
 }
 
@@ -218,7 +214,7 @@ export async function commitAgentSession(fetchJSON, sessionId) {
     method: "POST",
     body: "{}",
   });
-  if (!result.ok && retryable(result)) await enqueue("commitSession", sessionId, {});
+  if (!result.ok && isRetryableFailure(result)) await enqueue("commitSession", sessionId, {});
   return result;
 }
 

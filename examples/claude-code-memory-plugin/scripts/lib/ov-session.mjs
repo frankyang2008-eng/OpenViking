@@ -24,6 +24,7 @@ import {
   deriveHarnessSessionId,
   isBypassed,
 } from "../shared/session-model.mjs";
+import { isRetryableFailure as isSharedRetryableFailure } from "../shared/retryable.mjs";
 
 /**
  * Check whether a CC session_id or cwd matches any bypass pattern.
@@ -75,9 +76,7 @@ export function makeFetchJSON(cfg, timeoutKey = "timeoutMs") {
 }
 
 export function isRetryableFailure(res) {
-  if (!res || res.ok) return false;
-  const status = Number(res.status || 0);
-  return !status || status >= 500 || status === 408 || status === 429;
+  return isSharedRetryableFailure(res);
 }
 
 function warnNonRetryable(operation, res) {
