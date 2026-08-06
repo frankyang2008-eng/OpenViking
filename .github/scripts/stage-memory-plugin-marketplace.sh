@@ -56,10 +56,12 @@ for required in \
   zcode-memory-plugin/scripts/shared/async-writer.mjs \
   zcode-memory-plugin/scripts/shared/agent-hook-runtime.mjs \
   zcode-memory-plugin/scripts/shared/batch-send.mjs \
+  zcode-memory-plugin/scripts/shared/retryable.mjs \
   zcode-memory-plugin/servers/mcp-proxy.mjs \
   memory-plugin-shared/lib/agent-hook-runtime.mjs \
   memory-plugin-shared/lib/agent-uri-guard.mjs \
   memory-plugin-shared/lib/async-writer.mjs \
+  memory-plugin-shared/lib/retryable.mjs \
   memory-plugin-shared/lib/uri-guard.mjs \
   memory-plugin-shared/lib/mcp-proxy-core.mjs; do
   test -f "${STAGE}/${required}" || {
