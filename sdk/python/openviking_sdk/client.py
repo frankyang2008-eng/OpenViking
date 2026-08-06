@@ -352,6 +352,12 @@ class AsyncHTTPClient:
         profile_enabled: Optional[bool] = None,
         upload_mode: Optional[str] = None,
         event_hooks: Optional[Dict[str, List[Callable[..., Any]]]] = None,
+        # LDAP parameters
+        auth_mode: Optional[str] = None,
+        ldap_username: Optional[str] = None,
+        ldap_password: Optional[str] = None,
+        # OIDC parameters
+        oidc_token: Optional[str] = None,
     ):
         if actor_peer_id and agent_id:
             raise ValueError("actor_peer_id cannot be used with agent_id")
@@ -367,6 +373,10 @@ class AsyncHTTPClient:
             extra_headers=extra_headers,
             profile_enabled=profile_enabled,
             upload_mode=upload_mode,
+            auth_mode=auth_mode,
+            ldap_username=ldap_username,
+            ldap_password=ldap_password,
+            oidc_token=oidc_token,
         )
         self._url = config.url
         self._api_key = config.api_key
@@ -378,6 +388,10 @@ class AsyncHTTPClient:
         self._extra_headers = config.extra_headers
         self._profile_enabled = config.profile_enabled
         self._upload_mode = config.upload_mode
+        self._auth_mode = config.auth_mode
+        self._ldap_username = config.ldap_username
+        self._ldap_password = config.ldap_password
+        self._oidc_token = config.oidc_token
         self._event_hooks = {
             event: list(hooks) for event, hooks in (event_hooks or {}).items()
         }
@@ -395,6 +409,23 @@ class AsyncHTTPClient:
             headers["X-OpenViking-User"] = self._user_id
         if self._actor_peer_id:
             headers["X-OpenViking-Actor-Peer"] = self._actor_peer_id
+
+        # LDAP Basic Auth
+        if self._auth_mode == "ldap" and self._ldap_username and self._ldap_password:
+            from .config import get_basic_auth_header
+            headers["Authorization"] = get_basic_auth_header(
+                self._ldap_username, self._ldap_password
+            )
+
+        # OIDC Bearer token. An explicit oidc_token wins; otherwise fall back
+        # to api_key when it looks like a JWT (header.payload.signature).
+        if self._auth_mode == "oidc":
+            token = self._oidc_token
+            if not token and self._api_key and self._api_key.count(".") == 2:
+                token = self._api_key
+            if token:
+                headers["Authorization"] = f"Bearer {token}"
+
         headers.update(self._extra_headers)
         self._http = httpx.AsyncClient(
             base_url=self._url,
