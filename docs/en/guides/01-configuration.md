@@ -1129,6 +1129,7 @@ Notes:
 - QueueFS defaults to `sqlite` even if the main AGFS storage backend is `local`, `s3`, or `memory`.
 - `mode=shared` keeps the historical global queue namespace at `/queue`; `mode=worker` isolates each worker under `/queue/worker-<index|pid>`.
 - `db_path` is only used when QueueFS backend is `sqlite` or `sqlite3`.
+- Redis backend runs three bounded `recover_stale` sweeps in a dedicated startup recovery thread at startup, 30 seconds, and 60 seconds to cover the heartbeat-expiry window after a container restart; it does not run long-lived periodic recovery.
 - If both `storage.agfs.queuefs.db_path` and legacy `storage.agfs.queue_db_path` are set, `storage.agfs.queuefs.db_path` wins.
 - If QueueFS backend is `memory`, any `db_path` or legacy `queue_db_path` is ignored.
 
