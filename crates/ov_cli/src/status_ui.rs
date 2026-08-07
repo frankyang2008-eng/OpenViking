@@ -621,24 +621,60 @@ fn lock_summary(status: Option<&str>) -> String {
     let Some(status) = status else {
         return "unknown".to_string();
     };
+    // Legacy pipe-table format (e.g. `ov lock list`): extract the TOTAL row.
     if status.contains("No active locks") {
         return "0 active locks".to_string();
     }
-    let Some(total_row) = pipe_rows(status).into_iter().find(|row| {
+    if let Some(total_row) = pipe_rows(status).into_iter().find(|row| {
         row.first()
             .is_some_and(|cell| cell.to_ascii_uppercase().starts_with("TOTAL"))
-    }) else {
-        return "unknown".to_string();
-    };
-    let count = total_row
-        .first()
-        .and_then(|cell| cell.split_once('('))
-        .and_then(|(_, rest)| rest.split_once(')'))
-        .and_then(|(count, _)| parse_u64(count));
-    match count {
-        Some(count) => format!("{} active {}", count, pluralize(count, "lock")),
-        None => "unknown".to_string(),
+    }) {
+        if let Some(count) = total_row
+            .first()
+            .and_then(|cell| cell.split_once('('))
+            .and_then(|(_, rest)| rest.split_once(')'))
+            .and_then(|(count, _)| parse_u64(count))
+        {
+            return format!("{} active {}", count, pluralize(count, "lock"));
+        }
     }
+    // Plain-text observer format (`/api/v1/observer/system` lock component):
+    //   Active locks: N / Waiting locks: N / Stale locks removed: N / Conflicts: M
+    let mut active = None;
+    let mut conflicts = None;
+    for line in status.lines() {
+        if let Some(n) = lock_count(line, "Active locks:") {
+            active = Some(n);
+        } else if let Some(n) = lock_count(line, "Conflicts:") {
+            conflicts = Some(n);
+        }
+    }
+    match (active, conflicts) {
+        (Some(a), Some(c)) => format!(
+            "{} active {}, {} {}",
+            a,
+            pluralize(a, "lock"),
+            c,
+            pluralize(c, "conflict")
+        ),
+        (Some(a), None) => format!("{} active {}", a, pluralize(a, "lock")),
+        (None, Some(c)) => format!("{} {}", c, pluralize(c, "conflict")),
+        (None, None) => status
+            .lines()
+            .find(|line| !line.trim().is_empty())
+            .unwrap_or("unknown")
+            .trim()
+            .to_string(),
+    }
+}
+
+// Parse the first whitespace-delimited token after a labeled prefix as a u64.
+// Unlike `parse_u64`, this does not concatenate stray digits, so a line like
+// "Active locks: 0 (2 waiting)" yields 0 rather than 02.
+fn lock_count(line: &str, prefix: &str) -> Option<u64> {
+    let rest = line.strip_prefix(prefix)?.trim_start();
+    let token = rest.split_whitespace().next()?;
+    token.parse::<u64>().ok()
 }
 
 fn retrieval_summary(status: Option<&str>) -> String {
@@ -859,8 +895,39 @@ mod tests {
         assert!(rendered.contains("Components"));
         assert!(rendered.contains("queue          healthy    64 pending, 9 running, 0 errors"));
         assert!(rendered.contains("vikingdb       healthy    1 collection, 6877 vectors"));
+        assert!(rendered.contains("lock           healthy    1 active lock"));
         assert!(rendered.contains("Details"));
         assert!(rendered.contains("ov status --verbose       Show full component tables"));
+    }
+
+    #[test]
+    fn lock_summary_parses_plain_text_observer_status() {
+        // Real backend format (`/api/v1/observer/system` lock component).
+        let status = "Active locks: 0\nWaiting locks: 0\nStale locks removed: 0\nConflicts: 7";
+        assert_eq!(
+            super::lock_summary(Some(status)),
+            "0 active locks, 7 conflicts"
+        );
+        // Singular forms.
+        assert_eq!(
+            super::lock_summary(Some("Active locks: 1\nConflicts: 1")),
+            "1 active lock, 1 conflict"
+        );
+        // Only active line present.
+        assert_eq!(super::lock_summary(Some("Active locks: 5")), "5 active locks");
+        // Only conflicts line present.
+        assert_eq!(super::lock_summary(Some("Conflicts: 2")), "2 conflicts");
+        // Non-numeric value -> falls through to the first non-empty line.
+        assert_eq!(
+            super::lock_summary(Some("Active locks: abc")),
+            "Active locks: abc"
+        );
+        // Missing / empty status.
+        assert_eq!(super::lock_summary(None), "unknown");
+        assert_eq!(super::lock_summary(Some("")), "unknown");
+        // Legacy pipe-table format still works.
+        let total = "|  Handle ID  | Locks |\n|  TOTAL (4)  |   4   |";
+        assert_eq!(super::lock_summary(Some(total)), "4 active locks");
     }
 
     #[test]
