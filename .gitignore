@@ -231,3 +231,17 @@ node_modules/
 
 # Local scratch / working notes
 .scratch/
+
+# Local AI IDE / agent harness configs
+.clinerules/
+.codebase-memory/
+.codebuddy/
+.cursor/
+.qoder/
+.windsurf/
+CODEBUDDY.md
+.github/copilot-instructions.md
+
+# graphify output
+graphify-out/
+openviking/graphify-out/
