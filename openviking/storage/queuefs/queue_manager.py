@@ -12,7 +12,7 @@ import time
 import traceback
 from typing import Any, Dict, Optional, Set, Union
 
-from openviking.service.task_work_index import TaskWorkIndex
+from openviking.storage.queuefs.task_work_index import TaskWorkIndex
 from openviking_cli.utils.logger import get_logger
 
 from .embedding_queue import EmbeddingQueue

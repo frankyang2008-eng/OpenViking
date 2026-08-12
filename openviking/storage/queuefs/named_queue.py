@@ -10,7 +10,7 @@ from typing import Any, Callable, Dict, List, Optional, Union
 
 from openviking.pyagfs import AGFSSyncClientProtocol, AsyncAGFSClient
 from openviking.pyagfs.exceptions import AGFSAlreadyExistsError, AGFSNotFoundError
-from openviking.service.task_work_index import (
+from openviking.storage.queuefs.task_work_index import (
     TaskWorkIndex,
     TaskWorkRejected,
     bind_task_context,

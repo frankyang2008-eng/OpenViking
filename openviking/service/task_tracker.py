@@ -32,7 +32,7 @@ from openviking.service.task_tracker_concurrency import (
     StoreIOLimiter,
     run_to_completion,
 )
-from openviking.service.task_work_index import QueueTaskMetadata, TaskWorkIndex
+from openviking.storage.queuefs.task_work_index import QueueTaskMetadata, TaskWorkIndex
 from openviking_cli.utils.logger import get_logger
 
 logger = get_logger(__name__)

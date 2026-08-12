@@ -6,7 +6,6 @@ import asyncio
 import sys
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
-from openviking.core.context import ContextLevel
 from openviking.core.namespace import canonicalize_uri
 from openviking.pyagfs.exceptions import (
     AGFSInvalidOperationError,
@@ -31,8 +30,7 @@ def _pkg():
     return sys.modules[__package__]
 
 if TYPE_CHECKING:
-    from openviking.storage.viking_vector_index_backend import VikingVectorIndexBackend
-    from openviking_cli.utils.config import GrepConfig, RerankConfig, RetrievalConfig
+    pass
 
 
 class _SnapshotMixin:
@@ -648,7 +646,7 @@ class _SnapshotMixin:
         the "failures do not block" semantics.
         """
         from openviking.service.task_tracker import get_task_tracker
-        from openviking.service.task_work_index import bind_task_context
+        from openviking.storage.queuefs.task_work_index import bind_task_context
 
         tracker = get_task_tracker()
         tracker.register_running_task(task_id)

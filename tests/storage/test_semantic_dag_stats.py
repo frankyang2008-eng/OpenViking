@@ -6,18 +6,18 @@ import asyncio
 import pytest
 
 from openviking.server.identity import RequestContext, Role
-from openviking.service.task_work_index import (
-    TaskWorkIndex,
-    TaskWorkRejected,
-    bind_task_context,
-    get_task_context,
-)
 from openviking.storage.queuefs.named_queue import NamedQueue
 from openviking.storage.queuefs.semantic_dag import (
     DagStats,
     DagWork,
     SemanticDagExecutor,
     SemanticNodeScheduler,
+)
+from openviking.storage.queuefs.task_work_index import (
+    TaskWorkIndex,
+    TaskWorkRejected,
+    bind_task_context,
+    get_task_context,
 )
 from openviking.telemetry import (
     OperationTelemetry,
