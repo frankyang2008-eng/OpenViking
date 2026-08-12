@@ -1209,7 +1209,7 @@ Legacy compatibility example:
 Notes:
 
 - `memory.session_auto_commit` is a server-wide control surface, not a per-session business policy.
-- Per-session auto-commit behavior is configured through the session-level `auto_commit_policy` (see the table below). It is set only when creating a session (`POST /api/v1/sessions` with a top-level `auto_commit_policy` field) and viewed via `GET /api/v1/sessions/{session_id}`; runtime config PATCH is not supported.
+- Per-session auto-commit behavior is configured through the session-level `auto_commit_policy` (see the table below). Set it when creating a session with `POST /api/v1/sessions`, or partially update it through `PATCH /api/v1/sessions/{session_id}/config`. Omitting `auto_commit_policy` from a PATCH preserves it; sending `null` disables automatic commits. Use `GET /api/v1/sessions/{session_id}` to inspect the effective policy.
 - When `default_enabled=false`, sessions created without `auto_commit_policy` keep auto commit disabled and return `auto_commit_policy: null`. Providing `{}` or any policy field explicitly enables auto commit for that session and fills missing fields from the defaults below.
 - When `default_enabled=true`, sessions created without `auto_commit_policy` get the default policy below.
 - When `idle_enabled=false`:
@@ -1569,7 +1569,7 @@ When `root_api_key` is configured in `api_key` mode, the server enables multi-te
 
 ### Usage Reporter
 
-The optional Usage Reporter extracts memory usage events from committed session tool parts. The built-in file log sink writes each event as a `{"key": ..., "value": ...}` JSON envelope to a dedicated hourly rotating file:
+The optional Usage Reporter extracts memory usage events from committed session tool parts. The built-in file log sink writes each event as one flat JSON object to a dedicated hourly rotating file:
 
 ```json
 {
@@ -1598,9 +1598,15 @@ using `"type": "http"` must migrate to `file_log` and collect the dedicated
 log files, or configure a `custom` sink that implements their delivery
 contract.
 
-Set the environment variable named by `resource_id_env` before starting the server. The sink creates the parent directory, appends events immediately, rotates the active file every UTC hour, and retains `backup_count` rotated files. It does not write to the default OpenViking stdout log.
+Set the environment variable named by `resource_id_env` before starting the server. Its value identifies the deployed OpenViking resource and isolates otherwise identical account, user, and URI combinations. The sink creates the parent directory, appends events immediately, rotates the active file every UTC hour, and retains `backup_count` rotated files. It does not write to the default OpenViking stdout log.
 
-Each line is a JSON envelope with `key` and `value` fields. `key` matches the original Kafka message key and has the form `resource_id|account_id|user_id|resource_uri`; it falls back to `session_id` when `resource_uri` is empty. `value` is the complete object used as the original Kafka message value, containing `count_name`, `op_type`, `amount`, `timestamp`, `unique_id`, `tags`, `extra`, and `prefix`. The JSON envelope preserves delimiters that appear inside the key. File collection and downstream delivery remain best-effort, so consumers should deduplicate by `value.unique_id`.
+Each line has the following form:
+
+```json
+{"event_time":"2026-08-05 11:30:00","tenant_id":"resource_id:ov-example;account_id:default;user_id:default;resource_uri:viking://user/default/memories/experiences/example.md","event_name":"experience.recall.count","object_id":"ue_<sha256>","count":1,"tags":{"resource_type":"experience"}}
+```
+
+`event_time` is UTC. `tenant_id` combines the deployment resource ID, event account, user, and Experience URI. `memory.recalled` maps to `experience.recall.count`, while `memory.injected` maps to `experience.inject.count`. `object_id` is the stable Usage Event ID. Downstream consumers must deduplicate by the composite `(tenant_id, object_id)` key rather than by `object_id` globally. Aggregate usage with `sum(count)` after filtering by `tenant_id`, `event_name`, and the desired `event_time` range. File collection and downstream delivery remain best-effort.
 
 Supported add target URIs:
 
