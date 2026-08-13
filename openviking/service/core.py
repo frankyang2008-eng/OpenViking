@@ -556,6 +556,8 @@ class OpenVikingService:
         mode: str = "vectors_only",
         wait: bool = True,
         dry_run: bool = False,
+        tags: list[str] | None = None,
+        tag_mode: str = "replace",
         ctx: RequestContext | None = None,
     ) -> dict[str, Any]:
         """Reindex semantic/vector artifacts for a URI."""
@@ -566,13 +568,17 @@ class OpenVikingService:
         canonical_uri = canonicalize_uri(uri, effective_ctx)
         from openviking.service.reindex_executor import get_reindex_executor
 
-        return await get_reindex_executor().execute(
-            uri=canonical_uri,
-            mode=mode,
-            wait=wait,
-            dry_run=dry_run,
-            ctx=effective_ctx,
-        )
+        execute_kwargs = {
+            "uri": canonical_uri,
+            "mode": mode,
+            "wait": wait,
+            "dry_run": dry_run,
+            "ctx": effective_ctx,
+        }
+        if tags is not None:
+            execute_kwargs["tags"] = tags
+            execute_kwargs["tag_mode"] = tag_mode
+        return await get_reindex_executor().execute(**execute_kwargs)
 
     async def check_consistency(
         self,
