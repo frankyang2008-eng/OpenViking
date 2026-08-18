@@ -95,3 +95,7 @@ node --test agent-plugins/plugin.test.mjs
 `plugin.test.mjs` checks manifest schema URLs and matching spec versions, the plugin name rules, the closed manifest root, semver, that every `skills/*` child ships a `SKILL.md` with `name` + `description` frontmatter matching its directory, that `mcp.json` entries reference files that exist and stay inside the plugin root, and that `node --check` passes on every `.mjs` in the package.
 
 `servers/shared/*.mjs` are generated copies of `examples/memory-plugin-shared/lib` — edit the shared lib and re-run `node examples/memory-plugin-shared/sync.mjs`; `examples/memory-plugin-shared/sync.test.mjs` fails if they drift. Both test files run in CI.
+
+## See also
+
+- [Capability Reference](./16-capability-reference.md)

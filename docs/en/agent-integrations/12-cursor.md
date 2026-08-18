@@ -74,5 +74,6 @@ Uninstall removes only OpenViking-managed Cursor Hooks, MCP, Rule, Skill, and ru
 
 ## See also
 
+- [Capability Reference](./16-capability-reference.md)
 - [Authentication](../guides/04-authentication.md)
 - [Cursor Hooks documentation](https://cursor.com/docs/hooks)

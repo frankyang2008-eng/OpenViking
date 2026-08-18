@@ -151,8 +151,9 @@ OpenCode 的 `mcp.openviking` 配置。
 进入新的 OpenCode session 后，可以让 agent 浏览 OpenViking memory，或搜索一个已索引的资源。插件应暴露 OpenViking MCP server，OpenCode 中的工具名会带 `openviking_` 前缀：
 
 - `openviking_search`、`openviking_find`
-- `openviking_read`、`openviking_list`、`openviking_grep`、`openviking_glob`
-- `openviking_remember`、`openviking_add_resource`、`openviking_forget`、`openviking_health`
+- `openviking_read`、`openviking_list`、`openviking_tree`、`openviking_grep`、`openviking_glob`
+- `openviking_remember`、`openviking_write`、`openviking_edit`、`openviking_add_resource`
+- `openviking_list_watches`、`openviking_cancel_watch`、`openviking_forget`、`openviking_health`
 - `openviking_list_watches`、`openviking_cancel_watch`
 
 如果行为异常，先查看运行时文件：
@@ -177,8 +178,11 @@ curl http://localhost:1933/health
 - `openviking_remember`：存储重要事实或决策，供记忆提取
 - `openviking_read`：读取一个或多个 `viking://` 文件
 - `openviking_list`：列出 `viking://` 目录
+- `openviking_tree`：展示 `viking://` 目录树
 - `openviking_grep`：精确文本或正则搜索
 - `openviking_glob`：glob 文件匹配
+- `openviking_write`：创建、覆盖或追加 `viking://` 文件
+- `openviking_edit`：对 `viking://` 文件做精确字符串替换
 - `openviking_add_resource`：添加 URL、本地文件、sitemap 或 feed
 - `openviking_forget`：在用户明确确认后删除 `viking://` URI
 - `openviking_list_watches` / `openviking_cancel_watch`：查看或取消资源 watch

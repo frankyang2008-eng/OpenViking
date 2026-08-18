@@ -2,8 +2,9 @@
 # SPDX-License-Identifier: AGPL-3.0
 """MCP (Model Context Protocol) endpoint for OpenViking server.
 
-Exposes tools to Claude Code (or any MCP client) via streamable HTTP:
-  find, search, read, write, edit, list, tree, remember, add_resource, grep, glob, forget, health
+Exposes OpenViking tools (filesystem, retrieval, memory, watch management,
+health) to Claude Code (or any MCP client) via streamable HTTP; the
+`@mcp.tool` registrations below are the authoritative list.
 
 Mounted on the FastAPI app at /mcp. The MCP session manager lifecycle is
 tied to the FastAPI app lifespan (not a sub-app lifespan) so the task group

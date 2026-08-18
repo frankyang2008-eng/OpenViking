@@ -191,8 +191,11 @@ OpenCode sees the OpenViking MCP server as `openviking`, so tool names are names
 - `openviking_remember`: store important facts or decisions for memory extraction.
 - `openviking_read`: read one or more `viking://` files.
 - `openviking_list`: list a `viking://` directory.
+- `openviking_tree`: show a `viking://` directory tree.
 - `openviking_grep`: exact text or regex search.
 - `openviking_glob`: glob file matching.
+- `openviking_write`: create, overwrite, or append to a `viking://` file.
+- `openviking_edit`: exact string replacement in a `viking://` file.
 - `openviking_add_resource`: add a URL, local file, sitemap, or feed.
 - `openviking_forget`: delete a `viking://` URI after explicit user confirmation.
 - `openviking_list_watches` / `openviking_cancel_watch`: inspect or cancel resource watches.

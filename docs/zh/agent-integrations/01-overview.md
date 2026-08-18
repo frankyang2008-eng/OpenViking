@@ -20,6 +20,10 @@ OpenViking 可以作为多种 Agent 运行时的长期记忆与上下文后端�
 | **Manus / Claude Desktop / ChatGPT / 其他 MCP 客户端** | [MCP 客户端](./06-mcp-clients.md) — 任何兼容 MCP 的客户端直接对接内置 `/mcp` 端点 |
 | **ZCode / AstrBot / …** | [社区插件](./08-community-plugins.md) — 社区维护的各运行时集成 |
 
+## 横向对比各集成能力
+
+想知道各个集成在工具面、自动召回、会话与 commit、压缩接管、降级容错上的具体差异，见 [集成能力参考](./16-capability-reference.md)——一份覆盖全部集成的横向对照矩阵。
+
 ## 所有集成的共同前置
 
 本页所有集成都需要连接到一个正在运行的 OpenViking 服务。如果你还没有，请先按 [快速开始](../getting-started/02-quickstart.md) 部署。默认端点是 `http://localhost:1933`；远程使用需要 API Key（参见 [鉴权](../guides/04-authentication.md)）。

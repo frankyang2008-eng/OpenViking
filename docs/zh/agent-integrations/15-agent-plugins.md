@@ -95,3 +95,7 @@ node --test agent-plugins/plugin.test.mjs
 `plugin.test.mjs` 会校验：清单的 schema URL 及两个清单的规范版本一致、插件 name 规则、清单根字段闭集、semver、每个 `skills/*` 子目录都有带 `name` + `description` frontmatter 且 `name` 与目录同名的 `SKILL.md`、`mcp.json` 引用的文件存在且不逃逸插件根目录，以及包内所有 `.mjs` 都能通过 `node --check`。
 
 `servers/shared/*.mjs` 是 `examples/memory-plugin-shared/lib` 的生成副本 —— 请改共享库后重新执行 `node examples/memory-plugin-shared/sync.mjs`；一旦漂移，`examples/memory-plugin-shared/sync.test.mjs` 会失败。两个测试文件都已接入 CI。
+
+## 参见
+
+- [集成能力参考](./16-capability-reference.md)

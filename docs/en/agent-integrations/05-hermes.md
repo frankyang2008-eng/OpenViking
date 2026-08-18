@@ -31,6 +31,7 @@ hermes memory status
 
 ## See also
 
+- [Capability Reference](./16-capability-reference.md)
 - [Hermes — OpenViking memory provider docs](https://hermes-agent.nousresearch.com/docs/user-guide/features/memory-providers#openviking) — full setup guide and configuration options
 - [Deployment Guide](../guides/03-deployment.md) — setting up your OpenViking server
 - [Authentication](../guides/04-authentication.md) — API key setup for remote access

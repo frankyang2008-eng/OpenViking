@@ -74,5 +74,6 @@ bash <(curl -fsSL https://ovrelease.tos-cn-beijing.volces.com/memory-plugin-shar
 
 ## 参见
 
+- [集成能力参考](./16-capability-reference.md)
 - [鉴权](../guides/04-authentication.md)
 - [Cursor Hooks 文档](https://cursor.com/docs/hooks)
