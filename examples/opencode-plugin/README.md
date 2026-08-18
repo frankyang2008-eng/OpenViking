@@ -186,8 +186,7 @@ call and points it to the OpenViking MCP tools.
 
 OpenCode sees the OpenViking MCP server as `openviking`, so tool names are namespaced with `openviking_`.
 
-- `openviking_recall`: balanced current-task recall using OpenViking's `/recall` endpoint.
-- `openviking_search`: deep semantic retrieval across memories, resources, and skills.
+- `openviking_search`: deep semantic retrieval across memories, resources, and skills; use `mode="context"` for balanced, injection-ready context.
 - `openviking_find`: fast semantic retrieval.
 - `openviking_remember`: store important facts or decisions for memory extraction.
 - `openviking_read`: read one or more `viking://` files.

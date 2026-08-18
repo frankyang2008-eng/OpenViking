@@ -45,7 +45,7 @@ Quit and restart the corresponding client after installation.
 - `UserPromptSubmit` recalls and injects context for the current request.
 - `PreToolUse` redirects accidental local access to `viking://` paths back to OpenViking MCP tools.
 - `Stop` captures and immediately commits the completed turn, including short sessions.
-- The OpenViking MCP server provides explicit tools such as `search`, `recall`, `read`, and `remember`.
+- The OpenViking MCP server provides explicit tools such as `search`, `read`, and `remember`; `search` with `mode="context"` returns assembled context.
 
 ## Verify
 

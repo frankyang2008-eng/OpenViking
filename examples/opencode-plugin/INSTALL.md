@@ -147,7 +147,7 @@ Restart OpenCode after changing plugin or OpenViking configuration.
 
 In a new OpenCode session, ask the agent to browse OpenViking memory or search for a known indexed resource. The plugin should expose the OpenViking MCP server, with tools namespaced by OpenCode as `openviking_*`:
 
-- `openviking_recall`, `openviking_search`, `openviking_find`
+- `openviking_search`, `openviking_find`
 - `openviking_read`, `openviking_list`, `openviking_grep`, `openviking_glob`
 - `openviking_remember`, `openviking_add_resource`, `openviking_forget`, `openviking_health`
 - `openviking_list_watches`, `openviking_cancel_watch`
@@ -169,8 +169,7 @@ curl http://localhost:1933/health
 
 The plugin registers OpenViking's stdio MCP proxy through OpenCode config. The server's real `tools/list` response is the source of truth; current OpenViking servers expose:
 
-- `openviking_recall`: balanced current-task recall.
-- `openviking_search`: deep semantic retrieval across memories, resources, and skills.
+- `openviking_search`: deep semantic retrieval across memories, resources, and skills; use `mode="context"` for balanced, injection-ready context.
 - `openviking_find`: fast semantic retrieval.
 - `openviking_remember`: store important facts or decisions for memory extraction.
 - `openviking_read`: read one or more `viking://` files.

@@ -161,7 +161,7 @@ Earlier plugin versions configured tuning fields under a `codex` block in `~/.op
                     │ /api/v1/content/read                      │
                     └─────────────────┬─────────────────────────┘
                                       │
-   Codex ◄── stdio MCP proxy ──► /mcp (find, search, recall,
+   Codex ◄── stdio MCP proxy ──► /mcp (find, search, read,
               (env/ovcli.conf)      remember, resources, watches,
                                   filesystem)
 ```

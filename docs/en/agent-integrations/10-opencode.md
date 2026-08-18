@@ -135,7 +135,7 @@ API keys are sent as `Authorization: Bearer ...` by both hooks and the MCP proxy
 
 Restart OpenCode after installation. In an OpenCode session, the plugin should expose the `openviking` MCP server. OpenCode namespaces MCP tools as `openviking_*`, for example:
 
-- `openviking_recall`, `openviking_search`, `openviking_find`
+- `openviking_search`, `openviking_find` (`openviking_search` with `mode="context"` replaces the former recall tool)
 - `openviking_read`, `openviking_list`, `openviking_grep`, `openviking_glob`
 - `openviking_remember`, `openviking_add_resource`, `openviking_forget`, `openviking_health`
 

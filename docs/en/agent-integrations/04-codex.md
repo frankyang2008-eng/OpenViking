@@ -1,6 +1,6 @@
 # Codex Memory Plugin
 
-Equip [Codex](https://developers.openai.com/codex) with persistent memory across sessions. Install it once, and your OpenViking profile and memory index are loaded at session start, relevant memories are recalled with every prompt, new turns are captured after each response, and sessions are committed before compaction. The plugin also connects Codex to OpenViking's `/mcp` endpoint, enabling the model to call tools such as `find`, `search`, `recall`, and `remember` directly.
+Equip [Codex](https://developers.openai.com/codex) with persistent memory across sessions. Install it once, and your OpenViking profile and memory index are loaded at session start, relevant memories are recalled with every prompt, new turns are captured after each response, and sessions are committed before compaction. The plugin also connects Codex to OpenViking's `/mcp` endpoint, enabling the model to call tools such as `find`, `search`, `read`, and `remember` directly.
 
 Source: [examples/codex-memory-plugin](https://github.com/volcengine/OpenViking/tree/main/examples/codex-memory-plugin) | [Blog: Motivation & demo](https://blog.openviking.ai/post/openviking-coding-agent/)
 

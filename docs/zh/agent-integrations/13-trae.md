@@ -45,7 +45,7 @@ bash <(curl -fsSL https://ovrelease.tos-cn-beijing.volces.com/memory-plugin-shar
 - `UserPromptSubmit`：根据当前问题召回并注入相关内容。
 - `PreToolUse`：阻止把 `viking://` 虚拟路径当作本地文件访问，并提示改用 OpenViking MCP 工具。
 - `Stop`：捕获本轮消息并立即提交，使短会话也能进入记忆抽取流程。
-- OpenViking MCP Server：提供 `search`、`recall`、`read`、`remember` 等主动记忆工具。
+- OpenViking MCP Server：提供 `search`、`read`、`remember` 等主动记忆工具；`search` 的 `mode="context"` 可返回组装后的上下文。
 
 ## 验证
 

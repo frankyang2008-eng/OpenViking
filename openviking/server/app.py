@@ -778,7 +778,7 @@ def create_app(
     else:
         logger.info("Web Studio bundle not found at %s; skipping /studio mount", _studio_dir)
 
-    # MCP endpoint — serves 16 tools (find, search, recall, read, write, edit,
+    # MCP endpoint — serves 15 tools (find, search, read, write, edit,
     # list, tree, remember, add_resource, list_watches, cancel_watch, grep,
     # glob, forget, health) via streamable HTTP for MCP clients.
     from starlette.routing import Match, Route
