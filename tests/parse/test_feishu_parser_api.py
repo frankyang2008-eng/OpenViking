@@ -13,7 +13,7 @@ from openviking.server.identity import RequestContext, Role
 from openviking.service.resource_service import ResourceService
 from openviking.service.task_tracker import TaskStatus
 from openviking.service.task_work_index import TASK_WORK_ID_FIELD
-from openviking.storage.queuefs.add_resource_msg import AddResourceMsg
+from openviking.storage.queuefs.add_resource_msg import AddResourceMsg, AddResourcePhase
 from openviking.storage.queuefs.add_resource_processor import AddResourceProcessor
 from openviking.storage.queuefs.queue_manager import QueueManager
 from openviking.utils.media_processor import UnifiedResourceProcessor
@@ -389,6 +389,7 @@ def test_add_resource_message_round_trips_internal_fields():
     assert "feishu_access_token" not in json.dumps(restored.to_dict())
     assert restored.defer_target_resolution is True
     assert restored.understanding_response_id == "response-1"
+    assert restored.job_phase is AddResourcePhase.SOURCE
 
 
 def test_add_resource_message_round_trips_processing_mode():
@@ -408,16 +409,24 @@ def test_add_resource_message_round_trips_processing_mode():
 
 
 @pytest.mark.asyncio
-async def test_uat_producer_payload_reaches_worker_without_persisting_token(monkeypatch):
-    source = "https://example.larkoffice.com/docx/doxcnToken"
+@pytest.mark.parametrize(
+    ("source", "preflight_name"),
+    [
+        ("https://example.larkoffice.com/docx/doxcnToken", None),
+        ("https://example.larkoffice.com/sheets/shtcnToken", "Sheet Title"),
+        ("https://example.larkoffice.com/base/appToken?table=tblSales", "tblSales"),
+    ],
+)
+async def test_uat_producer_payload_reaches_worker_without_persisting_token(
+    monkeypatch,
+    source,
+    preflight_name,
+):
     root_uri = "viking://resources/lark/doxcnToken"
     submit_understanding = AsyncMock(return_value="response-1")
     resource_processor = SimpleNamespace(
         should_use_understanding_directly=lambda _source, **_kwargs: True,
         submit_understanding=submit_understanding,
-        tree_builder=SimpleNamespace(
-            resolve_target_uri=AsyncMock(return_value=(root_uri, root_uri))
-        ),
         process_resource=AsyncMock(
             return_value={
                 "status": "success",
@@ -457,6 +466,19 @@ async def test_uat_producer_payload_reaches_worker_without_persisting_token(monk
         Mock(return_value=False),
     )
     monkeypatch.setattr("openviking.service.resource_service.uuid4", Mock(return_value="task-1"))
+
+    async def preflight(_self, _source, *, feishu_access_token=None):
+        assert feishu_access_token == "u-secret"
+        return SimpleNamespace(source_name=preflight_name, source_format="file")
+
+    async def plan_source_job_target(*, source_info, **_kwargs):
+        return root_uri, None, source_info.source_name is None
+
+    monkeypatch.setattr(
+        "openviking.parse.accessors.feishu_accessor.FeishuAccessor.preflight_source",
+        preflight,
+    )
+    service._plan_source_job_target = AsyncMock(side_effect=plan_source_job_target)
     ctx = RequestContext(
         user=UserIdentifier("account-1", "user-1"),
         role=Role.USER,
@@ -471,8 +493,13 @@ async def test_uat_producer_payload_reaches_worker_without_persisting_token(monk
         args={"feishu_access_token": "u-secret", "custom_option": "forwarded"},
     )
 
-    assert initial_result == {"status": "success", "task_id": "task-1"}
-    assert task_tracker.create.await_args.kwargs["resource_id"] is None
+    expected_initial = {"status": "success", "task_id": "task-1"}
+    if preflight_name:
+        expected_initial["root_uri"] = root_uri
+    assert initial_result == expected_initial
+    assert task_tracker.create.await_args.kwargs["resource_id"] == (
+        None if preflight_name is None else root_uri
+    )
     submit_understanding.assert_awaited_once_with(
         source,
         feishu_access_token="u-secret",
@@ -482,10 +509,7 @@ async def test_uat_producer_payload_reaches_worker_without_persisting_token(monk
     assert queue_manager.enqueue.await_args.args[0] == QueueManager.EXTERNAL_PARSE
     assert "u-secret" not in json.dumps(payload)
     assert payload["understanding_response_id"] == "response-1"
-    assert payload["args"] == {
-        "custom_option": "forwarded",
-        "parser_backend": "understanding",
-    }
+    assert payload["args"] == {"custom_option": "forwarded"}
 
     queued_msg = AddResourceMsg.from_dict(payload)
     service._execute_resource_ingestion = AsyncMock(
@@ -508,31 +532,34 @@ async def test_uat_producer_payload_reaches_worker_without_persisting_token(monk
 
 
 @pytest.mark.asyncio
-async def test_local_prepared_job_uses_add_resource_queue(monkeypatch):
+async def test_local_source_job_stages_snapshot_before_enqueue(monkeypatch, tmp_path):
     root_uri = "viking://resources/script"
-    resource_lock = {"lease_ref": "lock-1"}
-    agfs = SimpleNamespace(
-        pathlock_to_handoff=AsyncMock(return_value={"handle_id": "lock-1"}),
-        pathlock_handoff=AsyncMock(),
-        pathlock_release=AsyncMock(),
+    source_file = tmp_path / "script.md"
+    source_file.write_bytes(b"# durable source")
+    prepared_source = LocalResource(
+        path=source_file,
+        source_type=SourceType.LOCAL,
+        original_source=str(source_file),
+        is_temporary=False,
     )
     resource_processor = SimpleNamespace(
-        process_resource=AsyncMock(
-            return_value={
-                "status": "success",
-                "root_uri": root_uri,
-                "_post_process": {"root_uri": root_uri},
-                "_resource_lock": resource_lock,
-            }
-        )
+        prepare_durable_source=AsyncMock(return_value=prepared_source),
+        should_use_understanding_api=Mock(return_value=False),
+        process_resource=AsyncMock(),
+    )
+    viking_fs = SimpleNamespace(
+        create_temp_uri=Mock(return_value="viking://temp/account-1/source-task"),
+        write_file_bytes=AsyncMock(),
+        delete_temp=AsyncMock(),
     )
 
     service = ResourceService(
-        viking_fs=SimpleNamespace(_async_agfs=agfs),
+        viking_fs=viking_fs,
         resource_processor=resource_processor,
         skill_processor=SimpleNamespace(),
     )
     service._enqueue_add_resource_job = AsyncMock(return_value=SimpleNamespace(task_id="task-1"))
+    service._plan_source_job_target = AsyncMock(return_value=(root_uri, None, False))
     monkeypatch.setattr(
         service,
         "_connector_delegate",
@@ -548,7 +575,7 @@ async def test_local_prepared_job_uses_add_resource_queue(monkeypatch):
     )
 
     result = await service.add_resource(
-        path="/tmp/script.md",
+        path=str(source_file),
         ctx=ctx,
         to=root_uri,
         wait=False,
@@ -557,9 +584,44 @@ async def test_local_prepared_job_uses_add_resource_queue(monkeypatch):
     assert result["task_id"] == "task-1"
     call = service._enqueue_add_resource_job.await_args
     assert call.kwargs["queue_name"] == QueueManager.ADD_RESOURCE
-    assert call.args[0].prepared == {"root_uri": root_uri}
-    assert call.args[0].lock_handoff == {"handle_id": "lock-1"}
-    agfs.pathlock_to_handoff.assert_awaited_once_with(resource_lock)
+    message = call.args[0]
+    assert message.job_phase is AddResourcePhase.SOURCE
+    assert message.prepared is None
+    assert message.staged_source["original_source"] == str(source_file)
+    viking_fs.write_file_bytes.assert_awaited_once_with(
+        message.staged_source["source_uri"],
+        b"# durable source",
+        ctx=ctx,
+    )
+    resource_processor.process_resource.assert_not_awaited()
+
+    viking_fs.tree = AsyncMock(
+        return_value=[
+            {
+                "rel_path": "script.md",
+                "isDir": False,
+                "uri": message.staged_source["source_uri"],
+            }
+        ]
+    )
+    viking_fs.read_file_bytes = AsyncMock(return_value=b"# durable source")
+    service._execute_resource_ingestion = AsyncMock(
+        return_value={"status": "success", "root_uri": root_uri}
+    )
+
+    await service.execute_add_resource_job(
+        message,
+        ctx=ctx,
+        resource_lock=None,
+        stage_callback=AsyncMock(),
+    )
+
+    materialized = service._execute_resource_ingestion.await_args.kwargs["prepared_resource"]
+    try:
+        assert materialized.path.read_bytes() == b"# durable source"
+        assert materialized.original_source == str(source_file)
+    finally:
+        materialized.cleanup()
 
 
 @pytest.mark.asyncio
@@ -630,6 +692,15 @@ async def test_uat_producer_cancellation_respects_queue_ownership(
         "openviking.service.resource_service.is_git_repo_url",
         Mock(return_value=False),
     )
+
+    async def preflight(_self, _source, *, feishu_access_token=None):
+        assert feishu_access_token == "u-secret"
+        return SimpleNamespace(source_name=None, source_format="file")
+
+    monkeypatch.setattr(
+        "openviking.parse.accessors.feishu_accessor.FeishuAccessor.preflight_source",
+        preflight,
+    )
     ctx = RequestContext(
         user=UserIdentifier("account-1", "user-1"),
         role=Role.USER,
@@ -645,14 +716,20 @@ async def test_uat_producer_cancellation_respects_queue_ownership(
             args={"feishu_access_token": "u-secret"},
         )
 
-    release.assert_awaited_once_with(lock_lease)
-    task_tracker.create.assert_not_awaited()
-    task_tracker.fail.assert_not_awaited()
     if cancel_stage == "submit":
+        release.assert_not_awaited()
+        task_tracker.create.assert_not_awaited()
+        task_tracker.fail.assert_not_awaited()
         enqueue.assert_not_awaited()
     else:
+        release.assert_awaited_once_with(lock_lease)
+        task_tracker.create.assert_awaited_once()
         enqueue.assert_awaited_once()
         assert enqueue.await_args.args[0] == QueueManager.EXTERNAL_PARSE
+        if cancel_stage == "enqueue":
+            task_tracker.fail.assert_awaited_once()
+        else:
+            task_tracker.fail.assert_not_awaited()
 
 
 @pytest.mark.parametrize(
@@ -784,7 +861,9 @@ async def test_prepared_add_resource_job_forwards_processing_mode():
 
 
 @pytest.mark.asyncio
-async def test_add_resource_processor_persists_final_resource_uri(monkeypatch):
+async def test_add_resource_processor_persists_final_uri_and_cleans_staged_source(
+    monkeypatch,
+):
     final_uri = "viking://resources/真实文档标题"
     service = SimpleNamespace(
         execute_add_resource_job=AsyncMock(
@@ -798,6 +877,7 @@ async def test_add_resource_processor_persists_final_resource_uri(monkeypatch):
         update_stage=AsyncMock(),
         complete=AsyncMock(),
         fail=AsyncMock(),
+        get_task_auth=AsyncMock(return_value={}),
         wait_for_descendants=AsyncMock(),
     )
     monkeypatch.setattr(
@@ -809,11 +889,15 @@ async def test_add_resource_processor_persists_final_resource_uri(monkeypatch):
         "openviking.storage.queuefs.get_queue_manager",
         Mock(return_value=queue_manager),
     )
+    viking_fs = SimpleNamespace(
+        _async_agfs=SimpleNamespace(pathlock_release=AsyncMock()),
+        delete_temp=AsyncMock(),
+    )
     processor = AddResourceProcessor(
         service,
         asyncio.get_running_loop(),
         QueueManager.ADD_RESOURCE,
-        SimpleNamespace(_async_agfs=SimpleNamespace(pathlock_release=AsyncMock())),
+        viking_fs,
     )
     msg = AddResourceMsg(
         task_id="task-1",
@@ -823,7 +907,13 @@ async def test_add_resource_processor_persists_final_resource_uri(monkeypatch):
         user_id="user-1",
         role="user",
         defer_target_resolution=True,
-        understanding_response_id="response-1",
+        staged_source={
+            "temp_uri": "viking://temp/account-1/task-1",
+            "source_uri": "viking://temp/account-1/task-1/source/document.md",
+            "source_type": "local",
+            "original_source": "/tmp/document.md",
+            "meta": {},
+        },
     )
 
     data = msg.to_dict()
@@ -876,6 +966,11 @@ async def test_add_resource_processor_persists_final_resource_uri(monkeypatch):
         "user_id": "user-1",
         "resource_id": final_uri,
     }
+    viking_fs.delete_temp.assert_awaited_once()
+    cleanup_call = viking_fs.delete_temp.await_args
+    assert cleanup_call.args == ("viking://temp/account-1/task-1",)
+    assert cleanup_call.kwargs["ctx"].account_id == "account-1"
+    assert cleanup_call.kwargs["ctx"].user.user_id == "user-1"
     assert await processor._requeue_lock_handoff(msg, RuntimeError("stale lock"))
     assert queue_manager.enqueue.await_args.args[0] == QueueManager.ADD_RESOURCE
 
