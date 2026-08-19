@@ -39,14 +39,21 @@ async def test_write_rejects_directory_uri(client_with_resource):
     assert body["error"]["code"] == "INVALID_ARGUMENT"
 
 
-async def test_write_rejects_derived_file_uri(client_with_resource):
+async def test_write_allows_existing_semantic_sidecar_but_rejects_relations(client_with_resource):
     client, uri = client_with_resource
-    resp = await client.post(
+
+    overview_resp = await client.post(
         "/api/v1/content/write",
         json={"uri": f"{uri}/.overview.md", "content": "new content"},
     )
-    assert resp.status_code == 400
-    body = resp.json()
+    assert overview_resp.status_code == 200
+
+    relations_resp = await client.post(
+        "/api/v1/content/write",
+        json={"uri": f"{uri}/.relations.json", "content": "new content"},
+    )
+    assert relations_resp.status_code == 400
+    body = relations_resp.json()
     assert body["status"] == "error"
     assert body["error"]["code"] == "INVALID_ARGUMENT"
 
