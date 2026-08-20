@@ -688,7 +688,7 @@ class FSService:
         wait: bool = True,
         timeout: Optional[float] = None,
     ) -> Dict[str, Any]:
-        """Apply a preconditioned multi-file write and aggregate downstream refresh."""
+        """Apply multiple file writes and aggregate downstream refresh."""
         viking_fs = self._ensure_initialized()
         coordinator = ContentWriteCoordinator(viking_fs=viking_fs, vikingdb=self._vikingdb)
         return await coordinator.batch_write(

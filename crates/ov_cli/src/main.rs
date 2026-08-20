@@ -1020,7 +1020,7 @@ enum Commands {
     },
     /// [Interactive] Compile source materials with a VikingBot Skill
     Compile {
-        /// Source directory; repeat the flag or separate directories with commas
+        /// Source file or directory; repeat the flag or separate entries with commas
         #[arg(
             long = "from",
             required = true,
@@ -1193,13 +1193,13 @@ fn legacy_upload_option_error(
 enum TaskCommands {
     /// Show status of a specific task
     Status {
-        /// Task ID returned by add-resource/add-skill
+        /// Task ID returned by an asynchronous command, including compile
         #[arg(value_name = "task-id")]
         task_id: String,
     },
     /// Cancel a task
     Cancel {
-        /// Task ID returned by add-resource/add-skill
+        /// Task ID returned by an asynchronous command, including compile
         #[arg(value_name = "task-id")]
         task_id: String,
     },
