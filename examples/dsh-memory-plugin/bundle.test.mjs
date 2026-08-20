@@ -17,16 +17,25 @@ test("bundle uses neutral DSH naming, exact-pinned peers, and an isolated servic
 
   assert.equal(manifest.name, "@openviking/dsh-memory-plugin");
   assert.equal(manifest.dependencies, undefined);
-  // dsh constructors (defineTool / createUserMessage) come from peers the
-  // installation heals at runtime; exact pins because dsh rc subpackages
-  // have stale `latest` dist-tags. devDependencies mirror the pins so CI
-  // tests exercise the same dsh surface a pin bump would ship.
+  // The message constructor (createUserMessage) and the MCP bridge that
+  // carries the tool surface come from peers the installation heals at
+  // runtime; exact pins because dsh rc subpackages have stale `latest`
+  // dist-tags. devDependencies mirror the pins so CI tests exercise the same
+  // dsh surface a pin bump would ship, and `overrides` holds the transitive
+  // family down to that same release.
   for (const [name, version] of Object.entries(manifest.peerDependencies)) {
     assert.match(version, /^\d+\.\d+\.\d+(-rc\.\d+)?$/, `${name} must be exact-pinned`);
     assert.equal(manifest.devDependencies[name], version, `${name} devDependency must mirror the peer pin`);
   }
-  assert.ok(manifest.peerDependencies["@deepseek-ai/dsh-tools"]);
+  assert.ok(manifest.peerDependencies["@deepseek-ai/dsh-mcp-client"]);
   assert.ok(manifest.peerDependencies["@deepseek-ai/dsh-llm"]);
+  for (const [name, version] of Object.entries(manifest.peerDependencies)) {
+    assert.equal(
+      manifest.overrides[name],
+      version,
+      `${name} override must hold the transitive family at the peer pin`,
+    );
+  }
   assert.equal(manifest.dsh.bundle.patch, "./cordis.patch.yml");
   assert.match(patch, /name: '@deepseek-ai\/cordis-plugin-group'/);
   assert.match(patch, /openvikingMemory: true/);

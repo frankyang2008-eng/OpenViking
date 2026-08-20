@@ -132,7 +132,8 @@ const agentIntegrationSidebar = {
           ['04-codex.md', 'Codex'],
           ['10-opencode.md', 'OpenCode'],
           ['12-cursor.md', 'Cursor'],
-          ['13-trae.md', 'TRAE / TRAE CN']
+          ['13-trae.md', 'TRAE / TRAE CN'],
+          ['17-dsh.md', 'DeepSeek Harness']
         ]
       },
       {
@@ -167,7 +168,8 @@ const agentIntegrationSidebar = {
           ['04-codex.md', 'Codex'],
           ['10-opencode.md', 'OpenCode'],
           ['12-cursor.md', 'Cursor'],
-          ['13-trae.md', 'TRAE / TRAE CN']
+          ['13-trae.md', 'TRAE / TRAE CN'],
+          ['17-dsh.md', 'DeepSeek Harness']
         ]
       },
       {
