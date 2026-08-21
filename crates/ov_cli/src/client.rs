@@ -461,6 +461,7 @@ impl HttpClient {
         dry_run: bool,
         tags: Vec<String>,
         tag_mode: &str,
+        recursive: bool,
     ) -> Result<serde_json::Value> {
         let mut body = serde_json::json!({
             "uri": uri,
@@ -468,6 +469,9 @@ impl HttpClient {
             "wait": wait,
             "dry_run": dry_run,
         });
+        if !recursive {
+            body["recursive"] = serde_json::json!(false);
+        }
         if !tags.is_empty() {
             let obj = body
                 .as_object_mut()
