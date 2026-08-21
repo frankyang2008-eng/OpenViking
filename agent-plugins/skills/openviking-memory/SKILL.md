@@ -31,7 +31,7 @@ memory. Do not fabricate tool calls or fall back to raw HTTP.
    `limit` around 5-10. Use `search` when deeper intent analysis helps, or use
    `search` with `mode="context"` for a server-assembled, token-budgeted
    context block. In list mode, scope with `target_uri` when you know where to look, e.g.
-   `viking://user/memories/experiences` for prior task experience.
+   `viking://~/memories/experiences` for prior task experience.
 4. Judge results by task and environment fit, not title similarity. `read` the
    one to three exact file URIs likely to change how you execute. Ignore
    sidecar files such as `.abstract.md`, `.overview.md`, and
@@ -56,7 +56,7 @@ session:
   says "remember this", states a lasting preference or decision, or when a
   hard-won lesson (root cause, working procedure, environment quirk) emerges.
 - `write(uri, content)` / `edit` — when you need an exact document at a known
-  location, such as curated notes under `viking://user/` or shared reference
+  location, such as curated notes under `viking://~/` (your own user root) or shared reference
   material under `viking://resources/`. Prefer `edit` over rewriting whole
   files. If neither tool is registered, fall back to `remember`.
 - `add_resource` — to import external documents or URLs as searchable
@@ -72,7 +72,7 @@ transcript dumps — store conclusions, not scrollback.
 User asks to fix a failing deployment:
 
 1. `find` with query `deployment image pull failure private registry`,
-   `target_uri: "viking://user/memories/experiences"`.
+   `target_uri: "viking://~/memories/experiences"`.
 2. `read` the most relevant experience URI; check its assumptions against the
    current cluster before applying its steps.
 3. Fix the issue, verify the live result.

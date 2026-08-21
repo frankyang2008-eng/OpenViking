@@ -167,7 +167,7 @@ L0/L1 是目录级 sidecar，不是 per-file sidecar。生成父目录摘要时�
 | 环节 | Resource | Memory | Skill |
 |------|----------|--------|-------|
 | **Parser** | 通用流程 | 通用流程 | 通用流程 |
-| **基础 URI** | `viking://resources` | `viking://user/memories` | `viking://user/skills` |
+| **基础 URI** | `viking://resources` | `viking://~/memories` | `viking://~/skills` |
 | **TreeBuilder scope** | resources | user | user |
 | **SemanticMsg type** | resource | memory | skill |
 
@@ -192,7 +192,7 @@ await client.add_skill({
     "content": "# search-web\\n..."
 })
 
-# 流程: 直接写入 viking://user/skills/{name}/ → SemanticQueue
+# 流程: 直接写入 viking://~/skills/{name}/ → SemanticQueue
 ```
 
 ### 记忆提取

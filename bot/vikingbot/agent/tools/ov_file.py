@@ -119,7 +119,10 @@ class OVFileTool(Tool, ABC):
 
     def _is_default_memory_uri(self, client: VikingClient, uri: str | None) -> bool:
         normalized = self._normalize_uri(uri)
-        if normalized in {"", "viking://user/memories"}:
+        # ``viking://user/memories`` is the legacy spelling of the current-user default
+        # target; it is still accepted here because it survives in stored bot configs and
+        # LLM output. New emissions always use the ``viking://~`` home alias.
+        if normalized in {"", "viking://user/memories", "viking://~/memories"}:
             return True
         try:
             return normalized == self._normalize_uri(client._memory_target_uri(None))
@@ -127,7 +130,7 @@ class OVFileTool(Tool, ABC):
             return False
 
     def _is_default_root_uri(self, uri: str | None) -> bool:
-        return self._normalize_uri(uri) in {"", "viking://", "viking://user"}
+        return self._normalize_uri(uri) in {"", "viking://", "viking://user", "viking://~"}
 
     def _peer_memory_uris(
         self,
@@ -150,7 +153,7 @@ class OVFileTool(Tool, ABC):
         memory_uri = self._current_memory_uri(client).rstrip("/")
         if memory_uri.endswith("/memories"):
             return f"{memory_uri[: -len('/memories')]}/skills/"
-        return "viking://user/skills/"
+        return "viking://~/skills/"
 
     def _fs_retrieval_uris(
         self,
@@ -182,7 +185,7 @@ class OVFileTool(Tool, ABC):
             uris = builder(peer_ids=self._memory_peer_ids(tool_context))
             if uris:
                 return uris
-        return [uri or "viking://user/memories/"]
+        return [uri or "viking://~/memories/"]
 
 
 class VikingListTool(OVFileTool):
@@ -459,7 +462,7 @@ class VikingSearchTool(OVFileTool):
                     skill_uri = (
                         f"{memory_uri.rstrip('/')[: -len('/memories')]}/skills/"
                         if memory_uri.rstrip("/").endswith("/memories")
-                        else "viking://user/skills/"
+                        else "viking://~/skills/"
                     )
                     search_targets.extend([(memory_uri, user_id), (skill_uri, user_id)])
             else:
@@ -486,7 +489,7 @@ class VikingSearchTool(OVFileTool):
                 ):
                     target_uris = self._dedupe_strings(
                         [
-                            "viking://user/memories/",
+                            "viking://~/memories/",
                             *self._peer_memory_uris(client, tool_context, peer_ids=peer_ids),
                         ]
                     )

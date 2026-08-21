@@ -42,6 +42,9 @@ viking://{scope}/{path}
 - 需要认证用户身份。展开发生在 user / admin 调用方的请求入口；root 角色与未认证上下文，
   以及要求 URI 已是 canonical 形式的场景（内部存储路径、后台任务），会直接拒绝该别名，
   而不会猜测用户。
+- 取代已移除的无 uid 短写：`memories`、`resources`、`skills`、`peers`、`privacy`、`sessions`
+  的 `viking://user/<segment>/...` 写法会在 USER / ADMIN 请求入口被拒绝，错误信息中会给出
+  `viking://~/...` 的替代写法。
 
 ## 初始目录
 
@@ -91,32 +94,39 @@ viking://resources/my-project/docs/api.md     # 具体文件
 ### 用户数据
 
 ```
-viking://user/                                # 用户根目录
-viking://user/memories/                       # 所有用户记忆
-viking://user/memories/preferences/           # 用户偏好
-viking://user/memories/preferences/coding     # 具体偏好
-viking://user/memories/entities/              # 实体记忆
-viking://user/memories/events/                # 事件记忆
-viking://user/resources/                      # 当前用户资源
-viking://user/resources/docs/                 # 当前用户资源目录
+viking://user/                                # 所有用户空间的容器（user key 只能列出自己的空间）
+viking://~/                                   # 自己的用户根目录（展开为 viking://user/{user_id}/）
+viking://~/memories/                          # 自己的所有记忆
+viking://~/memories/preferences/              # 用户偏好
+viking://~/memories/preferences/coding        # 具体偏好
+viking://~/memories/entities/                 # 实体记忆
+viking://~/memories/events/                   # 事件记忆
+viking://~/resources/                         # 自己的私有资源
+viking://~/resources/docs/                    # 自己的私有资源目录
+viking://user/{user_id}/memories/             # 显式用户路径（可写自己的 id；访问他人需 admin/root）
 ```
 
 ### 用户技能和 peer 内容
 
 ```
-viking://user/skills/                         # 当前用户的技能
-viking://user/skills/search-web               # 某个技能
-viking://user/memories/                       # 当前用户的记忆
-viking://user/memories/cases/                 # 用于训练和评估的任务案例
-viking://user/memories/trajectories/          # 可复用的任务执行轨迹
-viking://user/memories/experiences/           # 从执行结果中提炼的经验
+viking://~/skills/                            # 自己的技能
+viking://~/skills/search-web                  # 某个技能
+viking://~/memories/                          # 自己的记忆
+viking://~/memories/cases/                    # 用于训练和评估的任务案例
+viking://~/memories/trajectories/             # 可复用的任务执行轨迹
+viking://~/memories/experiences/              # 从执行结果中提炼的经验
 viking://user/{user_id}/peers/{peer_id}/memories/
 viking://user/{user_id}/peers/{peer_id}/resources/
 ```
 
-上面的 `viking://user/...` 短路径会按当前请求身份解析。
-OpenViking 会在存储和检索前将它展开为显式命名空间路径，例如
-`viking://user/{user_id}/...`。
+家目录别名 `viking://~/...` 会按当前请求身份解析。OpenViking 会在存储和检索前将它
+展开为显式命名空间路径 `viking://user/{user_id}/...`，响应中始终回显展开后的形式。
+
+旧的无 uid 写法——`viking://user/memories/...` 以及 `resources`、`skills`、`peers`、
+`privacy`、`sessions` 的同类写法——在请求入口不再被接受，这类请求会报错，并在错误信息中
+提示改用 `viking://~/...`。`viking://user` 本身是所有用户空间的容器，而不是自己根目录的
+快捷方式：使用 user key 列出它时只会看到自己的空间。
+
 `{user_id}` 和 `{peer_id}` 等身份路径片段必须是安全的单段标识，例如
 `alice` 或 `web-visitor-alice`。
 
@@ -141,7 +151,7 @@ viking://user/{user_id}/sessions/{session_id}/          # 会话根目录
 viking://user/{user_id}/sessions/{session_id}/messages  # 会话消息
 viking://user/{user_id}/sessions/{session_id}/tools     # 工具执行
 viking://user/{user_id}/sessions/{session_id}/history   # 归档历史
-viking://user/sessions/{session_id}/                    # 当前用户短路径
+viking://~/sessions/{session_id}/                       # 自己的会话（家目录别名写法）
 ```
 
 `viking://session/{session_id}` 会作为当前用户 session 路径的向后兼容别名被接受。
@@ -295,22 +305,22 @@ results = client.find(
     target_uri="viking://resources/"
 )
 
-# 仅在当前用户资源中搜索
+# 仅在自己的资源中搜索
 results = client.find(
     "私有项目笔记",
-    target_uri="viking://user/resources/"
+    target_uri="viking://~/resources/"
 )
 
-# 仅在用户记忆中搜索
+# 仅在自己的记忆中搜索
 results = client.find(
     "编码偏好",
-    target_uri="viking://user/memories/"
+    target_uri="viking://~/memories/"
 )
 
-# 仅在技能中搜索
+# 仅在自己的技能中搜索
 results = client.find(
     "网络搜索",
-    target_uri="viking://user/skills/"
+    target_uri="viking://~/skills/"
 )
 ```
 
@@ -359,11 +369,11 @@ overview = await client.overview("viking://resources/docs/")
 # 添加到 account 共享资源作用域
 await client.add_resource(url, to="viking://resources/project/")
 
-# 添加到当前用户私有资源根
-await client.add_resource(path, parent="viking://user/resources/project/")
+# 添加到自己的私有资源根
+await client.add_resource(path, parent="viking://~/resources/project/")
 
-# 技能默认添加到当前用户技能根
-await client.add_skill(skill)  # canonical root: viking://user/skills/
+# 技能默认添加到自己的技能根
+await client.add_skill(skill)  # 默认根目录：viking://~/skills/
 
 # 通过 -p 指定写入全局 agent 技能根（公开共享）
 ov skills add xxx -p viking://agent/skills/

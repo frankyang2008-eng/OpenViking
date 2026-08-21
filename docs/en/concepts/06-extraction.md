@@ -168,7 +168,7 @@ This routing applies to short and long code files alike.
 | Phase | Resource | Memory | Skill |
 |-------|----------|--------|-------|
 | **Parser** | Common flow | Common flow | Common flow |
-| **Base URI** | `viking://resources` | `viking://user/memories` | `viking://user/skills` |
+| **Base URI** | `viking://resources` | `viking://~/memories` | `viking://~/skills` |
 | **TreeBuilder scope** | resources | user | user |
 | **SemanticMsg type** | resource | memory | skill |
 
@@ -193,7 +193,7 @@ await client.add_skill({
     "content": "# search-web\\n..."
 })
 
-# Flow: Direct write to viking://user/skills/{name}/ → SemanticQueue
+# Flow: Direct write to viking://~/skills/{name}/ → SemanticQueue
 ```
 
 ### Memory Extraction

@@ -185,8 +185,9 @@ Create a new workspace with its first admin user.
 - In `trusted` mode, `user_key` is omitted from the response
 - Omit `seed` for the default random API key. Treat seed values as secret material; short seeds can make the key guessable.
 - Account-level namespace isolation settings are no longer supported. User memory uses user-scoped namespaces, and one-to-many external participants are represented with `peer_id`.
-- `user_config.add_targets.resource_uri` must be a writable resource directory URI: `viking://resources` or `viking://resources/...`, `viking://user/resources` or `viking://user/resources/...`, `viking://user/{user_id}/resources` or `viking://user/{user_id}/resources/...`, or `viking://user/{user_id}/peers/{peer_id}/resources` or `viking://user/{user_id}/peers/{peer_id}/resources/...`.
-- `user_config.add_targets.skill_uri` must be `viking://user/skills` or `viking://agent/skills`. Explicit `viking://user/{user_id}/skills` is not accepted in v1.
+- `user_config.add_targets.resource_uri` must be a writable resource directory URI: `viking://resources` or `viking://resources/...`, `viking://~/resources` or `viking://~/resources/...`, `viking://user/{user_id}/resources` or `viking://user/{user_id}/resources/...`, or `viking://user/{user_id}/peers/{peer_id}/resources` or `viking://user/{user_id}/peers/{peer_id}/resources/...`.
+- `user_config.add_targets.skill_uri` must be `viking://~/skills` or `viking://agent/skills`. Explicit `viking://user/{user_id}/skills` is not accepted in v1.
+- Legacy spellings `viking://user/resources[/...]` and `viking://user/skills` are still accepted here and normalized to the `viking://~/...` form (the server logs an info message). Everywhere else, the uid-less spelling is rejected at the request boundary — write new configs with `viking://~/...`.
 
 #### 3. Usage Examples
 
@@ -261,8 +262,8 @@ result = client.admin_create_account(
     "alice",
     user_config={
         "add_targets": {
-            "resource_uri": "viking://user/resources",
-            "skill_uri": "viking://user/skills",
+            "resource_uri": "viking://~/resources",
+            "skill_uri": "viking://~/skills",
         }
     },
 )
@@ -288,8 +289,8 @@ result, err = client.AdminCreateAccountWithOptions(ctx, "acme-private", "alice",
     Seed: &seed,
     UserConfig: map[string]any{
         "add_targets": map[string]any{
-            "resource_uri": "viking://user/resources",
-            "skill_uri":    "viking://user/skills",
+            "resource_uri": "viking://~/resources",
+            "skill_uri":    "viking://~/skills",
         },
     },
 })
@@ -303,7 +304,7 @@ ov --sudo admin create-account acme --admin alice
 ov --sudo admin create-account acme --admin alice --seed alice-seed
 
 ov --sudo admin create-account acme-private --admin alice \
-  --user-config-json '{"add_targets":{"resource_uri":"viking://user/resources","skill_uri":"viking://user/skills"}}'
+  --user-config-json '{"add_targets":{"resource_uri":"viking://~/resources","skill_uri":"viking://~/skills"}}'
 ```
 
 **Response Example**
@@ -534,8 +535,9 @@ Register a new user in a workspace.
 - Omit `seed` for the default random API key. Treat seed values as secret material; short seeds can make the key guessable.
 - ADMIN can only register users in their own account
 - The `"root"` role cannot be minted through user registration
-- `user_config.add_targets.resource_uri` must be a writable resource directory URI: `viking://resources` or `viking://resources/...`, `viking://user/resources` or `viking://user/resources/...`, `viking://user/{user_id}/resources` or `viking://user/{user_id}/resources/...`, or `viking://user/{user_id}/peers/{peer_id}/resources` or `viking://user/{user_id}/peers/{peer_id}/resources/...`.
-- `user_config.add_targets.skill_uri` must be `viking://user/skills` or `viking://agent/skills`. Explicit `viking://user/{user_id}/skills` is not accepted in v1.
+- `user_config.add_targets.resource_uri` must be a writable resource directory URI: `viking://resources` or `viking://resources/...`, `viking://~/resources` or `viking://~/resources/...`, `viking://user/{user_id}/resources` or `viking://user/{user_id}/resources/...`, or `viking://user/{user_id}/peers/{peer_id}/resources` or `viking://user/{user_id}/peers/{peer_id}/resources/...`.
+- `user_config.add_targets.skill_uri` must be `viking://~/skills` or `viking://agent/skills`. Explicit `viking://user/{user_id}/skills` is not accepted in v1.
+- Legacy spellings `viking://user/resources[/...]` and `viking://user/skills` are still accepted here and normalized to the `viking://~/...` form (the server logs an info message). Everywhere else, the uid-less spelling is rejected at the request boundary — write new configs with `viking://~/...`.
 
 #### 3. Usage Examples
 
@@ -572,7 +574,7 @@ result = client.admin_register_user(
     "acme",
     "bob-private",
     role="user",
-    user_config={"add_targets": {"resource_uri": "viking://user/resources/project-a"}},
+    user_config={"add_targets": {"resource_uri": "viking://~/resources/project-a"}},
 )
 ```
 
@@ -595,7 +597,7 @@ seed := "bob-seed"
 result, err = client.AdminRegisterUserWithOptions(ctx, "acme", "bob-private", "user", &openviking.AdminRegisterUserOptions{
     Seed: &seed,
     UserConfig: map[string]any{
-        "add_targets": map[string]any{"resource_uri": "viking://user/resources/project-a"},
+        "add_targets": map[string]any{"resource_uri": "viking://~/resources/project-a"},
     },
 })
 ```
@@ -611,7 +613,7 @@ ov admin register-user acme bob --role user --seed bob-seed
 ov --sudo admin register-user acme bob --role user
 
 ov admin register-user acme bob-private --role user \
-  --user-config-json '{"add_targets":{"resource_uri":"viking://user/resources/project-a"}}'
+  --user-config-json '{"add_targets":{"resource_uri":"viking://~/resources/project-a"}}'
 ```
 
 **Response Example**
