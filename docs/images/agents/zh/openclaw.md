@@ -1,4 +1,8 @@
-## 安装
+## 步骤1：安装
+
+复制 API Key：
+
+{{OPENVIKING_API_KEY_BLOCK}}
 
 复制本页 API Key：
 
@@ -6,11 +10,11 @@
 
 ```bash
 openclaw plugins install clawhub:@openviking/openclaw-plugin
-openclaw openviking setup --base-url {{OPENVIKING_BASE_URL}} --api-key <本页的-API-Key>
+openclaw openviking setup --base-url {{OPENVIKING_BASE_URL}} --api-key <API-Key>
 openclaw gateway restart
 ```
 
-## 验证
+## 步骤2：验证
 
 ```bash
 openclaw openviking status
@@ -21,7 +25,7 @@ openclaw openviking status
 | 问题 | 处理 |
 |---|---|
 | 插件未生效 | 重跑安装，再执行 `openclaw gateway restart` |
-| 401 / 403 | 重新粘贴本页 API Key |
+| 401 / 403 | 重新粘贴 API Key |
 
 ## 参考
 
