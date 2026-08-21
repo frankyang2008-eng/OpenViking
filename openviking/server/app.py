@@ -42,7 +42,6 @@ from openviking.server.routers import (
     openviking_assets_router,
     pack_router,
     privacy_configs_router,
-    relations_router,
     resources_router,
     search_router,
     sessions_router,
@@ -271,6 +270,15 @@ def create_app(
         agent_evolution_setter = getattr(sessions, "set_agent_evolution_config", None)
         if callable(agent_evolution_setter):
             agent_evolution_setter(config.agent_evolution)
+
+        user_memory_policy_setter = getattr(
+            sessions,
+            "set_default_user_memory_policy",
+            None,
+        )
+        if callable(user_memory_policy_setter):
+            user_memory_policy_setter(config.user_config_defaults.memory_policy)
+
         agent_evolution_path_setter = getattr(
             sessions,
             "set_agent_evolution_config_path",
@@ -595,7 +603,6 @@ def create_app(
     app.include_router(content_router)
     app.include_router(console_router)
     app.include_router(search_router)
-    app.include_router(relations_router)
     app.include_router(privacy_configs_router)
     app.include_router(skills_router)
     app.include_router(sessions_router)

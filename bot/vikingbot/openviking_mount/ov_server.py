@@ -240,7 +240,6 @@ class VikingClient:
     def _matched_context_to_dict(self, matched_context: Any) -> Dict[str, Any]:
         """将 MatchedContext 对象或 dict 结果转换为字典。"""
         if isinstance(matched_context, dict):
-            relations = matched_context.get("relations", [])
             return {
                 "uri": str(matched_context.get("uri", "") or ""),
                 "context_type": str(
@@ -252,9 +251,6 @@ class VikingClient:
                 "category": str(matched_context.get("category", "") or ""),
                 "score": matched_context.get("score", 0.0),
                 "match_reason": str(matched_context.get("match_reason", "") or ""),
-                "relations": [self._relation_to_dict(r) for r in relations if r is not None]
-                if isinstance(relations, list)
-                else [],
             }
         return {
             "uri": getattr(matched_context, "uri", ""),
@@ -265,18 +261,6 @@ class VikingClient:
             "category": getattr(matched_context, "category", ""),
             "score": getattr(matched_context, "score", 0.0),
             "match_reason": getattr(matched_context, "match_reason", ""),
-            "relations": [
-                self._relation_to_dict(r) for r in getattr(matched_context, "relations", [])
-            ],
-        }
-
-    def _relation_to_dict(self, relation: Any) -> Dict[str, Any]:
-        """将 Relation 对象转换为字典"""
-        return {
-            "from_uri": getattr(relation, "from_uri", ""),
-            "to_uri": getattr(relation, "to_uri", ""),
-            "relation_type": getattr(relation, "relation_type", ""),
-            "reason": getattr(relation, "reason", ""),
         }
 
     def _matched_context_group_to_dicts(self, result: Any, group_name: str) -> List[Dict[str, Any]]:
@@ -706,12 +690,16 @@ class VikingClient:
         uri: str,
         level: str = "abstract",
         user_id: Optional[str] = None,
+        offset: int = 0,
+        limit: int = -1,
     ) -> str:
         """读取内容
 
         Args:
             uri: Viking URI
             level: 读取级别 ("abstract" - L0摘要, "overview" - L1概览, "read" - L2完整内容)
+            offset: Starting line number (0-indexed); only used for level="read"
+            limit: Number of lines to read, -1 means read to end; only used for level="read"
         """
         client = self.client
         should_close = False
@@ -725,7 +713,9 @@ class VikingClient:
             elif level == "overview":
                 return await client.overview(uri)
             elif level == "read":
-                return await client.read(uri)
+                if offset == 0 and limit == -1:
+                    return await client.read(uri)
+                return await client.read(uri, offset=offset, limit=limit)
             elif level == "raw":
                 read_raw = getattr(client, "read_raw", None)
                 if read_raw is not None:

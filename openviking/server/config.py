@@ -3,7 +3,7 @@
 """Server configuration for OpenViking HTTP Server."""
 
 import sys
-from typing import Dict, List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
@@ -55,13 +55,11 @@ class AddTargetsConfig(BaseModel):
             return None
         from openviking.core.namespace import classify_uri, uri_parts
         from openviking.core.uri_validation import validate_viking_uri
-        from openviking_cli.utils.uri import VikingURI
-
         validate_viking_uri(uri, field_name="resource_uri")
-        normalized = VikingURI.normalize(uri).rstrip("/")
+        normalized = uri.rstrip("/")
         parts = uri_parts(normalized)
         classification = classify_uri(normalized)
-        if parts[:1] == ["resources"] or (
+        if parts[:1] == ["resources"] or parts[:2] == ["user", "resources"] or (
             parts[:1] == ["user"]
             and classification.context_type == "resource"
             and classification.content_index is not None
@@ -75,12 +73,20 @@ class AddTargetsConfig(BaseModel):
         uri = _normalize_config_uri(value, "skill_uri")
         if uri is None:
             return None
-        from openviking_cli.utils.uri import VikingURI
+        from openviking.core.namespace import uri_parts
+        from openviking.core.uri_validation import validate_viking_uri
 
-        normalized = VikingURI.normalize(uri).rstrip("/")
-        if normalized in {"viking://user/skills", "viking://agent/skills"}:
+        validate_viking_uri(uri, field_name="skill_uri")
+        normalized = uri.rstrip("/")
+        parts = uri_parts(normalized)
+        if normalized in {"viking://user/skills", "viking://agent/skills"} or (
+            len(parts) == 3 and parts[0] == "user" and parts[2] == "skills"
+        ):
             return normalized
-        raise ValueError("skill_uri must be viking://user/skills or viking://agent/skills")
+        raise ValueError(
+            "skill_uri must be viking://user/skills, viking://user/{user_id}/skills, "
+            "or viking://agent/skills"
+        )
 
 
 class AgentEvolutionConfig(BaseModel):
@@ -103,12 +109,22 @@ class UserConfig(BaseModel):
     """User configuration values that can be defaulted or initialized."""
 
     add_targets: AddTargetsConfig = Field(default_factory=AddTargetsConfig)
+    memory_policy: Optional[Dict[str, Any]] = None
     agent_evolution: DeprecatedUserAgentEvolutionConfig = Field(
         default_factory=DeprecatedUserAgentEvolutionConfig,
         exclude=True,
     )
 
     model_config = {"extra": "forbid"}
+
+    @field_validator("memory_policy", mode="before")
+    @classmethod
+    def validate_memory_policy(cls, value: Any) -> Optional[Dict[str, Any]]:
+        if value is None:
+            return None
+        from openviking.session.memory_policy import MemoryPolicy
+
+        return MemoryPolicy.from_dict(value).to_dict()
 
 
 class MetricsAccountDimensionConfig(BaseModel):
