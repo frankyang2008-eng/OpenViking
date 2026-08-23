@@ -25,10 +25,10 @@ from openviking.parse.parsers.media.utils import (
 )
 from openviking.parse.parsers.upload_utils import is_text_file
 from openviking.server.identity import RequestContext
+from openviking.storage.abstract_overview import body_for_preview, embedding_text_for_body
 from openviking.storage.queuefs import get_queue_manager
 from openviking.storage.queuefs.embedding_msg_converter import EmbeddingMsgConverter
 from openviking.storage.queuefs.task_work_index import TaskWorkRejected
-from openviking.storage.semantic_sidecar import body_for_preview, embedding_text_for_body
 from openviking.storage.viking_fs import LS_ALL_NODES, get_viking_fs
 from openviking.telemetry.request_wait_tracker import get_request_wait_tracker
 from openviking.utils.embedding_input import truncate_embedding_input

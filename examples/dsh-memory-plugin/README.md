@@ -2,6 +2,10 @@
 
 An installable DeepSeek Harness bundle that adds OpenViking auto-recall, session capture, `viking://` URI protection, and the OpenViking MCP tool surface.
 
+> **Requires an OpenViking server with `viking://~` home-alias support.** Recall targets the
+> caller's own context space through `viking://~/memories` and `viking://~/skills`; the uid-less
+> `viking://user/memories` shorthand is rejected by newer servers.
+
 Published as [`@openviking/dsh-memory-plugin`](https://www.npmjs.com/package/@openviking/dsh-memory-plugin).
 
 ## Install

@@ -13,7 +13,7 @@ arguments, OPENVIKING_* environment variables, then ~/.openviking/ovcli.conf.
 Examples:
     python wiki_graph.py viking://resources/my-wiki
     python wiki_graph.py \
-        viking://resources/wiki-a viking://user/resources/wiki-b \
+        viking://resources/wiki-a viking://~/resources/wiki-b \
         --output llm-wiki-graph.html --title "团队知识图谱"
     python wiki_graph.py viking://resources/my-wiki \
         --url http://localhost:1933 --api-key "$OPENVIKING_API_KEY"
