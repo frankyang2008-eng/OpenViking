@@ -50,6 +50,10 @@ SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
 : "${OV_RERANK_WORKERS:=1}"
 : "${OV_RERANK_PID_FILE:=$OV_DATA_DIR/jina-rerank.pid}"
 : "${OV_RERANK_LOG:=$OV_DATA_DIR/data/log/jina-rerank.log}"
+# Watchdog probe: real inference (exercises the executor thread, not just the
+# port). MLX/Metal state can wedge after sleep/wake — port stays LISTEN while
+# every request hangs, so a port check alone is not a health signal.
+: "${OV_RERANK_PROBE_TIMEOUT:=15}"
 export OPENVIKING_CONFIG_FILE="$OV_CONFIG"
 export PATH="$OV_VENV/bin:$PATH"
 
@@ -77,6 +81,8 @@ Commands:
   rerank-start    Start only the rerank server.
   rerank-stop     Stop only the rerank server.
   rerank-restart  Restart only the rerank server.
+  rerank-watchdog One-shot health probe (real inference); auto-restarts on wedge.
+                  Meant for cron, e.g. every 5 minutes.
   reranklogs [-f] Last 50 lines of the rerank server log (-f to follow).
   status          Show ov health.
   svrlogs [-f]    Last 50 lines of openviking.log (-f to follow).
@@ -434,6 +440,32 @@ reranklogs() {
     fi
 }
 
+# One-shot health probe: a real (tiny) inference through the executor thread.
+# Healthy => exit 0. Wedged/absent => self-heal via rerank-restart, then re-probe.
+rerank_watchdog() {
+    local code
+    code=$(curl -s --max-time "$OV_RERANK_PROBE_TIMEOUT" -o /dev/null -w '%{http_code}' \
+        -X POST "http://127.0.0.1:$OV_RERANK_PORT/v1/rerank" \
+        -H 'Content-Type: application/json' \
+        -d '{"query":"health","documents":["alive check"]}' 2>/dev/null || true)
+    if [ "$code" = "200" ]; then
+        return 0
+    fi
+    log "Rerank watchdog: probe failed (http_code=${code:-timeout}); restarting server"
+    stop_rerank || true
+    start_rerank
+    code=$(curl -s --max-time "$OV_RERANK_PROBE_TIMEOUT" -o /dev/null -w '%{http_code}' \
+        -X POST "http://127.0.0.1:$OV_RERANK_PORT/v1/rerank" \
+        -H 'Content-Type: application/json' \
+        -d '{"query":"health","documents":["alive check"]}' 2>/dev/null || true)
+    if [ "$code" = "200" ]; then
+        log "Rerank watchdog: recovered after restart"
+        return 0
+    fi
+    log "Rerank watchdog: STILL unhealthy after restart (http_code=${code:-timeout})"
+    return 1
+}
+
 # ---------------------------------------------------------------------------
 # Entry
 # ---------------------------------------------------------------------------
@@ -451,6 +483,7 @@ case "$cmd" in
     rerank-start)        start_rerank ;;
     rerank-stop)         stop_rerank ;;
     rerank-restart)      stop_rerank || true; start_rerank ;;
+    rerank-watchdog)     rerank_watchdog ;;
     reranklogs|rerank-logs) reranklogs "${1:-}" ;;
     status|--status)     show_status ;;
     statusjson)          status_json ;;
