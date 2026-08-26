@@ -122,6 +122,7 @@ mapping scores back by index. Serve exactly that shape for a seamless fit.
 ```python
 """jina-reranker-v3.5-mlx -> OpenAI-compatible /v1/rerank"""
 import os, sys, threading
+from concurrent.futures import ThreadPoolExecutor
 from typing import List, Optional
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
@@ -134,7 +135,11 @@ if os.path.exists(os.path.join(MODEL, "rerank.py")) and MODEL not in sys.path:
 
 app = FastAPI(title="jina-reranker-v3.5-mlx")
 _reranker = None
-_infer_lock = threading.Lock()   # MLX inference is not thread-safe; concurrent calls 500/hang without it
+# MLX inference must stay on ONE thread: a threading.Lock only serializes call
+# sites; pending async Metal work from another thread still deadlocks (observed:
+# 7/8 concurrent requests stuck forever). Single-worker executor fixes by affinity.
+_infer_exec = ThreadPoolExecutor(max_workers=1)
+_infer_gate = threading.Semaphore(4)   # in-flight cap (1 running + 3 queued)
 
 def get_reranker():                        # lazy singleton: fast start, load once
     global _reranker
@@ -154,8 +159,10 @@ def rerank(req: RerankRequest):
     if not req.documents:
         return {"model": req.model, "results": []}
     try:
-        with _infer_lock:
-            out = get_reranker().rerank(req.query, req.documents)
+        with _infer_gate:
+            out = _infer_exec.submit(
+                lambda: get_reranker().rerank(req.query, req.documents)
+            ).result()
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     results = [{"index": r["index"], "relevance_score": float(r["relevance_score"])} for r in out]

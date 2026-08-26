@@ -1,5 +1,6 @@
 """jina-reranker-v3.5-mlx -> OpenAI-compatible /v1/rerank"""
 import argparse, os, sys, threading
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import List, Optional
 from fastapi import FastAPI, HTTPException
@@ -9,8 +10,13 @@ DEFAULT_MODEL = Path(__file__).resolve().parent.parent / "jina-reranker-v3.5-mlx
 
 app = FastAPI(title="jina-reranker-v3.5-mlx")
 _reranker = None
-# ponytail: global lock serializes MLX inference (not thread-safe); multi-process via --workers if throughput matters
-_infer_lock = threading.Lock()
+# All MLX calls pinned to ONE thread: a plain lock only serializes call sites;
+# pending async Metal work from another thread still deadlocks (observed: 7/8
+# concurrent requests stuck forever). Single-worker executor fixes by affinity.
+_infer_exec = ThreadPoolExecutor(max_workers=1, thread_name_prefix="mlx-infer")
+# gates in-flight requests (1 running + N-1 queued); unbounded queuing would exhaust
+# anyio's 40-thread pool and keep inferring for clients that already timed out
+_infer_gate = threading.Semaphore(4)
 
 def get_reranker():
     global _reranker
@@ -33,8 +39,10 @@ def rerank(req: RerankRequest):
     if not req.documents:
         return {"model": req.model, "results": []}
     try:
-        with _infer_lock:
-            out = get_reranker().rerank(req.query, req.documents)
+        with _infer_gate:
+            out = _infer_exec.submit(
+                lambda: get_reranker().rerank(req.query, req.documents)
+            ).result()
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     results = [{"index": r["index"], "relevance_score": float(r["relevance_score"])} for r in out]

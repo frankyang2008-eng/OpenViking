@@ -116,6 +116,7 @@ OpenViking 的 openai rerank 客户端：`POST api_base`，body
 ```python
 """jina-reranker-v3.5-mlx -> OpenAI 兼容 /v1/rerank"""
 import os, sys, threading
+from concurrent.futures import ThreadPoolExecutor
 from typing import List, Optional
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
@@ -128,7 +129,10 @@ if os.path.exists(os.path.join(MODEL, "rerank.py")) and MODEL not in sys.path:
 
 app = FastAPI(title="jina-reranker-v3.5-mlx")
 _reranker = None
-_infer_lock = threading.Lock()   # MLX 推理非线程安全，并发调用会 500/挂起，须串行化
+# MLX 推理必须固定单线程：threading.Lock 只串行调用点，跨线程的 Metal 异步
+# 残留仍会死锁（实测 8 并发 7 个永久卡死）；单线程执行器从线程亲和性根治
+_infer_exec = ThreadPoolExecutor(max_workers=1)
+_infer_gate = threading.Semaphore(4)   # 在途请求上限（1 推理 + 3 排队），防线程池耗尽
 
 def get_reranker():                        # 单例懒加载，启动快、内存一次
     global _reranker
@@ -148,8 +152,10 @@ def rerank(req: RerankRequest):
     if not req.documents:
         return {"model": req.model, "results": []}
     try:
-        with _infer_lock:
-            out = get_reranker().rerank(req.query, req.documents)
+        with _infer_gate:
+            out = _infer_exec.submit(
+                lambda: get_reranker().rerank(req.query, req.documents)
+            ).result()
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     results = [{"index": r["index"], "relevance_score": float(r["relevance_score"])} for r in out]
