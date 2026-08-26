@@ -430,7 +430,8 @@ const guidesSidebar = {
           ['13-multi-write-storage.md', 'Multi-Write Storage'],
           ['14-ragfs-cache.md', 'RAGFS Cache'],
           ['15-snapshot.md', 'Snapshots'],
-          ['16-cuvs.md', 'cuVS Vector Search']
+          ['16-cuvs.md', 'cuVS Vector Search'],
+          ['19-jina-rerank-local.md', 'Local Jina Rerank']
         ]
       }
     ]
@@ -474,7 +475,8 @@ const guidesSidebar = {
           ['13-multi-write-storage.md', '多写存储'],
           ['14-ragfs-cache.md', 'RAGFS 缓存'],
           ['15-snapshot.md', '快照管理'],
-          ['16-cuvs.md', 'cuVS 向量检索']
+          ['16-cuvs.md', 'cuVS 向量检索'],
+          ['19-jina-rerank-local.md', '本地 Jina Rerank 部署']
         ]
       }
     ]
