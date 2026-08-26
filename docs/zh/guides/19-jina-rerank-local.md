@@ -115,7 +115,7 @@ OpenViking 的 openai rerank 客户端：`POST api_base`，body
 
 ```python
 """jina-reranker-v3.5-mlx -> OpenAI 兼容 /v1/rerank"""
-import os, sys
+import os, sys, threading
 from typing import List, Optional
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
@@ -128,6 +128,7 @@ if os.path.exists(os.path.join(MODEL, "rerank.py")) and MODEL not in sys.path:
 
 app = FastAPI(title="jina-reranker-v3.5-mlx")
 _reranker = None
+_infer_lock = threading.Lock()   # MLX 推理非线程安全，并发调用会 500/挂起，须串行化
 
 def get_reranker():                        # 单例懒加载，启动快、内存一次
     global _reranker
@@ -147,7 +148,8 @@ def rerank(req: RerankRequest):
     if not req.documents:
         return {"model": req.model, "results": []}
     try:
-        out = get_reranker().rerank(req.query, req.documents)
+        with _infer_lock:
+            out = get_reranker().rerank(req.query, req.documents)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     results = [{"index": r["index"], "relevance_score": float(r["relevance_score"])} for r in out]
