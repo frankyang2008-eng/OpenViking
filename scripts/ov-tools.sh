@@ -53,7 +53,8 @@ SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
 # Watchdog probe: real inference (exercises the executor thread, not just the
 # port). MLX/Metal state can wedge after sleep/wake — port stays LISTEN while
 # every request hangs, so a port check alone is not a health signal.
-: "${OV_RERANK_PROBE_TIMEOUT:=15}"
+# 45s: cold model load measured up to ~32s under machine load.
+: "${OV_RERANK_PROBE_TIMEOUT:=45}"
 export OPENVIKING_CONFIG_FILE="$OV_CONFIG"
 export PATH="$OV_VENV/bin:$PATH"
 

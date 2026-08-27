@@ -34,7 +34,7 @@ class RerankRequest(BaseModel):
     query: str
     documents: List[str]
 
-_PROBE_TIMEOUT = 30   # longest legit batch measured ~8s (120 docs); 30s is safe
+_PROBE_TIMEOUT = 45   # cold load measured up to ~32s under machine load
 _MAX_FAILS = 2        # hysteresis: don't restart on one slow-but-legit batch
 
 def _health_monitor(interval: int):
