@@ -48,6 +48,7 @@ SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
 : "${OV_RERANK_DIR:=$OV_ROOT/jina-reranker/server}"
 : "${OV_RERANK_PORT:=18080}"
 : "${OV_RERANK_WORKERS:=1}"
+: "${OV_RERANK_DEVICE:=cpu}"   # host GPU is usually saturated; cpu is the stable default
 : "${OV_RERANK_PID_FILE:=$OV_DATA_DIR/jina-rerank.pid}"
 : "${OV_RERANK_LOG:=$OV_DATA_DIR/data/log/jina-rerank.log}"
 # Watchdog probe: real inference (exercises the executor thread, not just the
@@ -361,6 +362,7 @@ start_rerank() {
     # server survives process-group kills (nohup alone is not enough on macOS)
     nohup "$OV_VENV/bin/python" server.py \
         --port "$OV_RERANK_PORT" --workers "$OV_RERANK_WORKERS" \
+        --device "$OV_RERANK_DEVICE" \
         >> "$OV_RERANK_LOG" 2>&1 < /dev/null &
     disown
     local pid=$!

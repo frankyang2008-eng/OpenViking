@@ -83,7 +83,13 @@ if __name__ == "__main__":
                    help="uvicorn worker processes; each loads its own model copy (~1.2GB RAM each)")
     p.add_argument("--watchdog-interval", type=int, default=180,
                    help="in-process health probe interval seconds; 0 disables")
+    p.add_argument("--device", choices=["cpu", "gpu"], default="cpu",
+                   help="cpu (default): host GPU is usually saturated by screen "
+                        "recording/rendering, starving Metal compute; gpu: opt in to Metal")
     args = p.parse_args()
+    if args.device == "cpu":
+        import mlx.core as mx
+        mx.set_default_device(mx.cpu)
     os.environ["JINA_RERANK_MODEL"] = os.path.expanduser(args.model)
     if args.watchdog_interval > 0:
         threading.Thread(

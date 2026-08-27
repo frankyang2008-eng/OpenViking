@@ -239,6 +239,10 @@ no native rerank support, so the GGUF route is not viable.
   forever): a built-in watchdog probes every 3 minutes and `execv`-restarts itself after
   2 consecutive probe failures (`--watchdog-interval 0` disables); a fully dead process
   still needs external revival (e.g. `ov-tools.sh rerank-watchdog` via cron).
+- Device selection: `server.py --device cpu|gpu`, **default cpu**. The macOS GPU is often
+  saturated by screen recording / window rendering, starving Metal compute (which looks
+  like a hang); with CPU cores free, CPU mode is faster and stable. GPU stays an explicit
+  opt-in.
 
 ## References
 

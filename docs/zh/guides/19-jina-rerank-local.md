@@ -227,6 +227,9 @@ ov.conf openai provider。注意：Ollama 无原生 rerank 支持，GGUF 路线�
 - 休眠唤醒后进程可能"假死"（端口在监听但推理永久挂起）：服务内置看门狗每 3 分钟
   探针自检、连续 2 次失败自动 `execv` 自重启（`--watchdog-interval 0` 可关闭）；
   进程整体死亡则需外部拉起（如 `ov-tools.sh rerank-watchdog` 挂 cron）。
+- 设备选择：`server.py --device cpu|gpu`，**默认 cpu**。macOS 的 GPU 常被录屏/窗口
+  渲染等系统负载占满，Metal 推理命令被饿死（表现为挂起）；CPU 空闲时 CPU 模式反而
+  快且稳。GPU 仅作显式选项保留。
 
 ## 参考
 
