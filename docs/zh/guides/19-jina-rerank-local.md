@@ -224,6 +224,9 @@ ov.conf openai provider。注意：Ollama 无原生 rerank 支持，GGUF 路线�
 - 首次调用冷启动 1–2s（模型加载），之后 0.6B/4-bit 小批量几十 ms 级；长输入明显变慢。
 - 常见坑：`timeout` 不够 → 500/超时；内存不足 → 降 `max_input_tokens` 或换 4-bit；
   HF 下载失败 → `hf-mirror.com` 镜像；端口占用 → 换端口并同步改 ov.conf。
+- 休眠唤醒后进程可能"假死"（端口在监听但推理永久挂起）：服务内置看门狗每 3 分钟
+  探针自检、连续 2 次失败自动 `execv` 自重启（`--watchdog-interval 0` 可关闭）；
+  进程整体死亡则需外部拉起（如 `ov-tools.sh rerank-watchdog` 挂 cron）。
 
 ## 参考
 

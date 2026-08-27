@@ -235,6 +235,10 @@ no native rerank support, so the GGUF route is not viable.
 - Common issues: `timeout` too small -> 500/timeouts; out of memory -> lower
   `max_input_tokens` or switch to 4-bit; HF download failure -> `hf-mirror.com` mirror;
   port in use -> change port and update ov.conf accordingly.
+- After sleep/wake the process can "fake-die" (port LISTENs but every inference hangs
+  forever): a built-in watchdog probes every 3 minutes and `execv`-restarts itself after
+  2 consecutive probe failures (`--watchdog-interval 0` disables); a fully dead process
+  still needs external revival (e.g. `ov-tools.sh rerank-watchdog` via cron).
 
 ## References
 
