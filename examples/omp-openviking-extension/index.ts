@@ -1,15 +1,18 @@
 /**
- * Pi OpenViking Extension
+ * omp OpenViking Extension
  *
- * Integrates pi with an OpenViking context database for persistent,
- * cross-session memory. Syncs conversation turns to OV, recalls
- * relevant memories on each prompt, and commits sessions for long-term
- * memory extraction.
+ * OpenViking extension maintained for omp (oh-my-pi, pi fork). Kept separate
+ * from examples/pi-coding-agent-extension so omp compatibility patches do not
+ * fight upstream pi-targeted fixes: omp's SessionManager predates pi's
+ * buildContextEntries() and types before_agent_start systemPrompt as string[].
+ *
+ * Syncs conversation turns to OV, recalls relevant memories on each prompt,
+ * and commits sessions for long-term memory extraction.
  *
  * Design informed by: OpenClaw (synchronous recall), Claude Code plugin
  * (most mature, production-hardened), Hermes (anti-pattern: stale prefetch).
  */
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
 import { appendFileSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { loadConfigFromModuleUrl, type OVConfig } from "./config.js";
@@ -161,8 +164,13 @@ export default async function (pi: ExtensionAPI) {
     const additions = parts.join("\n\n");
     if (!additions) return;
 
+    // omp types `systemPrompt` as string[] (pi: string). Join arrays before
+    // concatenating — `array + string` would comma-flatten the base prompt.
+    const basePrompt = Array.isArray(event.systemPrompt)
+      ? event.systemPrompt.join("\n\n")
+      : event.systemPrompt;
     return {
-      systemPrompt: event.systemPrompt + "\n\n" + additions,
+      systemPrompt: basePrompt + "\n\n" + additions,
     };
   });
 
@@ -196,7 +204,7 @@ export default async function (pi: ExtensionAPI) {
       .map(entry => entry.id);
     const messageIds = new WeakMap<object, string>();
     let userIndex = 0;
-    for (const message of event.messages as any[]) {
+    for (const message of event.messages) {
       if (message?.role !== "user") continue;
       const entryId = userEntryIds[userIndex++];
       if (entryId && typeof message === "object") {
@@ -205,7 +213,7 @@ export default async function (pi: ExtensionAPI) {
     }
 
     const afterTakeover = config.takeoverEnabled
-      ? takeover.transformContext(event.messages as any)
+      ? takeover.transformContext(event.messages)
       : event.messages;
     const messages = recall.injectRecall(
       afterTakeover,
