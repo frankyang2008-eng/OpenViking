@@ -246,3 +246,9 @@ CODEBUDDY.md
 # graphify output
 graphify-out/
 openviking/graphify-out/
+
+# Ruflo local secrets and runtime data
+.env.*.local
+.claude-flow/data/
+.claude-flow/logs/
+.claude-flow/sessions/
