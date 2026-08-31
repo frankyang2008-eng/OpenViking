@@ -3364,7 +3364,7 @@ install_omp() {
     return 0
   fi
   local plugin_dir dest tmp keep_config omp_agent_dir
-  plugin_dir="$(plugin_dir_on_disk pi-coding-agent-extension)" || {
+  plugin_dir="$(plugin_dir_on_disk omp-openviking-extension)" || {
     warn "$(t 'omp extension sources not found; skipping.' '未找到 omp 扩展源码，跳过。')"
     return 0
   }

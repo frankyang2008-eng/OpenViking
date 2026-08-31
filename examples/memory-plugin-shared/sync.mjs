@@ -38,6 +38,7 @@ const TARGETS = [
   { dir: join(ROOT, "examples", "opencode-plugin", "lib", "shared"), files: OPENCODE_SHARED_FILES },
   { dir: join(ROOT, "examples", "dsh-memory-plugin", "shared"), files: DSH_SHARED_FILES },
   { dir: join(ROOT, "examples", "pi-coding-agent-extension", "shared"), files: HARNESS_SHARED_FILES },
+  { dir: join(ROOT, "examples", "omp-openviking-extension", "shared"), files: HARNESS_SHARED_FILES },
   { dir: join(ROOT, "examples", "zcode-memory-plugin", "scripts", "shared") , files: ZCODE_SHARED_FILES },
   { dir: join(ROOT, "agent-plugins", "servers", "shared"), files: AGENT_PLUGINS_SHARED_FILES },
 ];

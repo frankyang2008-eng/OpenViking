@@ -1,6 +1,6 @@
-# OpenViking Memory Extension for Pi Coding Agent
+# OpenViking Memory Extension for omp (oh-my-pi)
 
-Long-term semantic memory and context takeover for [pi](https://github.com/earendil-works/pi) sessions, powered by [OpenViking](https://github.com/volcengine/OpenViking). Recall happens automatically before every prompt, capture happens after every turn, and OpenViking can own long-term context by replacing committed history with an archive overview in pi's `context` hook.
+Long-term semantic memory and context takeover for [omp](https://github.com/can1357/omp) (oh-my-pi, a fork of [pi](https://github.com/earendil-works/pi)) sessions, powered by [OpenViking](https://github.com/volcengine/OpenViking). Recall happens automatically before every prompt, capture happens after every turn, and OpenViking can own long-term context by replacing committed history with an archive overview in omp's `context` hook.
 
 > **Requires an OpenViking server with `viking://~` home-alias support.** Recall targets the
 > caller's own context space through `viking://~/memories` and `viking://~/skills`; the uid-less
@@ -12,7 +12,7 @@ Long-term semantic memory and context takeover for [pi](https://github.com/earen
 
 ### Prerequisites
 
-- **pi coding agent** installed (`npm i -g @earendil-works/pi-coding-agent`)
+- **omp (oh-my-pi) installed** (pi fork; extension auto-discovered from `~/.omp/agent/extensions/`)
 - **Node.js 18+** (for the extension's TypeScript runtime)
 - **An OpenViking server** reachable — local or remote
 
@@ -31,20 +31,20 @@ curl http://localhost:1933/health   # or your remote URL
 Use the shared installer:
 
 ```bash
-bash examples/memory-plugin-shared/install.sh --harness pi
+bash examples/memory-plugin-shared/install.sh --harness omp
 ```
 
-The installer copies the extension to `~/.pi/agent/extensions/openviking` and registers it with `pi install`. The extension loads on next `pi` invocation.
+The installer copies the extension to `~/.omp/agent/extensions/openviking` (profile-scoped installs land in `~/.omp/profiles/<profile>/agent/extensions/openviking`). The extension loads on next `omp` invocation.
 
 ### 3. Configure (optional)
 
 Credentials are resolved from `OPENVIKING_*` environment variables, `~/.openviking/ovcli.conf`, then `~/.openviking/ov.conf`. Run the setup wizard when you need to configure a remote server:
 
 ```bash
-node ~/.pi/agent/extensions/openviking/scripts/setup.mjs
+node ~/.omp/agent/extensions/openviking/scripts/setup.mjs
 ```
 
-`~/.pi/agent/extensions/openviking/config.json` is for behavior knobs only:
+`~/.omp/agent/extensions/openviking/config.json` is for behavior knobs only:
 
 ```json
 {
@@ -286,7 +286,7 @@ Both plugins share the same core design (informed by each other):
 See [DESIGN.md](./DESIGN.md) for the full design specification — comparison of all three OV plugins, detailed event flow, design rationale, and implementation guidance useful for building OV extensions for any agent harness.
 
 ```
-pi-coding-agent-extension/
+omp-openviking-extension/
 ├── config.json          # Default configuration (edit to customize)
 ├── config.ts            # Config loader (defaults + config.json merge)
 ├── client.ts            # OpenViking HTTP client (fetch + response envelope)
