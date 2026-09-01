@@ -139,7 +139,15 @@ export default async function (pi: ExtensionAPI) {
 
   // --- session_start ---
   pi.on("session_start", async (event, ctx) => {
-    await start(ctx);
+    // Fire-and-forget (ported from upstream #4506): the OV chain (health
+    // check, session ensure, profile build) costs ~2s against a remote
+    // server; blocking session_start on it delays every omp startup.
+    // start() is memoized via startPromise, so before_agent_start awaits
+    // the same in-flight chain before the first provider request — the
+    // first turn still gets profile + recall.
+    void start(ctx).catch((error) => {
+      debugLog(`session_start: ${error instanceof Error ? error.message : String(error)}`);
+    });
   });
 
   // --- before_agent_start ---
