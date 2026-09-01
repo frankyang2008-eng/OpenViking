@@ -1063,6 +1063,8 @@ class AsyncHTTPClient:
         sort_by: Optional[str] = None,
         sort_order: str = "asc",
         extra_fields: Optional[List[str]] = None,
+        tags: Optional[List[str]] = None,
+        include_tags: bool = False,
     ) -> List[Any]:
         params: Dict[str, Any] = {
             "uri": VikingURI.normalize(uri),
@@ -1078,6 +1080,10 @@ class AsyncHTTPClient:
             params["sort_order"] = sort_order
         if extra_fields:
             params["extra_fields"] = list(extra_fields)
+        if tags is not None:
+            params["tags"] = tags
+        if include_tags:
+            params["include_tags"] = True
         response = await self._request(
             "GET",
             "/api/v1/fs/ls",
@@ -1094,6 +1100,8 @@ class AsyncHTTPClient:
         node_limit: int = 1000,
         level_limit: int = 3,
         extra_fields: Optional[List[str]] = None,
+        tags: Optional[List[str]] = None,
+        include_tags: bool = False,
     ) -> List[Dict[str, Any]]:
         params: Dict[str, Any] = {
             "uri": VikingURI.normalize(uri),
@@ -1105,6 +1113,10 @@ class AsyncHTTPClient:
         }
         if extra_fields:
             params["extra_fields"] = list(extra_fields)
+        if tags is not None:
+            params["tags"] = tags
+        if include_tags:
+            params["include_tags"] = True
         response = await self._request(
             "GET",
             "/api/v1/fs/tree",
@@ -1407,6 +1419,8 @@ class AsyncHTTPClient:
         case_insensitive: bool = False,
         node_limit: int = 256,
         exclude_uri: Optional[str] = None,
+        tags: Optional[List[str]] = None,
+        include_tags: bool = False,
     ) -> Dict[str, Any]:
         request_json = {
             "uri": VikingURI.normalize(uri),
@@ -1416,6 +1430,10 @@ class AsyncHTTPClient:
         }
         if exclude_uri is not None:
             request_json["exclude_uri"] = VikingURI.normalize(exclude_uri)
+        if tags is not None:
+            request_json["tags"] = list(tags)
+        if include_tags:
+            request_json["include_tags"] = True
         response = await self._request("POST", "/api/v1/search/grep", json=request_json)
         return self._handle_response(response)
 
@@ -1425,6 +1443,8 @@ class AsyncHTTPClient:
         uri: str = "viking://",
         node_limit: int = 256,
         extra_fields: Optional[List[str]] = None,
+        tags: Optional[List[str]] = None,
+        include_tags: bool = False,
     ) -> Dict[str, Any]:
         json_body: Dict[str, Any] = {
             "pattern": pattern,
@@ -1433,6 +1453,10 @@ class AsyncHTTPClient:
         }
         if extra_fields is not None:
             json_body["extra_fields"] = list(extra_fields)
+        if tags is not None:
+            json_body["tags"] = list(tags)
+        if include_tags:
+            json_body["include_tags"] = True
         response = await self._request(
             "POST",
             "/api/v1/search/glob",
@@ -2360,6 +2384,8 @@ class SyncHTTPClient:
         sort_by: Optional[str] = None,
         sort_order: str = "asc",
         extra_fields: Optional[List[str]] = None,
+        tags: Optional[List[str]] = None,
+        include_tags: bool = False,
     ) -> List[Any]:
         return run_async(
             self._async_client.ls(
@@ -2373,6 +2399,8 @@ class SyncHTTPClient:
                 sort_by=sort_by,
                 sort_order=sort_order,
                 extra_fields=extra_fields,
+                tags=tags,
+                include_tags=include_tags,
             )
         )
 
@@ -2385,6 +2413,8 @@ class SyncHTTPClient:
         node_limit: int = 1000,
         level_limit: int = 3,
         extra_fields: Optional[List[str]] = None,
+        tags: Optional[List[str]] = None,
+        include_tags: bool = False,
     ) -> List[Dict[str, Any]]:
         return run_async(
             self._async_client.tree(
@@ -2395,6 +2425,8 @@ class SyncHTTPClient:
                 node_limit=node_limit,
                 level_limit=level_limit,
                 extra_fields=extra_fields,
+                tags=tags,
+                include_tags=include_tags,
             )
         )
 
@@ -2557,6 +2589,8 @@ class SyncHTTPClient:
         case_insensitive: bool = False,
         node_limit: int = 256,
         exclude_uri: Optional[str] = None,
+        tags: Optional[List[str]] = None,
+        include_tags: bool = False,
     ) -> Dict[str, Any]:
         return run_async(
             self._async_client.grep(
@@ -2565,6 +2599,8 @@ class SyncHTTPClient:
                 case_insensitive=case_insensitive,
                 node_limit=node_limit,
                 exclude_uri=exclude_uri,
+                tags=tags,
+                include_tags=include_tags,
             )
         )
 
@@ -2574,10 +2610,17 @@ class SyncHTTPClient:
         uri: str = "viking://",
         node_limit: int = 256,
         extra_fields: Optional[List[str]] = None,
+        tags: Optional[List[str]] = None,
+        include_tags: bool = False,
     ) -> Dict[str, Any]:
         return run_async(
             self._async_client.glob(
-                pattern, uri=uri, node_limit=node_limit, extra_fields=extra_fields
+                pattern,
+                uri=uri,
+                node_limit=node_limit,
+                extra_fields=extra_fields,
+                tags=tags,
+                include_tags=include_tags,
             )
         )
 
