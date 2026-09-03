@@ -185,11 +185,32 @@ def upload_temp_dir(temp_dir: Path, monkeypatch) -> Path:
     return temp_dir
 
 
+@pytest_asyncio.fixture(scope="function", autouse=True)
+async def _shutdown_default_executor():
+    """Retire this test-loop's asyncio.to_thread executor threads.
+
+    pytest-asyncio closes each function-scoped loop without shutting down its
+    default executor, leaking up to min(32, cpu+4) non-daemon threads per test
+    (the asyncio_N army in the thread dump). Autouse setup runs before other
+    fixtures, so this finalizer lands after service.close().
+    """
+    yield
+    try:
+        loop = asyncio.get_running_loop()
+        await loop.shutdown_default_executor()
+    except RuntimeError:
+        pass
+
+
 @pytest_asyncio.fixture(scope="function")
 async def service(temp_dir: Path, monkeypatch):
     """Create and initialize an OpenVikingService for in-process API tests."""
     fake_embedder_cls = _install_fake_embedder(monkeypatch)
     _install_fake_vlm(monkeypatch)
+    # Leak guard: every service owns ~6 queue worker threads. If teardown
+    # fails to retire them, tests/server drowns in thousands of polling
+    # threads by the ~33% mark (see docs/design/queuefs-worker-lifecycle-fix.md).
+    threads_before = threading.active_count()
     svc = OpenVikingService(
         path=str(temp_dir / "data"), user=UserIdentifier.the_default_user("test_user")
     )
@@ -198,6 +219,16 @@ async def service(temp_dir: Path, monkeypatch):
     _install_session_commit_queue_fallback(svc, monkeypatch)
     yield svc
     await svc.close()
+    # Main-loop to_thread executor threads retire here (pytest-asyncio never
+    # does it): without this the +6 guard would count executor threads as leak.
+    try:
+        await asyncio.get_running_loop().shutdown_default_executor()
+    except RuntimeError:
+        pass
+    threads_after = threading.active_count()
+    assert threads_after <= threads_before + 8, (
+        f"queue worker thread leak: {threads_before} -> {threads_after} after close()"
+    )
 
 
 @pytest_asyncio.fixture(scope="function")

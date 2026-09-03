@@ -10,6 +10,7 @@ import atexit
 import threading
 import time
 import traceback
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Dict, Optional, Set, Union
 
 from openviking.storage.queuefs.task_work_index import TaskWorkIndex
@@ -27,6 +28,9 @@ DEFAULT_MAX_CONCURRENT_SESSION_COMMIT = 8
 _instance: Optional["QueueManager"] = None
 
 
+_init_lock = threading.Lock()
+
+
 def init_queue_manager(
     agfs: Any,
     timeout: int = 10,
@@ -39,6 +43,12 @@ def init_queue_manager(
 ) -> "QueueManager":
     """Initialize QueueManager singleton.
 
+    Stop-then-replace, serialized by ``_init_lock``: the new instance takes
+    the global slot first, then the previous one is stopped unconditionally
+    (stop() is a cheap no-op for never-started instances but still pairs its
+    atexit hook), so neither a skipped close() nor concurrent init can orphan
+    worker threads. Un-acked messages are safe: RecoverStale re-queues them.
+
     Args:
         agfs: Pre-initialized AGFS client (HTTP or Binding).
         timeout: Request timeout in seconds.
@@ -49,17 +59,27 @@ def init_queue_manager(
         max_concurrent_add_resource: Max concurrent AddResource tasks.
         max_concurrent_session_commit: Max concurrent SessionCommit tasks.
     """
-    global _instance
-    _instance = QueueManager(
-        agfs=agfs,
-        timeout=timeout,
-        mount_point=mount_point,
-        max_concurrent_embedding=max_concurrent_embedding,
-        max_concurrent_semantic=max_concurrent_semantic,
-        max_concurrent_external_parse=max_concurrent_external_parse,
-        max_concurrent_add_resource=max_concurrent_add_resource,
-        max_concurrent_session_commit=max_concurrent_session_commit,
-    )
+    with _init_lock:
+        global _instance
+        previous = _instance
+        _instance = QueueManager(
+            agfs=agfs,
+            timeout=timeout,
+            mount_point=mount_point,
+            max_concurrent_embedding=max_concurrent_embedding,
+            max_concurrent_semantic=max_concurrent_semantic,
+            max_concurrent_external_parse=max_concurrent_external_parse,
+            max_concurrent_add_resource=max_concurrent_add_resource,
+            max_concurrent_session_commit=max_concurrent_session_commit,
+        )
+        if previous is not None and previous is not _instance:
+            try:
+                previous.stop(join_timeout=2.0)
+            except Exception:
+                logger.warning(
+                    "[QueueManager] Failed to stop previous instance on re-init",
+                    exc_info=True,
+                )
     return _instance
 
 
@@ -113,6 +133,14 @@ class QueueManager:
         self._queue_stop_events: Dict[str, threading.Event] = {}
         self._poll_interval = 0.2
         self._task_work_index = TaskWorkIndex()
+        # Shared executor for every worker loop's asyncio.to_thread agfs calls:
+        # one pool per manager instead of one default pool per worker loop,
+        # which let asyncio_0 threads multiply by min(32, cpu+4) per queue.
+        self._executor = ThreadPoolExecutor(thread_name_prefix="qfs-agfs")
+        # ponytail: hard bound for fast agfs ops only (size/dequeue_raw);
+        # handlers inside dequeue() stay unbounded (RecoverStale retry-storm
+        # risk) — make this configurable if handler stalls ever matter.
+        self._agfs_call_timeout = 30.0
 
         atexit.register(self.stop)
         logger.info(
@@ -217,6 +245,11 @@ class QueueManager:
         """
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
+        # Local snapshot: stop() may null self._executor while this thread is
+        # still starting up.
+        executor = self._executor
+        if executor is not None:
+            loop.set_default_executor(executor)
         poll_interval = (
             self._SESSION_COMMIT_POLL_INTERVAL
             if queue.name == self.SESSION_COMMIT
@@ -230,7 +263,9 @@ class QueueManager:
             else:
                 while not stop_event.is_set():
                     try:
-                        queue_size = loop.run_until_complete(queue.size())
+                        queue_size = loop.run_until_complete(
+                            asyncio.wait_for(queue.size(), timeout=self._agfs_call_timeout)
+                        )
                         if queue.has_dequeue_handler() and queue_size > 0:
                             data = loop.run_until_complete(queue.dequeue())
                             if data is not None:
@@ -239,6 +274,13 @@ class QueueManager:
                                 stop_event.wait(poll_interval)
                         else:
                             stop_event.wait(poll_interval)
+                    except asyncio.TimeoutError:
+                        # agfs call stalled: back off to the stop_event checkpoint so
+                        # stop() can always retire this thread.
+                        logger.warning(
+                            "[QueueManager] agfs call timed out for %s, backing off", queue.name
+                        )
+                        stop_event.wait(poll_interval)
                     except Exception as e:
                         logger.error(f"[QueueManager] Worker error for {queue.name}: {e}")
                         traceback.print_exc()
@@ -281,12 +323,25 @@ class QueueManager:
             # While capacity remains, keep draining the queue
             while len(active_tasks) < max_concurrent:
                 try:
-                    queue_size = await queue.size()
-                except Exception:
+                    queue_size = await asyncio.wait_for(
+                        queue.size(), timeout=self._agfs_call_timeout
+                    )
+                except asyncio.TimeoutError:
+                    break
+                except Exception as e:
+                    logger.warning(f"[QueueManager] {queue.name}: queue.size() failed: {e}")
                     break
                 if not queue.has_dequeue_handler() or queue_size == 0:
                     break
-                data = await queue.dequeue_raw()
+                try:
+                    data = await asyncio.wait_for(
+                        queue.dequeue_raw(), timeout=self._agfs_call_timeout
+                    )
+                except asyncio.TimeoutError:
+                    break
+                except Exception as e:
+                    logger.warning(f"[QueueManager] {queue.name}: dequeue_raw failed: {e}")
+                    break
                 if data is None:
                     break
                 # Increment before task creation to close the race window where
@@ -315,23 +370,54 @@ class QueueManager:
                 )
                 for t in active_tasks:
                     t.cancel()
-                await asyncio.gather(*active_tasks, return_exceptions=True)
+                # to_thread tasks cannot interrupt the underlying executor thread;
+                # bound this second gather or the worker thread never retires.
+                try:
+                    await asyncio.wait_for(
+                        asyncio.gather(*active_tasks, return_exceptions=True),
+                        timeout=2.0,
+                    )
+                except asyncio.TimeoutError:
+                    logger.warning(
+                        f"[QueueManager] {queue.name}: {len(active_tasks)} task(s) "
+                        "still pinned by executor after cancel"
+                    )
 
-    def stop(self) -> None:
-        """Stop QueueManager and release resources."""
+    def stop(self, join_timeout: float = 10.0) -> None:
+        """Stop QueueManager and release resources.
+
+        Args:
+            join_timeout: Per-worker join bound. Callers re-initializing the
+                singleton pass a shorter value so a stalled worker cannot
+                block startup; the abandoned thread is logged and left to die
+                with the process (daemon=True).
+        """
         global _instance
+        # Pair the atexit hook regardless of start state: every __init__
+        # registered one, so every stop() must release it.
+        atexit.unregister(self.stop)
+
         if not self._started:
+            if self._executor is not None:
+                self._executor.shutdown(wait=False)
+                self._executor = None
             return
 
         # Stop queue workers
         for stop_event in self._queue_stop_events.values():
             stop_event.set()
         for name, thread in self._queue_threads.items():
-            thread.join(timeout=10.0)
+            thread.join(timeout=join_timeout)
             if thread.is_alive():
                 logger.warning(f"[QueueManager] Worker thread {name} did not exit in time")
         self._queue_threads.clear()
         self._queue_stop_events.clear()
+
+        # Shut the shared executor down only after joins: a still-starting
+        # worker would otherwise see a torn-down executor.
+        if self._executor is not None:
+            self._executor.shutdown(wait=False)
+            self._executor = None
 
         self._agfs = None
         self._queues.clear()
