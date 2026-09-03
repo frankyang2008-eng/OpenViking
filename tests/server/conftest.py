@@ -318,6 +318,13 @@ async def running_server(temp_dir: Path, monkeypatch):
                 break
         except Exception:
             time.sleep(0.1)
+    else:
+        # Poll exhausted: fail with the root cause instead of falling through
+        # to a confusing downstream error (or an apparent hang).
+        raise RuntimeError(
+            f"SDK server did not become ready on 127.0.0.1:{port} "
+            f"(thread alive={thread.is_alive()})"
+        )
 
     for _ in range(50):
         if getattr(fastapi_app.state, "api_key_manager", None) is not None:

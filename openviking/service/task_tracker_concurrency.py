@@ -67,13 +67,26 @@ class OwnerLoopDispatcher:
         self._owner_loop: asyncio.AbstractEventLoop | None = None
         self._bind_lock = threading.Lock()
 
+        # ponytail: StoreIOLimiter/KeyedAsyncLockPool primitives are loop-bound
+        # (CPython _LoopBoundMixin); after an ownership transfer the FIRST
+        # store_io acquire on the other loop raises loudly rather than silently
+        # corrupting. Per-loop primitive pools if this ever matters in prod.
     def bind_current_loop(self) -> asyncio.AbstractEventLoop:
+        """Bind the calling loop as the dispatcher owner (ownership transfer).
+
+        An explicit bind is an ownership claim: the caller becomes the owner,
+        replacing any previous owner regardless of its state. In-flight work
+        already dispatched to the previous owner completes there (futures hold
+        their own references); new dispatches route to the new owner. Cross-
+        loop dispatch itself stays available to everyone via :meth:`run`.
+
+        Rationale: TaskTracker is a process-level singleton and every
+        OpenVikingService.initialize() re-binds it, so a second service in one
+        process (tests, embedded scripts) must not brick the tracker forever.
+        """
         current_loop = asyncio.get_running_loop()
         with self._bind_lock:
-            if self._owner_loop is None:
-                self._owner_loop = current_loop
-            elif self._owner_loop is not current_loop:
-                raise RuntimeError("owner event loop is already bound")
+            self._owner_loop = current_loop
             return self._owner_loop
 
     async def run(
