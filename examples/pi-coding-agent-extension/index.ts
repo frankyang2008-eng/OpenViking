@@ -10,8 +10,7 @@
  * (most mature, production-hardened), Hermes (anti-pattern: stale prefetch).
  */
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { appendFileSync, mkdirSync } from "node:fs";
-import { dirname } from "node:path";
+import { createLogger } from "./shared/debug-log.mjs";
 import { loadConfigFromModuleUrl, type OVConfig } from "./config.js";
 import { OVClient } from "./client.js";
 import { RecallManager } from "./recall.js";
@@ -40,17 +39,14 @@ export default async function (pi: ExtensionAPI) {
     // caches (#4137); it is per pi session and opened once the id is known.
     config.recallLedger ? new RecallLedger() : null,
   );
-  const debugLog = (message: string) => {
-    const file = process.env.OV_DEBUG_LOG;
-    if (!file) return;
-    try {
-      mkdirSync(dirname(file), { recursive: true });
-      appendFileSync(file, `${new Date().toISOString()} ${message}\n`);
-    } catch {
-      // Best effort; logging must never affect pi.
-    }
-  };
-  const takeover = createTakeoverManager({ pi, client, sync, config, log: debugLog });
+  const logger = createLogger("pi", {
+    debug: Boolean(config.debugLogPath),
+    debugLogPath: config.debugLogPath,
+  });
+  const takeover = createTakeoverManager({
+    pi, client, sync, config,
+    log: (message: string) => logger.log("takeover", message),
+  });
 
   // Session state
   let connected = false;
@@ -142,7 +138,7 @@ export default async function (pi: ExtensionAPI) {
     // before_agent_start awaits the same in-flight chain before the first
     // provider request — the first turn still gets profile + recall.
     void start(ctx).catch((error) => {
-      debugLog(`session_start: ${error instanceof Error ? error.message : String(error)}`);
+      logger.logError("session_start", error);
     });
   });
 
@@ -236,7 +232,7 @@ export default async function (pi: ExtensionAPI) {
 
     const branch = ctx.sessionManager.getBranch();
     const result = await sync.syncBranch(branch);
-    debugLog(`turn_end: synced ${result.added} entries, ~${result.tokens} tokens`);
+    logger.log("turn_end", { added: result.added, tokens: result.tokens });
     await takeover.onTurnSynced(result.tokens);
     updateStatus(ctx, connected, result.added, sync.sessionId, config, takeover.state);
   });

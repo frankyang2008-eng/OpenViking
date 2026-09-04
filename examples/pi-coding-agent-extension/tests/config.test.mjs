@@ -19,6 +19,8 @@ async function withConfigFile(body, fn, env = {}, cliConfig = null) {
     OPENVIKING_CREDENTIAL_SOURCE: process.env.OPENVIKING_CREDENTIAL_SOURCE,
     OPENVIKING_CLI_CONFIG_FILE: process.env.OPENVIKING_CLI_CONFIG_FILE,
     OPENVIKING_CONFIG_FILE: process.env.OPENVIKING_CONFIG_FILE,
+    OPENVIKING_DEBUG_LOG: process.env.OPENVIKING_DEBUG_LOG,
+    OV_DEBUG_LOG: process.env.OV_DEBUG_LOG,
   };
   process.env.OPENVIKING_CREDENTIAL_SOURCE = "env";
   process.env.OPENVIKING_URL = "http://127.0.0.1:1933";
@@ -30,6 +32,8 @@ async function withConfigFile(body, fn, env = {}, cliConfig = null) {
   delete process.env.OPENVIKING_PEER_ID;
   delete process.env.OPENVIKING_WORKSPACE_PEER;
   delete process.env.OPENVIKING_RECALL_PEER_SCOPE;
+  delete process.env.OPENVIKING_DEBUG_LOG;
+  delete process.env.OV_DEBUG_LOG;
   for (const [key, value] of Object.entries(env)) {
     if (value === undefined) delete process.env[key];
     else process.env[key] = value;
@@ -165,6 +169,39 @@ test("loadConfig gives environment peer precedence over config peer", async () =
     assert.equal(cfg.workspacePeer, false);
     assert.equal(cfg.recallPeerScope, "actor");
   }, { OPENVIKING_PEER_ID: "explicit-peer" });
+});
+
+test("loadConfig leaves the debug log off when nothing asks for it", async () => {
+  await withConfigFile({}, (cfg) => {
+    assert.equal(cfg.debugLogPath, "");
+  });
+});
+
+test("loadConfig reads the debug log path from OPENVIKING_DEBUG_LOG", async () => {
+  await withConfigFile({}, (cfg) => {
+    assert.equal(cfg.debugLogPath, "/tmp/ov-pi-shared.log");
+  }, { OPENVIKING_DEBUG_LOG: "/tmp/ov-pi-shared.log" });
+});
+
+test("loadConfig still honours the deprecated OV_DEBUG_LOG", async () => {
+  await withConfigFile({}, (cfg) => {
+    assert.equal(cfg.debugLogPath, "/tmp/ov-pi-legacy.log");
+  }, { OV_DEBUG_LOG: "/tmp/ov-pi-legacy.log" });
+});
+
+test("loadConfig prefers OPENVIKING_DEBUG_LOG over the deprecated alias", async () => {
+  await withConfigFile({ debugLogPath: "/tmp/ov-pi-file.log" }, (cfg) => {
+    assert.equal(cfg.debugLogPath, "/tmp/ov-pi-shared.log");
+  }, {
+    OPENVIKING_DEBUG_LOG: "/tmp/ov-pi-shared.log",
+    OV_DEBUG_LOG: "/tmp/ov-pi-legacy.log",
+  });
+});
+
+test("loadConfig falls back to the config file debug log path", async () => {
+  await withConfigFile({ debugLogPath: " /tmp/ov-pi-file.log " }, (cfg) => {
+    assert.equal(cfg.debugLogPath, "/tmp/ov-pi-file.log");
+  });
 });
 
 test("loadConfig gives ovcli peer precedence over config peer", async () => {

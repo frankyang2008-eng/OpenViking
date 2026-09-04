@@ -113,7 +113,7 @@ per-harness 章节（档案卡）只写差异；所有共享事实均在本章�
 
 `examples/memory-plugin-shared/lib/` 下共 23 个 `.mjs` 模块，是 JS 系 harness 的唯一事实源。两种消费形态：
 
-1. **Vendoring（复制）**：由 `sync.mjs` 分发到 7 个目标，每个文件首行加 `// GENERATED FROM ... DO NOT EDIT.`（因此 vendored 副本行号 = lib 源行号 + 1，交叉读行号引用时要换算）。每个目标只发它真正 import 的模块，因此分发清单跟的是 import 图而不是 harness。在每个 hook 型插件都会拿的 13 个 hook 模块（`sync.mjs` 里的 `HOOK_SHARED_FILES`）之上：pi 只拿这一组（13 个）；dsh 加 stdio 代理需要的两个 mcp-proxy-*（15 个）；opencode 再加 async-writer 与 batch-send（17 个）；zcode 在这四个之外再加 agent-hook-runtime 与 agent-uri-guard（19 个）；claude-code / codex 在这四个之外再加 plugin-config、workspace-config、workspace-registry 与 doctor-core（各 21 个）。agent-plugins 没有 hook，因此一个 hook 模块都不拿，只有 credentials、debug-log 与两个 mcp-proxy-*（4 个）。当前 HEAD 各目标与 lib 源零漂移。
+1. **Vendoring（复制）**：由 `sync.mjs` 分发到 7 个目标，每个文件首行加 `// GENERATED FROM ... DO NOT EDIT.`（因此 vendored 副本行号 = lib 源行号 + 1，交叉读行号引用时要换算）。每个目标只发它真正 import 的模块，因此分发清单跟的是 import 图而不是 harness。在每个 hook 型插件都会拿的 12 个 hook 模块（`sync.mjs` 里的 `HOOK_SHARED_FILES`）之上：pi 加 setup-wizard（13 个）；dsh 加 stdio 代理需要的两个 mcp-proxy-*（14 个）；opencode 加 setup-wizard、两个 mcp-proxy-* 与 batch-send（16 个）；zcode 加两个 mcp-proxy-*、batch-send、async-writer、agent-hook-runtime 与 agent-uri-guard（18 个）；claude-code / codex 加 setup-wizard、两个 mcp-proxy-*、batch-send、async-writer、plugin-config、workspace-config、workspace-registry 与 doctor-core（各 21 个）。agent-plugins 没有 hook，因此一个 hook 模块都不拿，只有 credentials、debug-log 与两个 mcp-proxy-*（4 个）。当前 HEAD 各目标与 lib 源零漂移。
 2. **相对路径直接 import（不复制）**：cursor / trae / trae-cn 直接 `import "../../memory-plugin-shared/lib/..."`；安装器把包与这些 hook 传递 import 到的 15 个共享模块一起复制到 `~/.openviking/agent-integrations/{<client>,memory-plugin-shared}/`，使相对层级成立。这份安装集合对 import 闭合，不含任何 hook 运行时都够不到的 workspace 配置层。运行期这个共享目录被这几个 harness 共用，任一重装都会整体覆盖。
 
 核心模块速览（细节在各维度章展开）：
@@ -127,7 +127,7 @@ per-harness 章节（档案卡）只写差异；所有共享事实均在本章�
 | `batch-send.mjs` | 100 条/批写入 + 404/405 逐条降级 + 连续前缀入队 | cc / codex / opencode + agent-hook 系 |
 | `profile-inject.mjs` | session-start 的 profile + 可用记忆清单注入 | 9 个 harness（openclaw / hermes 除外） |
 | `recall-compress-core.mjs` | 召回压缩 prompt + URI 编辑距离修复 + 缓存 | claude-code |
-| `capture-utils.mjs` | 消息归一 + 注入回流防护 + 捕获过滤 | codex / opencode / dsh / pi |
+| `capture-utils.mjs` | 消息归一 + 注入回流防护 + 捕获过滤 | codex / opencode / dsh / pi / zcode |
 | `credentials.mjs` | 凭据解析链（详见 [§3.1.3](#_3-1-3-凭据体系)） | 全部 JS 系 |
 | `session-model.mjs` | 会话 id 前缀派生 + bypass glob | 全部 JS 系 |
 | `async-writer.mjs` | 写路径 detach（drain stdin → spawn → approve → write → unref；spawn 失败回落同步） | cc / codex / zcode |
@@ -543,7 +543,7 @@ MCP `write` / REST `content/write` 的三道 guard（`content_write.py`）：可
 ## zcode
 
 - **集成文档**：[社区插件 → ZCode](./08-community-plugins.md)
-- **形态**：配置驱动（合并进 `~/.zcode/cli/config.json`，强制 `hooks.enabled=true`）+ MCP 代理。4 hook：SessionStart(30s) / UserPromptSubmit(20s) / PreToolUse:Read\|Glob\|Grep(5s) / Stop(30s)。共 vendoring 19 个共享模块，也是唯一 vendoring `agent-hook-runtime` 那一对、而不是相对 import 的 harness。版本 0.1.1。
+- **形态**：配置驱动（合并进 `~/.zcode/cli/config.json`，强制 `hooks.enabled=true`）+ MCP 代理。4 hook：SessionStart(30s) / UserPromptSubmit(20s) / PreToolUse:Read\|Glob\|Grep(5s) / Stop(30s)。共 vendoring 18 个共享模块，也是唯一 vendoring `agent-hook-runtime` 那一对、而不是相对 import 的 harness。版本 0.1.2。
 - **能力亮点**：以 rollout 文件 `~/.zcode/cli/rollout/model-io-<sid>.jsonl` 为增量真相源（`lastTurnId` 差集补齐漏掉的 Stop）；Stop 默认 detach（Ctrl+C 不丢写入）。
 - **行为要点**：每 Stop commit（keep 0）；捕获路径仅剥离三类注入块（不做额外文本清洗，[§3.2.6](#_3-2-6-注入回流防护)）；首次捕获会一次性读取整个 rollout（长会话首装时单次推送量大）。
 - **配置**：仅 env；`OPENVIKING_WRITE_PATH_ASYNC` 对 zcode 生效。
