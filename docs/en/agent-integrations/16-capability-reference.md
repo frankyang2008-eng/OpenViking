@@ -229,7 +229,7 @@ To give a directory that is not a repository its own peer under claude-code or c
 
 **Migration** (no user action required): The pre-git peer id is a pure function of the cwd, so the client can always recompute it locally and recall still reaches memories written under it. Under the default `peer_scope: "all"`, the server's existing cross-peer sweep already covers it at zero cost; under `peer_scope: "actor"`, the plugin asks that peer separately and appends whatever it returns. There is no deadline on this.
 
-For `openclaw`, the peer is derived from `peer_role`/`peer_prefix` (note that if `peer_role=person`, sender information must be available, otherwise tool calls will fail). The `hermes` peer defaults to `OPENVIKING_AGENT` (defaulting to `hermes`).
+For `openclaw`, the peer is derived from `peer_role`/`peer_prefix` (note that if `peer_role=sender`, sender information must be available, otherwise tool calls will fail; legacy `person` is accepted as an alias). The `hermes` peer defaults to `OPENVIKING_AGENT` (defaulting to `hermes`).
 
 ### 3.1.4 Configuration layers
 

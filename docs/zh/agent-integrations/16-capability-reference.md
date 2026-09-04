@@ -231,7 +231,7 @@ per-harness 章节（档案卡）只写差异；所有共享事实均在本章�
 
 **迁移**（无需用户操作）：旧 peer id 是 cwd 的纯函数，客户端随时可以本地重算，召回仍能覆盖到写在它名下的记忆。默认 `peer_scope: "all"` 下，服务端本就有的跨 peer 扫描零成本地把它包含在内；`peer_scope: "actor"` 下插件会另外向该 peer 发一次召回并拼接结果。此事没有截止期限。
 
-openclaw 的 peer 由 `peer_role`/`peer_prefix` 推导（`peer_role=person` 时需保证 sender 信息可用，否则工具调用报错）；hermes 的 peer 就是 `OPENVIKING_AGENT`（默认 `hermes`）。
+openclaw 的 peer 由 `peer_role`/`peer_prefix` 推导（`peer_role=sender` 时需保证 sender 信息可用，否则工具调用报错；旧值 `person` 作为别名兼容）；hermes 的 peer 就是 `OPENVIKING_AGENT`（默认 `hermes`）。
 
 ### 3.1.4 配置体系分层
 
