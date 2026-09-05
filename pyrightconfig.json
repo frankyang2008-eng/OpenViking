@@ -1,0 +1,7 @@
+{
+  "venvPath": ".",
+  "venv": ".venv",
+  "pythonVersion": "3.10",
+  "include": ["openviking", "openviking_cli", "tests", "bot", "sdk"],
+  "exclude": ["**/node_modules", "**/__pycache__", "**/.venv", "build", ".lens-build"]
+}

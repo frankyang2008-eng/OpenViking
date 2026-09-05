@@ -256,3 +256,7 @@ openviking/graphify-out/
 .claude-flow/data/
 .claude-flow/logs/
 .claude-flow/sessions/
+
+# pi-lens C++ index artifacts (clangd compile_commands)
+.lens-build/
+compile_commands.json
