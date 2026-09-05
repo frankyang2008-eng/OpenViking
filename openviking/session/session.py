@@ -25,6 +25,7 @@ from openviking.server.identity import RequestContext, Role
 from openviking.session.auto_commit_policy import AutoCommitPolicy
 from openviking.session.memory.constants import AGENT_EVOLUTION_MEMORY_TYPES
 from openviking.session.memory_policy import MemoryPolicy
+from openviking.session.memory.utils.language import resolve_output_language_from_conversation
 from openviking.session.retention import (
     RETENTION_MODE_TURN_BUDGET,
     RetentionPlan,
@@ -805,7 +806,7 @@ class Session:
     async def exists(self) -> bool:
         """Check whether this session already exists in storage."""
         try:
-            await self._viking_fs.stat(self._session_uri, ctx=self.ctx)
+            await self._viking_fs.stat(self._session_uri, ctx=self.ctx, skip_count=True)
             return True
         except Exception as exc:
             if not _is_storage_not_found(exc):
@@ -2106,42 +2107,50 @@ class Session:
             )
             phase1_stage = "phase1_persist"
             try:
-                await self._write_phase1_marker(
-                    archive_uri,
-                    queue_message=queue_msg.to_dict(),
-                    original_messages=original_messages,
-                    archived_messages=messages_to_archive,
-                    retained_messages=retained_messages,
-                    keep_recent_count=keep_recent_count,
-                    retention_mode=retention_mode,
-                    keep_recent_turn_count=effective_keep_turns if turn_mode else 0,
-                    retained_message_token_budget=effective_token_budget if turn_mode else 0,
-                    min_raw_tail_steps=effective_min_tail,
-                    agent_evolution_enabled=agent_evolution_enabled,
-                    agent_memory_skip_reason=agent_memory_skip_reason,
-                )
-
-                # Archive raw remains durable and recoverable before any live
-                # conversation history is removed from the root JSONL.
+                archive_persist_tasks = [
+                    self._write_phase1_marker(
+                        archive_uri,
+                        queue_message=queue_msg.to_dict(),
+                        original_messages=original_messages,
+                        archived_messages=messages_to_archive,
+                        retained_messages=retained_messages,
+                        keep_recent_count=keep_recent_count,
+                        retention_mode=retention_mode,
+                        keep_recent_turn_count=effective_keep_turns if turn_mode else 0,
+                        retained_message_token_budget=effective_token_budget if turn_mode else 0,
+                        min_raw_tail_steps=effective_min_tail,
+                        agent_evolution_enabled=agent_evolution_enabled,
+                        agent_memory_skip_reason=agent_memory_skip_reason,
+                    )
+                ]
                 if self._viking_fs:
                     lines = [m.to_jsonl() for m in messages_to_archive]
-                    await self._viking_fs.write_file(
-                        uri=f"{archive_uri}/messages.jsonl",
-                        content="\n".join(lines) + "\n",
-                        ctx=self.ctx,
-                    )
-                    if retention_plan is not None:
-                        await self._merge_archive_meta(
-                            archive_uri,
-                            {
-                                "retention_plan": self._retention_plan_meta(
-                                    retention_plan,
-                                    keep_recent_turn_count=effective_keep_turns,
-                                    retained_message_token_budget=effective_token_budget,
-                                    min_raw_tail_steps=effective_min_tail,
-                                )
-                            },
+                    archive_persist_tasks.append(
+                        self._viking_fs.write_file(
+                            uri=f"{archive_uri}/messages.jsonl",
+                            content="\n".join(lines) + "\n",
+                            ctx=self.ctx,
                         )
+                    )
+                archive_persist_results = await asyncio.gather(
+                    *archive_persist_tasks,
+                    return_exceptions=True,
+                )
+                for result in archive_persist_results:
+                    if isinstance(result, BaseException):
+                        raise result
+                if retention_plan is not None:
+                    await self._merge_archive_meta(
+                        archive_uri,
+                        {
+                            "retention_plan": self._retention_plan_meta(
+                                retention_plan,
+                                keep_recent_turn_count=effective_keep_turns,
+                                retained_message_token_budget=effective_token_budget,
+                                min_raw_tail_steps=effective_min_tail,
+                            )
+                        },
+                    )
 
                 phase1_stage = "queue_enqueue"
                 await get_queue_manager().enqueue(
@@ -4230,6 +4239,17 @@ class Session:
             return ""
 
         formatted = self._format_messages_for_wm(messages, checkpoint_requests)
+        language_conversation = "\n".join(
+            f"[{message.role}]: {line}"
+            for message in messages
+            for part in message.parts
+            if isinstance(part, TextPart)
+            for line in part.text.splitlines()
+            if line.strip()
+        )
+        output_language = resolve_output_language_from_conversation(
+            language_conversation, config=get_openviking_config()
+        )
         checkpoint_instructions = self._checkpoint_prompt_instructions(len(checkpoint_requests))
 
         vlm = get_openviking_config().vlm
@@ -4270,6 +4290,7 @@ class Session:
                         "messages": formatted,
                         "latest_archive_overview": latest_archive_overview or "",
                         "checkpoint_instructions": checkpoint_instructions,
+                        "output_language": output_language,
                     },
                 )
                 if checkpoint_requests:
@@ -4328,6 +4349,7 @@ class Session:
                     "latest_archive_overview": latest_archive_overview,
                     "wm_section_reminders": reminders,
                     "checkpoint_instructions": checkpoint_instructions,
+                    "output_language": output_language,
                 },
             )
             resp = await vlm.get_completion_async(
@@ -4346,7 +4368,7 @@ class Session:
                 raise
             logger.warning("WM update tool_call failed (%s); falling back to creation prompt", e)
             return await self._fallback_generate_wm_creation(
-                formatted, messages, latest_archive_overview
+                formatted, messages, latest_archive_overview, output_language
             )
 
         has_tc = bool(getattr(resp, "has_tool_calls", False) and getattr(resp, "tool_calls", None))
@@ -4363,7 +4385,7 @@ class Session:
                 raise ValueError("Working Memory update returned no tool call for checkpoints")
             logger.warning("WM update: LLM returned no tool_call; falling back to creation prompt")
             return await self._fallback_generate_wm_creation(
-                formatted, messages, latest_archive_overview
+                formatted, messages, latest_archive_overview, output_language
             )
 
         checkpoint_summaries: tuple[str, ...] = ()
@@ -4464,7 +4486,7 @@ class Session:
                 e,
             )
             return await self._fallback_generate_wm_creation(
-                formatted, messages, latest_archive_overview
+                formatted, messages, latest_archive_overview, output_language
             )
 
         _wm_debug(
@@ -4484,6 +4506,7 @@ class Session:
         formatted_messages: str,
         messages: List[Message],
         prior_overview: str = "",
+        output_language: str = "en",
     ) -> str:
         """Re-run WM creation prompt when the update tool_call path fails.
 
@@ -4503,6 +4526,7 @@ class Session:
                     "messages": formatted_messages,
                     "latest_archive_overview": prior_overview,
                     "checkpoint_instructions": "",
+                    "output_language": output_language,
                 },
             )
             return await get_openviking_config().vlm.get_completion_async(prompt)
@@ -5278,45 +5302,53 @@ class Session:
 
         lines = [m.to_jsonl() for m in messages]
         content = "\n".join(lines) + "\n" if lines else ""
+        abstract_content = render_abstract_overview(
+            ContextLevel.ABSTRACT,
+            self._session_uri,
+            abstract,
+            {
+                "generated_by": {
+                    "component": "Session",
+                    "trigger": "session_update",
+                }
+            },
+        )
+        overview_content = render_abstract_overview(
+            ContextLevel.OVERVIEW,
+            self._session_uri,
+            overview,
+            {
+                "generated_by": {
+                    "component": "Session",
+                    "trigger": "session_update",
+                }
+            },
+        )
 
-        await viking_fs.write_file(
-            uri=f"{self._session_uri}/messages.jsonl",
-            content=content,
-            ctx=self.ctx,
-            lease_ref=lease_ref,
-        )
-        await viking_fs.write_file(
-            uri=f"{self._session_uri}/.abstract.md",
-            content=render_abstract_overview(
-                ContextLevel.ABSTRACT,
-                self._session_uri,
-                abstract,
-                {
-                    "generated_by": {
-                        "component": "Session",
-                        "trigger": "session_update",
-                    }
-                },
+        root_write_results = await asyncio.gather(
+            viking_fs.write_file(
+                uri=f"{self._session_uri}/messages.jsonl",
+                content=content,
+                ctx=self.ctx,
+                lease_ref=lease_ref,
             ),
-            ctx=self.ctx,
-            lease_ref=lease_ref,
-        )
-        await viking_fs.write_file(
-            uri=f"{self._session_uri}/.overview.md",
-            content=render_abstract_overview(
-                ContextLevel.OVERVIEW,
-                self._session_uri,
-                overview,
-                {
-                    "generated_by": {
-                        "component": "Session",
-                        "trigger": "session_update",
-                    }
-                },
+            viking_fs.write_file(
+                uri=f"{self._session_uri}/.abstract.md",
+                content=abstract_content,
+                ctx=self.ctx,
+                lease_ref=lease_ref,
             ),
-            ctx=self.ctx,
-            lease_ref=lease_ref,
+            viking_fs.write_file(
+                uri=f"{self._session_uri}/.overview.md",
+                content=overview_content,
+                ctx=self.ctx,
+                lease_ref=lease_ref,
+            ),
+            return_exceptions=True,
         )
+        for result in root_write_results:
+            if isinstance(result, BaseException):
+                raise result
 
     def _generate_abstract(self) -> str:
         """Generate one-sentence summary for session."""
