@@ -210,9 +210,7 @@ class IndexEngineProxy:
         for request, data in zip(requests, cands_list, strict=False):
             request.label = data.label
             request.fields_str = data.fields
-        result = self.index_engine.rebuild_scalar_index(
-            json.dumps(scalar_index_meta), requests
-        )
+        result = self.index_engine.rebuild_scalar_index(json.dumps(scalar_index_meta), requests)
         if result != 0:
             raise RuntimeError("Failed to rebuild native scalar index")
 

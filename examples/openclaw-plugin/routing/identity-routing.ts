@@ -90,11 +90,15 @@ export function openClawSessionToOvStorageId(
   }
   if (sid) {
     if (WINDOWS_BAD_SESSION_SEGMENT.test(sid)) {
-      return createHash("sha256").update(`openclaw-session:${sid}`, "utf8").digest("hex");
+      return createHash("sha256")
+        .update(`openclaw-session:${sid}`, "utf8")
+        .digest("hex");
     }
     return sid;
   }
-  throw new Error("openviking: need sessionId or sessionKey for OV session path");
+  throw new Error(
+    "openviking: need sessionId or sessionKey for OV session path",
+  );
 }
 
 /** Normalize a hook/tool session ref (uuid, sessionKey, or already-safe id) for OV storage. */
@@ -162,10 +166,7 @@ function collectSessionAgentAliases(
   if (!ovSid && (sid || sk)) {
     try {
       aliases.add(
-        openClawSessionToOvStorageId(
-          sid || undefined,
-          sk || undefined,
-        ),
+        openClawSessionToOvStorageId(sid || undefined, sk || undefined),
       );
     } catch {
       /* need a resolvable OpenClaw session identity */
@@ -176,7 +177,8 @@ function collectSessionAgentAliases(
 }
 
 export function createSessionAgentResolver(configAgentId: string) {
-  const configAgentPrefix = configAgentId.trim() === "default" ? "" : configAgentId.trim();
+  const configAgentPrefix =
+    configAgentId.trim() === "default" ? "" : configAgentId.trim();
   const sessionAgentIds = new Map<string, string>();
 
   const remember = (ctx: SessionAgentLookup): void => {
@@ -192,9 +194,15 @@ export function createSessionAgentResolver(configAgentId: string) {
     }
 
     const prefix = configAgentPrefix;
-    const resolvedBeforeSanitize = prefix ? `${prefix}_${rawAgentId}` : rawAgentId;
+    const resolvedBeforeSanitize = prefix
+      ? `${prefix}_${rawAgentId}`
+      : rawAgentId;
     const resolved = sanitizeOpenVikingAgentIdHeader(resolvedBeforeSanitize);
-    for (const alias of collectSessionAgentAliases(ctx.sessionId, ctx.sessionKey, ctx.ovSessionId)) {
+    for (const alias of collectSessionAgentAliases(
+      ctx.sessionId,
+      ctx.sessionKey,
+      ctx.ovSessionId,
+    )) {
       sessionAgentIds.set(alias, resolved);
     }
   };
@@ -204,9 +212,15 @@ export function createSessionAgentResolver(configAgentId: string) {
     sessionKey?: string,
     ovSessionId?: string,
   ): SessionAgentResolveResult => {
-    const aliases = collectSessionAgentAliases(sessionId, sessionKey, ovSessionId);
+    const aliases = collectSessionAgentAliases(
+      sessionId,
+      sessionKey,
+      ovSessionId,
+    );
     const mappedAlias = aliases.find((alias) => sessionAgentIds.has(alias));
-    const mappedResolvedAgentId = mappedAlias ? sessionAgentIds.get(mappedAlias) : undefined;
+    const mappedResolvedAgentId = mappedAlias
+      ? sessionAgentIds.get(mappedAlias)
+      : undefined;
     const sessionScopedAgentId =
       extractAgentIdFromSessionKey(sessionKey) ||
       extractAgentIdFromSessionKey(sessionId);
@@ -221,17 +235,19 @@ export function createSessionAgentResolver(configAgentId: string) {
       resolved = mappedResolvedAgentId;
       branch = "session_resolved";
     } else if (sessionScopedAgentId) {
-      resolvedBeforeSanitize = prefix ? `${prefix}_${sessionScopedAgentId}` : sessionScopedAgentId;
+      resolvedBeforeSanitize = prefix
+        ? `${prefix}_${sessionScopedAgentId}`
+        : sessionScopedAgentId;
       resolved = sanitizeOpenVikingAgentIdHeader(resolvedBeforeSanitize);
       branch = "session_resolved";
-    } else if (!prefix) {
-      resolvedBeforeSanitize = DEFAULT_OPENCLAW_AGENT_ID;
-      resolved = DEFAULT_OPENCLAW_AGENT_ID;
-      branch = "default_no_session";
-    } else {
+    } else if (prefix) {
       resolvedBeforeSanitize = `${prefix}_${DEFAULT_OPENCLAW_AGENT_ID}`;
       resolved = sanitizeOpenVikingAgentIdHeader(resolvedBeforeSanitize);
       branch = "config_only_fallback";
+    } else {
+      resolvedBeforeSanitize = DEFAULT_OPENCLAW_AGENT_ID;
+      resolved = DEFAULT_OPENCLAW_AGENT_ID;
+      branch = "default_no_session";
     }
 
     return {

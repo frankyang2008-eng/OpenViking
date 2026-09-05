@@ -18,9 +18,15 @@ export function buildZcodeCapturePlan(turns, state = {}, cfg = {}) {
     if (!decision.shouldCapture) continue;
     // The dedup key stays keyed on the raw turn so raising captureMaxLength
     // never resends a turn the server already holds in truncated form.
-    candidates.push({ dedupKey: zcodeTurnDedupKey(turn), turn, content: decision.text });
+    candidates.push({
+      dedupKey: zcodeTurnDedupKey(turn),
+      turn,
+      content: decision.text,
+    });
   }
-  const toSend = candidates.filter((item) => !capturedTurnIds.has(item.dedupKey));
+  const toSend = candidates.filter(
+    (item) => !capturedTurnIds.has(item.dedupKey),
+  );
   const payloads = toSend.map(({ turn, content }) => ({
     role: turn.role,
     content,
@@ -67,7 +73,10 @@ export function applyZcodeCaptureResult(state, plan, result) {
   if (pendingPrompt) {
     for (let index = plan.candidates.length - 1; index >= 0; index--) {
       const item = plan.candidates[index];
-      if (item.turn.role === "user" && cleanZcodeText(item.turn.content) === pendingPrompt) {
+      if (
+        item.turn.role === "user" &&
+        cleanZcodeText(item.turn.content) === pendingPrompt
+      ) {
         pendingPromptItem = item;
         break;
       }

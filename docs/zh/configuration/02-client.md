@@ -66,7 +66,7 @@ export OPENVIKING_CLI_CONFIG_FILE=/path/to/ovcli.conf
 ```
 
 | 字段 | 类型 / 可选值 | 默认值 | 作用 |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `url` | HTTP(S) URL | `http://127.0.0.1:1933` | OpenViking 服务端地址 |
 | `api_key` | string / `null` | `null` | 普通数据操作使用的 user/admin key |
 | `root_api_key` | string / `null` | `null` | `ov --sudo` 管理操作使用的 root key |
@@ -80,7 +80,7 @@ export OPENVIKING_CLI_CONFIG_FILE=/path/to/ovcli.conf
 ### API Key 选择
 
 | 配置方式 | 普通命令 | `ov --sudo` |
-|---|---|---|
+| --- | --- | --- |
 | 仅 `api_key` | 使用 user/admin key | 不可用 |
 | 仅 `root_api_key`，并配置 `account`、`user` | 使用 root key 和显式身份 | 使用 root key |
 | 同时配置两种 key | 使用 `api_key` | 使用 `root_api_key` |
@@ -101,7 +101,7 @@ export OPENVIKING_CLI_CONFIG_FILE=/path/to/ovcli.conf
 ```
 
 | 字段 | 类型 / 可选值 | 默认值 | 作用 |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `timeout` | number，秒，`> 0` | `60` | HTTP 请求超时 |
 | `echo_command` | boolean | `true` | 是否显示 `find`、`search`、`ls` 等命令的实际请求参数 |
 | `show_progress` | boolean | `false` | 上传时是否默认显示进度 |
@@ -124,7 +124,7 @@ export OPENVIKING_CLI_CONFIG_FILE=/path/to/ovcli.conf
 ```
 
 | 字段 | 类型 / 格式 | 默认值 | 作用 |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `upload.ignore_dirs` | 逗号分隔字符串 / `null` | `null` | 忽略的目录名 |
 | `upload.include` | 逗号分隔 glob / `null` | `null` | 只上传匹配的文件 |
 | `upload.exclude` | 逗号分隔 glob / `null` | `null` | 排除匹配的文件 |
@@ -148,7 +148,7 @@ export OPENVIKING_CLI_CONFIG_FILE=/path/to/ovcli.conf
 从高到低：
 
 | 层 | 生效范围 |
-|---|---|
+| --- | --- |
 | `OPENVIKING_*` 环境变量 | 当前进程 |
 | `~/.openviking/workspaces/<slot>.json` | 本机的这个工作区 |
 | `<repo-root>/.openviking/config.local.json` | 本地这份 checkout，私有 |
@@ -177,7 +177,7 @@ export OPENVIKING_CLI_CONFIG_FILE=/path/to/ovcli.conf
 ```
 
 | 键 | 类型 / 可选值 | 作用 |
-|---|---|---|
+| --- | --- | --- |
 | `peer.source` | `"git"` / `"cwd"` / `"none"` / 模板 / 模板列表 | 工作区 peer 的推导方式；默认只有 git 仓库才会有 peer |
 | `peer.id` | string | 直接指定 peer，优先于 `peer.source` |
 | `recall.enabled` | boolean | 是否启用 Recall |
@@ -211,21 +211,21 @@ peer 是用户空间下的一段路径前缀——`viking://user/<you>/peers/<pe
 其余写法，优先级从高到低：
 
 | 写在哪 | 作用 |
-|---|---|
+| --- | --- |
 | `OPENVIKING_PEER_ID=my-project` | 为单个进程钉住 peer，无视配置文件 |
 | `.openviking/config.json` 的 `peer.id` | 指定本工作区的 peer。推荐做法；`config.local.json` 是同一个键，只是不提交 |
 | 同一文件的 `peer.source` | 不直接指定，而是推导——`"cwd"` 用目录路径，`"team-{dir}"` 用模板 |
 | `ovcli.conf` 的 `plugin.peerSource`，或 `OPENVIKING_PEER_SOURCE` | 对本机所有目录生效；`"cwd"` 可整体恢复 `git` 默认之前的行为 |
 
 | `peer.source` | 含义 |
-|---|---|
+| --- | --- |
 | `"git"` | 默认值。优先用归一化后的 `origin` URL，其次是仓库根路径，等价于 `["{git_remote}", "{git_root}"]`；不在仓库中则什么都不发送，也不添加任何前缀 |
 | `"cwd"` | 把工作目录中所有非字母数字字符替换成 `-`，与旧版本发送的值逐字节一致 |
 | `"none"` | 完全不发送 peer；`OPENVIKING_WORKSPACE_PEER=0` 含义相同 |
 | 模板 / 模板列表 | 例如 `"git-{git_remote}"` 或 `["{git_remote}", "team-{dir}"]`；按顺序尝试，某个模板的变量为空时落到下一个 |
 
 | 变量 | 取值 | 何时为空 |
-|---|---|---|
+| --- | --- | --- |
 | `{git_remote}` | 归一化后的 `origin`，形如 `github.com-org-repo` | 不在 git 仓库中，或仓库没有 `origin` |
 | `{git_root}` | 仓库根路径，所有非字母数字字符替换成 `-` | 不在 git 仓库中。仓库内某个子目录放了 `.openviking/config.json` 时，它仍然是仓库自己的根，因此标记子目录不会拆散默认 peer |
 | `{cwd}` | 工作目录，所有非字母数字字符替换成 `-` | 从不为空——它也不在任何默认链里，裸路径只有在你明确要求时才会成为 peer |
@@ -237,7 +237,7 @@ peer 是用户空间下的一段路径前缀——`viking://user/<you>/peers/<pe
 #### 按场景选择
 
 | 场景 | 怎么做 |
-|---|---|
+| --- | --- |
 | 有 `origin` 的仓库 | 什么都不用做。所有 clone、worktree、子目录共用一个 peer |
 | Fork | `origin` 不同，默认与上游分开。要合并两边的记忆，就在两边写同一个 `peer.id` |
 | 没有 remote 的本地仓库 | 默认用仓库根路径，换台机器就会变。长期项目建议写一个 `peer.id` |
@@ -253,7 +253,7 @@ peer 是用户空间下的一段路径前缀——`viking://user/<you>/peers/<pe
 `peer.source` 决定记忆写到哪里，`recall.peer_scope` 决定读回什么。peer 是路径前缀，不是租户边界。同一项配置在 `ovcli.conf` 中写作 `plugin.recallPeerScope`，环境变量为 `OPENVIKING_RECALL_PEER_SCOPE`。
 
 | `recall.peer_scope` | 召回读什么 |
-|---|---|
+| --- | --- |
 | `"all"`（默认） | 用户级记忆与本工作区 peer 全权重参与，再对该用户的其他 peer 做一次扫描，命中结果按类别降分——服务端 `other_peer_penalty` 默认对 events、entities 为 0.1，对 preferences、experiences、resources、skills 为 0.02。因此其他项目的内容只能垫底 |
 | `"actor"` | 只看用户级记忆和本工作区的 peer。插件会额外查询一次此处按 `git` 默认之前的规则推导出的 peer，因此旧版本写下的内容不会丢 |
 
@@ -285,7 +285,7 @@ hook 是非交互进程，因此这些文件不经确认即被信任；被拒绝
 `ov` CLI 直接使用的环境变量只有少量几个：
 
 | 环境变量 | 作用 |
-|---|---|
+| --- | --- |
 | `OPENVIKING_CLI_CONFIG_FILE` | 指定要读取的 `ovcli.conf` 路径 |
 | `OPENVIKING_UPLOAD_MODE` | 指定临时上传模式：`local` 或 `shared` |
 

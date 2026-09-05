@@ -426,8 +426,7 @@ class WatchScheduler:
                                 )
                             except Exception:
                                 logger.exception(
-                                    "[WatchScheduler] Failed to cancel timed-out ingestion "
-                                    "task %s",
+                                    "[WatchScheduler] Failed to cancel timed-out ingestion task %s",
                                     execution_task_id,
                                 )
                         else:
@@ -439,9 +438,7 @@ class WatchScheduler:
                         if execution_error is None:
                             execution_error = result.get("error")
                         if execution_error is None and result.get("errors"):
-                            execution_error = "; ".join(
-                                str(error) for error in result["errors"]
-                            )
+                            execution_error = "; ".join(str(error) for error in result["errors"])
                         execution_error = execution_error or "watch ingestion failed"
                         logger.warning(
                             f"[WatchScheduler] Task {task.task_id} execution finished with "

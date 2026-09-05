@@ -5,7 +5,10 @@ import { resolve as resolvePath } from "node:path";
 
 import { loadAgentHookConfig } from "../scripts/shared/agent-hook-runtime.mjs";
 import { createLogger } from "../scripts/shared/debug-log.mjs";
-import { buildMcpProxyConfig, resolveMcpActorPeerId } from "../scripts/shared/mcp-proxy-config.mjs";
+import {
+  buildMcpProxyConfig,
+  resolveMcpActorPeerId,
+} from "../scripts/shared/mcp-proxy-config.mjs";
 import { createOpenVikingMcpProxy } from "../scripts/shared/mcp-proxy-core.mjs";
 
 function readConfig() {
@@ -26,6 +29,9 @@ function readConfig() {
   });
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === resolvePath(process.argv[1])) {
+if (
+  process.argv[1] &&
+  fileURLToPath(import.meta.url) === resolvePath(process.argv[1])
+) {
   createOpenVikingMcpProxy({ readConfig, loggerFactory: createLogger }).start();
 }

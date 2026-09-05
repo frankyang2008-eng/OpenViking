@@ -24,8 +24,17 @@
 
 import { loadConfig } from "./config.mjs";
 import { createLogger } from "./debug-log.mjs";
-import { catchUpTurns, hasCaptureKeyword, makeFetchJSON } from "./ov-session.mjs";
-import { clearEnded, loadState, saveState, withSessionLock } from "./session-state.mjs";
+import {
+  catchUpTurns,
+  hasCaptureKeyword,
+  makeFetchJSON,
+} from "./ov-session.mjs";
+import {
+  clearEnded,
+  loadState,
+  saveState,
+  withSessionLock,
+} from "./session-state.mjs";
 import { maybeDetach, readHookStdin } from "./shared/async-writer.mjs";
 import { resolveEffectivePeerId } from "./shared/workspace-peer.mjs";
 
@@ -42,7 +51,9 @@ const HOOK_STARTED_AT = (() => {
   return Number.isFinite(inherited) && inherited > 0 ? inherited : Date.now();
 })();
 
-const { fetchJSONRes, fetchJSON } = makeFetchJSON(cfg, { getActorPeerId: () => activePeerId });
+const { fetchJSONRes, fetchJSON } = makeFetchJSON(cfg, {
+  getActorPeerId: () => activePeerId,
+});
 
 function output(obj) {
   process.stdout.write(JSON.stringify(obj) + "\n");
@@ -61,7 +72,9 @@ async function maybeCommitByThreshold(ovSessionId, added) {
     traceId: "",
   };
   if (added <= 0) return empty;
-  const meta = await fetchJSON(`/api/v1/sessions/${encodeURIComponent(ovSessionId)}`);
+  const meta = await fetchJSON(
+    `/api/v1/sessions/${encodeURIComponent(ovSessionId)}`,
+  );
   const pendingTokens = Number(meta?.pending_tokens || 0);
   const commitCount = Number(meta?.commit_count || 0);
   const totalMessageCount = Number(meta?.total_message_count || 0);
@@ -72,12 +85,21 @@ async function maybeCommitByThreshold(ovSessionId, added) {
     keepRecentCount: cfg.commitKeepRecentCount,
   });
   if (pendingTokens < cfg.commitTokenThreshold) {
-    return { committed: false, pendingTokens, commitCount, totalMessageCount, traceId: "" };
+    return {
+      committed: false,
+      pendingTokens,
+      commitCount,
+      totalMessageCount,
+      traceId: "",
+    };
   }
-  const commit = await fetchJSONRes(`/api/v1/sessions/${encodeURIComponent(ovSessionId)}/commit`, {
-    method: "POST",
-    body: JSON.stringify({ keep_recent_count: cfg.commitKeepRecentCount }),
-  });
+  const commit = await fetchJSONRes(
+    `/api/v1/sessions/${encodeURIComponent(ovSessionId)}/commit`,
+    {
+      method: "POST",
+      body: JSON.stringify({ keep_recent_count: cfg.commitKeepRecentCount }),
+    },
+  );
   const committed = commit.ok;
   const traceId = commit.traceId || commit.result?.trace_id || "";
   log("commit", {
@@ -99,7 +121,10 @@ async function maybeCommitByThreshold(ovSessionId, added) {
 
 async function capture(sessionId, transcriptPath, cwd, heartbeat) {
   const state = await loadState(sessionId);
-  activePeerId = cfg.peerId || state.workspacePeerId || resolveEffectivePeerId({ cfg, cwd }).peerId;
+  activePeerId =
+    cfg.peerId ||
+    state.workspacePeerId ||
+    resolveEffectivePeerId({ cfg, cwd }).peerId;
   log("start", { sessionId, transcriptPath, hasPeer: Boolean(activePeerId) });
 
   const health = await fetchJSON("/health");
@@ -117,7 +142,8 @@ async function capture(sessionId, transcriptPath, cwd, heartbeat) {
     log,
     logError,
     heartbeat,
-    shouldSend: (turns) => cfg.captureMode !== "keyword" || hasCaptureKeyword(turns),
+    shouldSend: (turns) =>
+      cfg.captureMode !== "keyword" || hasCaptureKeyword(turns),
   });
 
   let commitInfo = { committed: false, traceId: "" };
@@ -129,10 +155,12 @@ async function capture(sessionId, transcriptPath, cwd, heartbeat) {
   await saveState(state);
 
   if (added <= 0) return "";
-  return `appended ${added} turn(s) to OpenViking session ${state.ovSessionId}` +
+  return (
+    `appended ${added} turn(s) to OpenViking session ${state.ovSessionId}` +
     (commitInfo.committed
       ? ` (committed${commitInfo.traceId ? `; trace_id=${commitInfo.traceId}` : ""})`
-      : "");
+      : "")
+  );
 }
 
 async function main() {
@@ -160,7 +188,10 @@ async function main() {
   const transcriptPath = input.transcript_path || null;
   // The workspace layer belongs to the session's directory, which only the
   // payload knows; see loadConfig for why re-resolving this late is safe.
-  const cwd = typeof input.cwd === "string" && input.cwd.trim() ? input.cwd : process.cwd();
+  const cwd =
+    typeof input.cwd === "string" && input.cwd.trim()
+      ? input.cwd
+      : process.cwd();
   cfg = loadConfig(cwd);
   if (!cfg.autoCapture) {
     // The gate above ran against this process's directory, not the session's.
@@ -179,11 +210,17 @@ async function main() {
     { waitMs: LOCK_WAIT_MS },
   );
   if (outcome.skipped) {
-    logError("lock_timeout", `another writer holds ${sessionId}; leaving state untouched`);
+    logError(
+      "lock_timeout",
+      `another writer holds ${sessionId}; leaving state untouched`,
+    );
     noop();
     return;
   }
   noop(outcome.value);
 }
 
-main().catch((err) => { logError("uncaught", err); noop(); });
+main().catch((err) => {
+  logError("uncaught", err);
+  noop();
+});

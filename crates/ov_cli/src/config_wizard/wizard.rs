@@ -5767,8 +5767,8 @@ fn prompt_text(
                             io::stdout().flush()?;
                         }
                     }
-                    KeyCode::Char(ch) => {
-                        if !key.modifiers.contains(KeyModifiers::CONTROL) {
+                    KeyCode::Char(ch)
+                        if !key.modifiers.contains(KeyModifiers::CONTROL) => {
                             value.push(ch);
                             if secret {
                                 raw_write("*")?;
@@ -5778,7 +5778,6 @@ fn prompt_text(
                             ui.set_input_prompt(input_prompt_with_value(&value, secret));
                             io::stdout().flush()?;
                         }
-                    }
                     _ => {}
                 },
                 Event::Key(_) => {}

@@ -257,7 +257,7 @@ impl BaseClient {
         self
     }
 
-    fn append_profile_query<'a>(&self, params: &'a [(String, String)]) -> Vec<(String, String)> {
+    fn append_profile_query(&self, params: &[(String, String)]) -> Vec<(String, String)> {
         let mut merged = params.to_vec();
         if self.profile_enabled && !merged.iter().any(|(k, _)| k == "profile") {
             merged.push(("profile".to_string(), "1".to_string()));
@@ -283,32 +283,27 @@ impl BaseClient {
             reqwest::header::CONTENT_TYPE,
             reqwest::header::HeaderValue::from_static("application/json"),
         );
-        if let Some(api_key) = &self.api_key {
-            if let Ok(value) = reqwest::header::HeaderValue::from_str(api_key) {
+        if let Some(api_key) = &self.api_key
+            && let Ok(value) = reqwest::header::HeaderValue::from_str(api_key) {
                 headers.insert("X-API-Key", value);
             }
-        }
-        if let Some(account) = &self.account {
-            if let Ok(value) = reqwest::header::HeaderValue::from_str(account) {
+        if let Some(account) = &self.account
+            && let Ok(value) = reqwest::header::HeaderValue::from_str(account) {
                 headers.insert("X-OpenViking-Account", value);
             }
-        }
-        if let Some(user) = &self.user {
-            if let Ok(value) = reqwest::header::HeaderValue::from_str(user) {
+        if let Some(user) = &self.user
+            && let Ok(value) = reqwest::header::HeaderValue::from_str(user) {
                 headers.insert("X-OpenViking-User", value);
             }
-        }
-        if let Some(actor_peer_id) = &self.actor_peer_id {
-            if let Ok(value) = reqwest::header::HeaderValue::from_str(actor_peer_id) {
+        if let Some(actor_peer_id) = &self.actor_peer_id
+            && let Ok(value) = reqwest::header::HeaderValue::from_str(actor_peer_id) {
                 headers.insert("X-OpenViking-Actor-Peer", value);
             }
-        }
 
         // LDAP Basic Auth support
         if let (Some(auth_mode), Some(username), Some(password)) =
             (&self.auth_mode, &self.ldap_username, &self.ldap_password)
-        {
-            if auth_mode == "ldap" {
+            && auth_mode == "ldap" {
                 let credentials = format!("{}:{}", username, password);
                 use base64::engine::Engine;
                 use base64::engine::general_purpose;
@@ -319,27 +314,23 @@ impl BaseClient {
                     headers.insert(reqwest::header::AUTHORIZATION, value);
                 }
             }
-        }
 
         // OIDC Bearer Token support
-        if let (Some(auth_mode), Some(token)) = (&self.auth_mode, &self.oidc_token) {
-            if auth_mode == "oidc" {
-                if let Ok(value) =
+        if let (Some(auth_mode), Some(token)) = (&self.auth_mode, &self.oidc_token)
+            && auth_mode == "oidc"
+                && let Ok(value) =
                     reqwest::header::HeaderValue::from_str(&format!("Bearer {}", token))
                 {
                     headers.insert(reqwest::header::AUTHORIZATION, value);
                 }
-            }
-        }
 
         // Also support OIDC token when api_key looks like a JWT (for backwards compatibility)
         if self
             .api_key
             .as_ref()
-            .map_or(false, |k| k.contains('.') && k.matches('.').count() >= 2)
-        {
-            if let Some(token) = &self.api_key {
-                if let Ok(value) =
+            .is_some_and(|k| k.contains('.') && k.matches('.').count() >= 2)
+            && let Some(token) = &self.api_key
+                && let Ok(value) =
                     reqwest::header::HeaderValue::from_str(&format!("Bearer {}", token))
                 {
                     // Only insert if not already set by explicit OIDC
@@ -347,16 +338,13 @@ impl BaseClient {
                         headers.insert(reqwest::header::AUTHORIZATION, value);
                     }
                 }
-            }
-        }
 
         if let Some(extra_headers) = &self.extra_headers {
             for (key, value) in extra_headers {
-                if let Ok(header_name) = reqwest::header::HeaderName::from_str(key) {
-                    if let Ok(header_value) = reqwest::header::HeaderValue::from_str(value) {
+                if let Ok(header_name) = reqwest::header::HeaderName::from_str(key)
+                    && let Ok(header_value) = reqwest::header::HeaderValue::from_str(value) {
                         headers.insert(header_name, header_value);
                     }
-                }
             }
         }
         headers
@@ -411,11 +399,10 @@ impl BaseClient {
             .send()
             .await
             .map_err(|e| Error::from_reqwest("Gateway detection request failed", e))?;
-        if Self::is_gateway_token_challenge(&response) {
-            if let Ok(value) = reqwest::header::HeaderValue::from_str(gateway_token) {
+        if Self::is_gateway_token_challenge(&response)
+            && let Ok(value) = reqwest::header::HeaderValue::from_str(gateway_token) {
                 headers.insert(GATEWAY_TOKEN_HEADER, value);
             }
-        }
         Ok(headers)
     }
 
@@ -450,11 +437,10 @@ impl BaseClient {
             }
         };
 
-        if let Some(error) = json.get("error") {
-            if !error.is_null() {
+        if let Some(error) = json.get("error")
+            && !error.is_null() {
                 return Err(api_error_from_envelope(&json, status));
             }
-        }
 
         let preserve_profile = TypeId::of::<T>() == TypeId::of::<Value>();
         let result = unwrap_success_envelope(json.clone(), preserve_profile);
@@ -949,12 +935,11 @@ impl<'a> FileUploader<'a> {
             .filter_map(|e| e.ok())
         {
             let path = entry.path();
-            if path.is_file() {
-                if let Ok(meta) = std::fs::metadata(path) {
+            if path.is_file()
+                && let Ok(meta) = std::fs::metadata(path) {
                     total_size += meta.len();
                     total_files += 1;
                 }
-            }
         }
 
         let pb = if total_size > 0 {
@@ -990,11 +975,10 @@ impl<'a> FileUploader<'a> {
                 let mut file = File::open(path)?;
                 let file_size = std::io::copy(&mut file, &mut zip)?;
 
-                if let Some(pb) = &pb {
-                    if pb.length().is_some() {
+                if let Some(pb) = &pb
+                    && pb.length().is_some() {
                         pb.inc(file_size);
                     }
-                }
             }
         }
 

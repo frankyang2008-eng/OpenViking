@@ -2,10 +2,20 @@ import type { OVClient } from "./client.js";
 import { createLogger } from "./shared/debug-log.mjs";
 import type { OVConfig } from "./config.js";
 import { deriveHarnessSessionId } from "./shared/session-model.mjs";
-import { claimForReplay, dequeue, enqueue, incrementRetry, listPending, replayPending } from "./shared/pending-queue.mjs";
+import {
+  claimForReplay,
+  dequeue,
+  enqueue,
+  incrementRetry,
+  listPending,
+  replayPending,
+} from "./shared/pending-queue.mjs";
 import { BATCH_LIMIT, sendSessionMessages } from "./shared/batch-send.mjs";
 import { extractBranchCapturePayloads } from "./lib/capture-adapter.mjs";
-import { countUndeliveredForSession, estimatePayloadTokens } from "./lib/takeover-core.mjs";
+import {
+  countUndeliveredForSession,
+  estimatePayloadTokens,
+} from "./lib/takeover-core.mjs";
 
 // --- SyncManager ---
 
@@ -36,8 +46,12 @@ export class SyncManager {
     });
   }
 
-  get sessionId(): string | null { return this.ovSessionId; }
-  get syncedCount(): number { return this.syncedEntryCount; }
+  get sessionId(): string | null {
+    return this.ovSessionId;
+  }
+  get syncedCount(): number {
+    return this.syncedEntryCount;
+  }
 
   restoreWatermark(n: number): void {
     const next = Math.max(0, Math.floor(Number(n) || 0));
@@ -86,10 +100,13 @@ export class SyncManager {
     const sid = this.ovSessionId;
     if (!sid) return;
     const budgetRaw = Number(process.env.OPENVIKING_PENDING_DRAIN_BUDGET_MS);
-    const timeBudgetMs = Number.isFinite(budgetRaw) && budgetRaw >= 0 ? budgetRaw : 60_000;
+    const timeBudgetMs =
+      Number.isFinite(budgetRaw) && budgetRaw >= 0 ? budgetRaw : 60_000;
     const maxRaw = Number(process.env.OPENVIKING_PENDING_DRAIN_MAX_BATCHES);
     const maxBatches =
-      Number.isFinite(maxRaw) && maxRaw > 0 ? Math.floor(maxRaw) : Number.POSITIVE_INFINITY;
+      Number.isFinite(maxRaw) && maxRaw > 0
+        ? Math.floor(maxRaw)
+        : Number.POSITIVE_INFINITY;
     const started = Date.now();
     let batches = 0;
 
@@ -109,7 +126,10 @@ export class SyncManager {
       }
 
       const claimed: Array<{ filename: string; entry: any }> = [];
-      for (const { filename, entry } of backlog.slice(start, start + BATCH_LIMIT)) {
+      for (const { filename, entry } of backlog.slice(
+        start,
+        start + BATCH_LIMIT,
+      )) {
         const name = await claimForReplay(filename);
         if (name) claimed.push({ filename: name, entry });
       }
@@ -123,7 +143,8 @@ export class SyncManager {
         claimed.map(({ entry }) => entry.payload),
         {
           onSent: async (count: number) => {
-            for (let i = 0; i < count; i++) await dequeue(claimed[delivered++].filename);
+            for (let i = 0; i < count; i++)
+              await dequeue(claimed[delivered++].filename);
           },
         },
       );
@@ -143,12 +164,17 @@ export class SyncManager {
     }
   }
 
-  private fetchJSON = (path: string, init?: any) => this.client.fetchJSON(path, init, 10000);
+  private fetchJSON = (path: string, init?: any) =>
+    this.client.fetchJSON(path, init, 10000);
 
   async syncBranch(branch: any[]): Promise<SyncBranchResult> {
     if (!this.ovSessionId) return { added: 0, tokens: 0, allDelivered: true };
 
-    const extracted = extractBranchCapturePayloads(branch, this.syncedEntryCount, this.config);
+    const extracted = extractBranchCapturePayloads(
+      branch,
+      this.syncedEntryCount,
+      this.config,
+    );
     if (extracted.resetWatermark) this.syncedEntryCount = 0;
     const sent = await this.sendPayloads(extracted.payloads);
     const added = sent.accepted;
@@ -176,11 +202,19 @@ export class SyncManager {
    * Returns how many payloads were accepted (sent or queued, always a prefix)
    * and how many of those were delivered to the server.
    */
-  private async sendPayloads(payloads: any[]): Promise<{ accepted: number; delivered: number }> {
-    if (!this.ovSessionId || payloads.length === 0) return { accepted: 0, delivered: 0 };
-    const res = await sendSessionMessages(this.fetchJSON, this.ovSessionId, payloads, {
-      enqueueOnRetryable: true,
-    });
+  private async sendPayloads(
+    payloads: any[],
+  ): Promise<{ accepted: number; delivered: number }> {
+    if (!this.ovSessionId || payloads.length === 0)
+      return { accepted: 0, delivered: 0 };
+    const res = await sendSessionMessages(
+      this.fetchJSON,
+      this.ovSessionId,
+      payloads,
+      {
+        enqueueOnRetryable: true,
+      },
+    );
     if (res.failed > 0 || res.enqueueFailed > 0) {
       this.logger.log("send", {
         session: this.ovSessionId,
@@ -208,7 +242,9 @@ export class SyncManager {
     }
   }
 
-  async commit(opts: { queueOnFailure?: boolean; keepRecentCount?: number } = {}): Promise<any | null> {
+  async commit(
+    opts: { queueOnFailure?: boolean; keepRecentCount?: number } = {},
+  ): Promise<any | null> {
     if (!this.ovSessionId) return null;
     const response = await this.client.commitSessionResponse(
       this.ovSessionId,
@@ -225,7 +261,8 @@ export class SyncManager {
       });
       if (opts.queueOnFailure !== false) {
         await enqueue("commitSession", this.ovSessionId, {
-          keep_recent_count: opts.keepRecentCount ?? this.config.commitKeepRecentCount,
+          keep_recent_count:
+            opts.keepRecentCount ?? this.config.commitKeepRecentCount,
         });
       }
       return null;

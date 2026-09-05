@@ -1,6 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, readFile, readdir, rename, stat, writeFile } from "node:fs/promises";
+import {
+  mkdtemp,
+  mkdir,
+  readFile,
+  readdir,
+  rename,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { realpathSync } from "node:fs";
@@ -30,8 +38,18 @@ async function makeRepo(root, { remote = "", name = ".git" } = {}) {
 }
 
 test("legacySanitize stays byte-identical to the peer id shipped today", () => {
-  for (const value of ["/Users/x/Dev/OpenViking", "/tmp/a  b/", "abc.DEF_123@x-y", "", "///"]) {
-    assert.equal(legacySanitize(value), deriveWorkspacePeerId(value), `diverged on ${JSON.stringify(value)}`);
+  for (const value of [
+    "/Users/x/Dev/OpenViking",
+    "/tmp/a  b/",
+    "abc.DEF_123@x-y",
+    "",
+    "///",
+  ]) {
+    assert.equal(
+      legacySanitize(value),
+      deriveWorkspacePeerId(value),
+      `diverged on ${JSON.stringify(value)}`,
+    );
   }
 });
 
@@ -49,25 +67,46 @@ test("normalizeGitRemote folds every spelling of one repo together", () => {
 });
 
 test("normalizeGitRemote drops userinfo so a token never reaches the peer id", () => {
-  const url = "https://someone:ghp_averysecrettoken@github.com:8443/volcengine/OpenViking.git";
+  const url =
+    "https://someone:ghp_averysecrettoken@github.com:8443/volcengine/OpenViking.git";
   const normalized = normalizeGitRemote(url);
   assert.equal(normalized, "github.com/volcengine/openviking");
   assert.doesNotMatch(normalized, /ghp_|someone/);
 });
 
 test("normalizeGitRemote refuses identities that are only local", () => {
-  for (const url of ["", "   ", "/srv/git/bare.git", "file:///srv/git/bare.git", "../sibling"]) {
-    assert.equal(normalizeGitRemote(url), "", `should be empty for ${JSON.stringify(url)}`);
+  for (const url of [
+    "",
+    "   ",
+    "/srv/git/bare.git",
+    "file:///srv/git/bare.git",
+    "../sibling",
+  ]) {
+    assert.equal(
+      normalizeGitRemote(url),
+      "",
+      `should be empty for ${JSON.stringify(url)}`,
+    );
   }
 });
 
 test("sanitizePeerId produces a server-valid id and dodges the reserved names", () => {
-  assert.equal(sanitizePeerId("github.com/volcengine/openviking"), "github.com-volcengine-openviking");
-  assert.match(sanitizePeerId("github.com/volcengine/openviking"), /^[a-zA-Z0-9_.@-]+$/);
+  assert.equal(
+    sanitizePeerId("github.com/volcengine/openviking"),
+    "github.com-volcengine-openviking",
+  );
+  assert.match(
+    sanitizePeerId("github.com/volcengine/openviking"),
+    /^[a-zA-Z0-9_.@-]+$/,
+  );
   assert.equal(sanitizePeerId("--weird//name--"), "weird-name");
   assert.equal(sanitizePeerId("__self"), "self");
   assert.equal(sanitizePeerId("ext-YWJj"), "x-ext-YWJj");
-  assert.equal(sanitizePeerId("a@b@c"), "a@b-c", "the server allows at most one @");
+  assert.equal(
+    sanitizePeerId("a@b@c"),
+    "a@b-c",
+    "the server allows at most one @",
+  );
   assert.equal(sanitizePeerId(".."), "");
   assert.equal(sanitizePeerId("///"), "");
 });
@@ -95,7 +134,9 @@ test("the workspace root is the repo, from any depth below it", async () => {
 
 test("a linked worktree resolves back to the repository it shares", async () => {
   const main = await tempRoot("main");
-  const mainGit = await makeRepo(main, { remote: "git@github.com:volcengine/OpenViking.git" });
+  const mainGit = await makeRepo(main, {
+    remote: "git@github.com:volcengine/OpenViking.git",
+  });
   const worktreeGitDir = join(mainGit, "worktrees", "feature");
   await mkdir(worktreeGitDir, { recursive: true });
   await writeFile(join(worktreeGitDir, "commondir"), "../..\n");
@@ -106,15 +147,23 @@ test("a linked worktree resolves back to the repository it shares", async () => 
   const found = findWorkspaceRoot(linked, { HOME: "/nonexistent-home" });
   assert.equal(found.git.kind, "worktree");
   assert.equal(found.git.commonDir, mainGit);
-  assert.equal(readGitRemoteUrl(found.git.commonDir), "git@github.com:volcengine/OpenViking.git");
+  assert.equal(
+    readGitRemoteUrl(found.git.commonDir),
+    "git@github.com:volcengine/OpenViking.git",
+  );
 });
 
 test("a submodule keeps its own identity instead of the superproject's", async () => {
   const parent = await tempRoot("parent");
-  const parentGit = await makeRepo(parent, { remote: "git@github.com:volcengine/OpenViking.git" });
+  const parentGit = await makeRepo(parent, {
+    remote: "git@github.com:volcengine/OpenViking.git",
+  });
   const moduleGitDir = join(parentGit, "modules", "vendor");
   await mkdir(moduleGitDir, { recursive: true });
-  await writeFile(join(moduleGitDir, "config"), '[remote "origin"]\n\turl = git@github.com:other/vendor.git\n');
+  await writeFile(
+    join(moduleGitDir, "config"),
+    '[remote "origin"]\n\turl = git@github.com:other/vendor.git\n',
+  );
 
   const sub = join(parent, "vendor");
   await mkdir(sub, { recursive: true });
@@ -122,7 +171,10 @@ test("a submodule keeps its own identity instead of the superproject's", async (
 
   const found = findWorkspaceRoot(sub, { HOME: "/nonexistent-home" });
   assert.equal(found.git.kind, "submodule");
-  assert.equal(normalizeGitRemote(readGitRemoteUrl(found.git.commonDir)), "github.com/other/vendor");
+  assert.equal(
+    normalizeGitRemote(readGitRemoteUrl(found.git.commonDir)),
+    "github.com/other/vendor",
+  );
 });
 
 test("$HOME and the filesystem root are never workspace roots", async () => {
@@ -143,18 +195,30 @@ test("$HOME and the filesystem root are never workspace roots", async () => {
 
 test("a directory outside any repository is not a workspace until it is marked", async () => {
   const plain = await tempRoot("plain-workspace");
-  const env = { HOME: "/nonexistent-home", OPENVIKING_STATE_DIR: join(plain, ".state") };
+  const env = {
+    HOME: "/nonexistent-home",
+    OPENVIKING_STATE_DIR: join(plain, ".state"),
+  };
   const deep = join(plain, "src", "lib");
   await mkdir(deep, { recursive: true });
 
   // Unmarked: a scratch folder, or an app's per-task directory. No root, so no
   // config layer and — with every git-shaped variable empty — no peer of its own.
-  assert.deepEqual(findWorkspaceRoot(plain, env), { root: "", rootKind: "", git: null, gitRoot: "" });
+  assert.deepEqual(findWorkspaceRoot(plain, env), {
+    root: "",
+    rootKind: "",
+    git: null,
+    gitRoot: "",
+  });
   const none = resolveWorkspaceIdentity({ cwd: deep, env, cache: false });
   assert.equal(none.root, "");
   assert.equal(none.vars.git_root, "");
   assert.equal(none.vars.dir, "");
-  assert.equal(none.vars.cwd, legacySanitize(deep), "the legacy id is still computable");
+  assert.equal(
+    none.vars.cwd,
+    legacySanitize(deep),
+    "the legacy id is still computable",
+  );
 
   // Marked: the user said this directory is a project, and that holds from
   // any depth below it, the way a repository does.
@@ -169,8 +233,16 @@ test("a directory outside any repository is not a workspace until it is marked",
   const identity = resolveWorkspaceIdentity({ cwd: deep, env, cache: false });
   assert.equal(identity.isGit, false);
   assert.equal(identity.rootKind, "config");
-  assert.equal(identity.vars.git_root, "", "no repository means no repository root");
-  assert.equal(identity.root, plain, "the marked directory is where the config layer is read");
+  assert.equal(
+    identity.vars.git_root,
+    "",
+    "no repository means no repository root",
+  );
+  assert.equal(
+    identity.root,
+    plain,
+    "the marked directory is where the config layer is read",
+  );
   assert.equal(identity.vars.dir, sanitizePeerId(plain.split("/").pop()));
 });
 
@@ -178,24 +250,42 @@ test("config.local.json marks a workspace too, and a marked subdirectory of a re
   const personal = await tempRoot("personal");
   await mkdir(join(personal, ".openviking"), { recursive: true });
   await writeFile(join(personal, ".openviking", "config.local.json"), "{}");
-  assert.equal(findWorkspaceRoot(personal, { HOME: "/nonexistent-home" }).rootKind, "config");
+  assert.equal(
+    findWorkspaceRoot(personal, { HOME: "/nonexistent-home" }).rootKind,
+    "config",
+  );
 
   const repo = await tempRoot("mono");
   await makeRepo(repo, { remote: "git@github.com:volcengine/OpenViking.git" });
   const sub = join(repo, "packages", "api");
   await mkdir(join(sub, ".openviking"), { recursive: true });
   await writeFile(join(sub, ".openviking", "config.json"), '{"version":1}');
-  const env = { HOME: "/nonexistent-home", OPENVIKING_STATE_DIR: join(repo, ".state") };
+  const env = {
+    HOME: "/nonexistent-home",
+    OPENVIKING_STATE_DIR: join(repo, ".state"),
+  };
 
   const found = findWorkspaceRoot(join(sub, "src"), env);
   assert.equal(found.root, sub, "the nearest marker is the workspace");
   assert.equal(found.rootKind, "config");
-  assert.equal(found.git.kind, "repo", "the enclosing repository is still found");
+  assert.equal(
+    found.git.kind,
+    "repo",
+    "the enclosing repository is still found",
+  );
   assert.equal(found.gitRoot, repo);
 
-  const identity = resolveWorkspaceIdentity({ cwd: join(sub, "src"), env, cache: false });
+  const identity = resolveWorkspaceIdentity({
+    cwd: join(sub, "src"),
+    env,
+    cache: false,
+  });
   assert.equal(identity.vars.git_remote, "github.com-volcengine-openviking");
-  assert.equal(identity.vars.git_root, legacySanitize(repo), "git_root is the repository, not the marker");
+  assert.equal(
+    identity.vars.git_root,
+    legacySanitize(repo),
+    "git_root is the repository, not the marker",
+  );
   assert.equal(identity.root, sub, "the config layer is read at the marker");
   assert.equal(identity.vars.dir, "api");
 
@@ -222,10 +312,19 @@ test("readGitRemoteUrl reads only origin, and does not follow includes", async (
       "",
     ].join("\n"),
   );
-  await writeFile(join(gitDir, "extra"), '[remote "origin"]\n\turl = https://included.example/x.git\n');
+  await writeFile(
+    join(gitDir, "extra"),
+    '[remote "origin"]\n\turl = https://included.example/x.git\n',
+  );
 
-  assert.equal(readGitRemoteUrl(gitDir), "git@github.com:t0saki/OpenViking.git");
-  assert.equal(readGitRemoteUrl(gitDir, "upstream"), "git@github.com:volcengine/OpenViking.git");
+  assert.equal(
+    readGitRemoteUrl(gitDir),
+    "git@github.com:t0saki/OpenViking.git",
+  );
+  assert.equal(
+    readGitRemoteUrl(gitDir, "upstream"),
+    "git@github.com:volcengine/OpenViking.git",
+  );
   assert.equal(readGitRemoteUrl(gitDir, "missing"), "");
 });
 
@@ -234,7 +333,10 @@ test("identity exposes every template variable, git and non-git alike", async ()
   await makeRepo(root, { remote: "git@github.com:volcengine/OpenViking.git" });
   const deep = join(root, "examples", "codex-memory-plugin");
   await mkdir(deep, { recursive: true });
-  const env = { HOME: "/nonexistent-home", OPENVIKING_STATE_DIR: join(root, ".state") };
+  const env = {
+    HOME: "/nonexistent-home",
+    OPENVIKING_STATE_DIR: join(root, ".state"),
+  };
 
   const identity = resolveWorkspaceIdentity({ cwd: deep, env, cache: false });
   assert.equal(identity.rootKind, "git");
@@ -245,14 +347,23 @@ test("identity exposes every template variable, git and non-git alike", async ()
   assert.equal(identity.vars.dir, sanitizePeerId(root.split("/").pop()));
   // `harness` belongs to the caller, not here: this result is cached on disk
   // under a cwd-only key, which two harnesses in one directory would share.
-  assert.deepEqual(Object.keys(identity.vars).sort(), ["cwd", "dir", "git_remote", "git_root"]);
+  assert.deepEqual(Object.keys(identity.vars).sort(), [
+    "cwd",
+    "dir",
+    "git_remote",
+    "git_root",
+  ]);
 
   const plain = await tempRoot("plain");
   const outside = resolveWorkspaceIdentity({ cwd: plain, env, cache: false });
   assert.equal(outside.isGit, false);
   assert.equal(outside.vars.git_remote, "");
   assert.equal(outside.vars.git_root, "");
-  assert.equal(outside.vars.dir, "", "a directory that is no workspace names nothing");
+  assert.equal(
+    outside.vars.dir,
+    "",
+    "a directory that is no workspace names nothing",
+  );
   assert.equal(outside.vars.cwd, legacySanitize(plain));
 });
 
@@ -261,7 +372,10 @@ test("a repo with no origin leaves git_remote empty but still names the root", a
   await makeRepo(root);
   const identity = resolveWorkspaceIdentity({
     cwd: root,
-    env: { HOME: "/nonexistent-home", OPENVIKING_STATE_DIR: join(root, ".state") },
+    env: {
+      HOME: "/nonexistent-home",
+      OPENVIKING_STATE_DIR: join(root, ".state"),
+    },
     cache: false,
   });
   assert.equal(identity.isGit, true);
@@ -272,14 +386,24 @@ test("a repo with no origin leaves git_remote empty but still names the root", a
 test("the cache serves the hooks of one turn and expires on its own", async () => {
   const root = await tempRoot("cache");
   await makeRepo(root, { remote: "git@github.com:volcengine/OpenViking.git" });
-  const env = { HOME: "/nonexistent-home", OPENVIKING_STATE_DIR: join(root, ".state") };
+  const env = {
+    HOME: "/nonexistent-home",
+    OPENVIKING_STATE_DIR: join(root, ".state"),
+  };
 
   const first = resolveWorkspaceIdentity({ cwd: root, env, now: 1_000_000 });
   assert.equal(first.vars.git_remote, "github.com-volcengine-openviking");
 
-  await writeFile(join(root, ".git", "config"), '[remote "origin"]\n\turl = git@github.com:other/changed.git\n');
+  await writeFile(
+    join(root, ".git", "config"),
+    '[remote "origin"]\n\turl = git@github.com:other/changed.git\n',
+  );
   const cached = resolveWorkspaceIdentity({ cwd: root, env, now: 1_030_000 });
-  assert.equal(cached.vars.git_remote, "github.com-volcengine-openviking", "same turn should not re-walk");
+  assert.equal(
+    cached.vars.git_remote,
+    "github.com-volcengine-openviking",
+    "same turn should not re-walk",
+  );
 
   const expired = resolveWorkspaceIdentity({ cwd: root, env, now: 1_120_000 });
   assert.equal(expired.vars.git_remote, "github.com-other-changed");
@@ -301,7 +425,10 @@ test("a repository under a directory named modules is not a submodule", async ()
 
   const found = findWorkspaceRoot(linked, { HOME: "/nonexistent-home" });
   assert.equal(found.git.kind, "worktree");
-  assert.equal(normalizeGitRemote(readGitRemoteUrl(found.git.commonDir)), "github.com/o/app");
+  assert.equal(
+    normalizeGitRemote(readGitRemoteUrl(found.git.commonDir)),
+    "github.com/o/app",
+  );
 });
 
 test("a windows drive path is a local directory, not a remote", () => {
@@ -314,7 +441,10 @@ test("a trailing git comment is not part of the url", async () => {
   const root = await tempRoot("comment");
   const gitDir = join(root, ".git");
   await mkdir(gitDir, { recursive: true });
-  await writeFile(join(gitDir, "config"), '[remote "origin"]\n\turl = git@github.com:a/b.git # my fork\n');
+  await writeFile(
+    join(gitDir, "config"),
+    '[remote "origin"]\n\turl = git@github.com:a/b.git # my fork\n',
+  );
 
   assert.equal(readGitRemoteUrl(gitDir), "git@github.com:a/b.git");
   assert.equal(normalizeGitRemote(readGitRemoteUrl(gitDir)), "github.com/a/b");
@@ -322,7 +452,9 @@ test("a trailing git comment is not part of the url", async () => {
 
 test("the cache never keeps a token, and never leaves the file readable", async () => {
   const root = await tempRoot("secret");
-  await makeRepo(root, { remote: "https://x-access-token:ghp_SECRETVALUE@github.com/o/r.git" });
+  await makeRepo(root, {
+    remote: "https://x-access-token:ghp_SECRETVALUE@github.com/o/r.git",
+  });
   const state = join(root, ".state");
   const env = { HOME: "/nonexistent-home", OPENVIKING_STATE_DIR: state };
 
@@ -332,21 +464,38 @@ test("the cache never keeps a token, and never leaves the file readable", async 
 
   for (const name of await readdir(state)) {
     const file = join(state, name);
-    assert.doesNotMatch(await readFile(file, "utf-8"), /ghp_SECRETVALUE|x-access-token/);
-    assert.equal((await stat(file)).mode & 0o777, 0o600, `${name} should be 0600`);
+    assert.doesNotMatch(
+      await readFile(file, "utf-8"),
+      /ghp_SECRETVALUE|x-access-token/,
+    );
+    assert.equal(
+      (await stat(file)).mode & 0o777,
+      0o600,
+      `${name} should be 0600`,
+    );
   }
 });
 
 test("a cache entry stamped in the future is not trusted", async () => {
   const root = await tempRoot("clock");
   await makeRepo(root, { remote: "git@github.com:o/first.git" });
-  const env = { HOME: "/nonexistent-home", OPENVIKING_STATE_DIR: join(root, ".state") };
+  const env = {
+    HOME: "/nonexistent-home",
+    OPENVIKING_STATE_DIR: join(root, ".state"),
+  };
 
   resolveWorkspaceIdentity({ cwd: root, env, now: 5_000_000 });
-  await writeFile(join(root, ".git", "config"), '[remote "origin"]\n\turl = git@github.com:o/second.git\n');
+  await writeFile(
+    join(root, ".git", "config"),
+    '[remote "origin"]\n\turl = git@github.com:o/second.git\n',
+  );
 
   const earlier = resolveWorkspaceIdentity({ cwd: root, env, now: 1_000_000 });
-  assert.equal(earlier.vars.git_remote, "github.com-o-second", "a clock that ran fast must not pin the old value");
+  assert.equal(
+    earlier.vars.git_remote,
+    "github.com-o-second",
+    "a clock that ran fast must not pin the old value",
+  );
 });
 
 test("a cache holding the wrong shape is re-derived instead of returned", async () => {
@@ -357,7 +506,10 @@ test("a cache holding the wrong shape is re-derived instead of returned", async 
 
   resolveWorkspaceIdentity({ cwd: root, env, now: 1000 });
   for (const name of await readdir(state)) {
-    await writeFile(join(state, name), JSON.stringify({ ts: 1000, identity: "not-an-object" }));
+    await writeFile(
+      join(state, name),
+      JSON.stringify({ ts: 1000, identity: "not-an-object" }),
+    );
   }
 
   const identity = resolveWorkspaceIdentity({ cwd: root, env, now: 1000 });
@@ -367,8 +519,16 @@ test("a cache holding the wrong shape is re-derived instead of returned", async 
 test("findWorkspaceRoot returns nothing rather than throwing on a dead cwd", () => {
   const cwd = process.cwd();
   const gone = join(cwd, "definitely-not-here", "nested");
-  assert.deepEqual(findWorkspaceRoot("", { HOME: "/nonexistent-home" }), { root: "", rootKind: "", git: null, gitRoot: "" });
-  assert.equal(typeof findWorkspaceRoot(gone, { HOME: "/nonexistent-home" }).root, "string");
+  assert.deepEqual(findWorkspaceRoot("", { HOME: "/nonexistent-home" }), {
+    root: "",
+    rootKind: "",
+    git: null,
+    gitRoot: "",
+  });
+  assert.equal(
+    typeof findWorkspaceRoot(gone, { HOME: "/nonexistent-home" }).root,
+    "string",
+  );
 });
 
 test("moving or renaming the repository no longer changes its identity", async () => {
@@ -376,15 +536,26 @@ test("moving or renaming the repository no longer changes its identity", async (
   const before = join(parent, "api");
   await mkdir(before, { recursive: true });
   await makeRepo(before, { remote: "git@github.com:o/api.git" });
-  const env = { HOME: "/nonexistent-home", OPENVIKING_STATE_DIR: join(parent, ".state") };
+  const env = {
+    HOME: "/nonexistent-home",
+    OPENVIKING_STATE_DIR: join(parent, ".state"),
+  };
 
   const first = resolveWorkspaceIdentity({ cwd: before, env, cache: false });
   const after = join(parent, "api-renamed");
   await rename(before, after);
   const second = resolveWorkspaceIdentity({ cwd: after, env, cache: false });
 
-  assert.equal(second.vars.git_remote, first.vars.git_remote, "this is the whole point of the change");
-  assert.notEqual(second.vars.cwd, first.vars.cwd, "the legacy id does move, which is why it needed replacing");
+  assert.equal(
+    second.vars.git_remote,
+    first.vars.git_remote,
+    "this is the whole point of the change",
+  );
+  assert.notEqual(
+    second.vars.cwd,
+    first.vars.cwd,
+    "the legacy id does move, which is why it needed replacing",
+  );
 });
 
 test("a shallow clone derives the same identity as a full one", async () => {
@@ -394,11 +565,18 @@ test("a shallow clone derives the same identity as a full one", async () => {
   await makeRepo(full, { remote: "git@github.com:o/r.git" });
   const shallow = await tempRoot("shallow");
   const gitDir = await makeRepo(shallow, { remote: "git@github.com:o/r.git" });
-  await writeFile(join(gitDir, "shallow"), "0000000000000000000000000000000000000000\n");
+  await writeFile(
+    join(gitDir, "shallow"),
+    "0000000000000000000000000000000000000000\n",
+  );
 
-  const env = { HOME: "/nonexistent-home", OPENVIKING_STATE_DIR: join(full, ".state") };
+  const env = {
+    HOME: "/nonexistent-home",
+    OPENVIKING_STATE_DIR: join(full, ".state"),
+  };
   assert.equal(
-    resolveWorkspaceIdentity({ cwd: shallow, env, cache: false }).vars.git_remote,
+    resolveWorkspaceIdentity({ cwd: shallow, env, cache: false }).vars
+      .git_remote,
     resolveWorkspaceIdentity({ cwd: full, env, cache: false }).vars.git_remote,
   );
 });
@@ -407,9 +585,23 @@ test("git folds section and key case, but not a quoted subsection", async () => 
   const root = await tempRoot("case");
   const gitDir = join(root, ".git");
   await mkdir(gitDir, { recursive: true });
-  await writeFile(join(gitDir, "config"), '[Remote "origin"]\n\tURL = git@github.com:Org/Repo.git\n');
+  await writeFile(
+    join(gitDir, "config"),
+    '[Remote "origin"]\n\tURL = git@github.com:Org/Repo.git\n',
+  );
 
-  assert.equal(readGitRemoteUrl(gitDir), "git@github.com:Org/Repo.git", "`git config` reads this file fine");
-  assert.equal(normalizeGitRemote(readGitRemoteUrl(gitDir)), "github.com/org/repo");
-  assert.equal(readGitRemoteUrl(gitDir, "Origin"), "", "a quoted subsection stays case-sensitive");
+  assert.equal(
+    readGitRemoteUrl(gitDir),
+    "git@github.com:Org/Repo.git",
+    "`git config` reads this file fine",
+  );
+  assert.equal(
+    normalizeGitRemote(readGitRemoteUrl(gitDir)),
+    "github.com/org/repo",
+  );
+  assert.equal(
+    readGitRemoteUrl(gitDir, "Origin"),
+    "",
+    "a quoted subsection stays case-sensitive",
+  );
 });

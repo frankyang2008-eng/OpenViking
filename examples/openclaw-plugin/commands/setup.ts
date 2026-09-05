@@ -11,10 +11,13 @@ import {
 } from "../request-headers.js";
 
 const HOME = os.homedir();
-const OPENCLAW_DIR = getEnv("OPENCLAW_STATE_DIR") || path.join(HOME, ".openclaw");
+const OPENCLAW_DIR =
+  getEnv("OPENCLAW_STATE_DIR") || path.join(HOME, ".openclaw");
 const DEFAULT_REMOTE_URL = "http://127.0.0.1:1933";
 
-function findPluginPackageRoot(fromDir = path.dirname(fileURLToPath(import.meta.url))): string | null {
+function findPluginPackageRoot(
+  fromDir = path.dirname(fileURLToPath(import.meta.url)),
+): string | null {
   let current = path.resolve(fromDir);
   for (let depth = 0; depth < 5; depth += 1) {
     if (
@@ -60,7 +63,8 @@ function readCompatRangeFromManifest(): { min: string; max: string } {
 }
 
 const PLUGIN_VERSION = readPluginVersion();
-const { min: COMPATIBLE_SERVER_MIN, max: COMPATIBLE_SERVER_MAX } = readCompatRangeFromManifest();
+const { min: COMPATIBLE_SERVER_MIN, max: COMPATIBLE_SERVER_MAX } =
+  readCompatRangeFromManifest();
 const CONFIG_KEYS_TO_PRESERVE = [
   "targetUri",
   "headers",
@@ -113,7 +117,9 @@ function maskKey(key: string): string {
   return `${key.slice(0, 4)}...${key.slice(-4)}`;
 }
 
-function nonEmptyOpenVikingRequestHeaders(value: unknown): OpenVikingRequestHeaders | undefined {
+function nonEmptyOpenVikingRequestHeaders(
+  value: unknown,
+): OpenVikingRequestHeaders | undefined {
   const headers = cleanOpenVikingRequestHeaders(value);
   return Object.keys(headers).length > 0 ? headers : undefined;
 }
@@ -131,13 +137,17 @@ function normalizePeerRole(value: unknown): PeerRole | undefined {
   return undefined;
 }
 
-function resolveExistingPeerRole(existing: Record<string, unknown> | null | undefined): PeerRole {
+function resolveExistingPeerRole(
+  existing: Record<string, unknown> | null | undefined,
+): PeerRole {
   const explicit = normalizePeerRole(existing?.peer_role);
   if (explicit) return explicit;
   return DEFAULT_SETUP_PEER_ROLE;
 }
 
-function resolveExistingPeerPrefix(existing: Record<string, unknown> | null | undefined): string {
+function resolveExistingPeerPrefix(
+  existing: Record<string, unknown> | null | undefined,
+): string {
   const value = existing?.peer_prefix;
   if (typeof value !== "string" || !value.trim()) return "";
   const trimmed = value.trim();
@@ -148,10 +158,14 @@ function resolveSetupPeerRole(value: unknown): PeerRole {
   if (value === undefined) return DEFAULT_SETUP_PEER_ROLE;
   const role = normalizePeerRole(value);
   if (role) return role;
-  throw new Error('peer_role must be "none", "assistant", or "sender" (legacy alias: "person")');
+  throw new Error(
+    'peer_role must be "none", "assistant", or "sender" (legacy alias: "person")',
+  );
 }
 
-function normalizeSetupRecallTargetTypes(value: unknown): RecallTargetType[] | undefined {
+function normalizeSetupRecallTargetTypes(
+  value: unknown,
+): RecallTargetType[] | undefined {
   if (value === undefined || value === null || value === "") {
     return undefined;
   }
@@ -184,12 +198,16 @@ function normalizeSetupRecallTargetTypes(value: unknown): RecallTargetType[] | u
   }
 
   if (unknown.length > 0) {
-    throw new Error(`recall-target-types contains unknown resource types: ${unknown.join(", ")}`);
+    throw new Error(
+      `recall-target-types contains unknown resource types: ${unknown.join(", ")}`,
+    );
   }
   return normalized.length > 0 ? normalized : undefined;
 }
 
-function preserveCurrentConfig(existing: Record<string, unknown> | null | undefined) {
+function preserveCurrentConfig(
+  existing: Record<string, unknown> | null | undefined,
+) {
   const config: Record<string, unknown> = {};
   if (!existing) {
     return config;
@@ -220,7 +238,11 @@ async function askPeerRole(
   );
   while (true) {
     const value = await q(
-      tr(zh, "Memory scope (none/assistant/sender)", "记忆归属（none/assistant/sender）"),
+      tr(
+        zh,
+        "Memory scope (none/assistant/sender)",
+        "记忆归属（none/assistant/sender）",
+      ),
       defaultValue,
     );
     const role = normalizePeerRole(value);
@@ -241,10 +263,12 @@ async function askPeerPrefix(
   defaultValue: string,
 ): Promise<string> {
   while (true) {
-    const value = (await q(
-      tr(zh, "Peer Prefix (optional)", "Peer Prefix（可选）"),
-      defaultValue,
-    )).trim();
+    const value = (
+      await q(
+        tr(zh, "Peer Prefix (optional)", "Peer Prefix（可选）"),
+        defaultValue,
+      )
+    ).trim();
     if (isValidPeerPrefixInput(value)) {
       return value;
     }
@@ -258,7 +282,11 @@ async function askPeerPrefix(
   }
 }
 
-function ask(rl: readline.Interface, prompt: string, defaultValue = ""): Promise<string> {
+function ask(
+  rl: readline.Interface,
+  prompt: string,
+  defaultValue = "",
+): Promise<string> {
   const suffix = defaultValue ? ` [${defaultValue}]` : "";
   return new Promise((resolve) => {
     rl.question(`${prompt}${suffix}: `, (answer) => {
@@ -267,7 +295,11 @@ function ask(rl: readline.Interface, prompt: string, defaultValue = ""): Promise
   });
 }
 
-type VersionCompatibility = "compatible" | "server_too_old" | "server_too_new" | "unknown";
+type VersionCompatibility =
+  | "compatible"
+  | "server_too_old"
+  | "server_too_new"
+  | "unknown";
 
 type HealthResult = {
   ok: boolean;
@@ -294,7 +326,9 @@ function compareVersions(a: number[], b: number[]): number {
   return 0;
 }
 
-function checkVersionCompatibility(serverVersion: string): VersionCompatibility {
+function checkVersionCompatibility(
+  serverVersion: string,
+): VersionCompatibility {
   if (!serverVersion) return "unknown";
   const sv = parseVersionTuple(serverVersion);
   if (!sv) return "unknown";
@@ -311,7 +345,8 @@ function checkVersionCompatibility(serverVersion: string): VersionCompatibility 
 }
 
 function formatCompatRange(): string {
-  if (COMPATIBLE_SERVER_MIN && COMPATIBLE_SERVER_MAX) return `${COMPATIBLE_SERVER_MIN} ~ ${COMPATIBLE_SERVER_MAX}`;
+  if (COMPATIBLE_SERVER_MIN && COMPATIBLE_SERVER_MAX)
+    return `${COMPATIBLE_SERVER_MIN} ~ ${COMPATIBLE_SERVER_MAX}`;
   if (COMPATIBLE_SERVER_MIN) return `>= ${COMPATIBLE_SERVER_MIN}`;
   if (COMPATIBLE_SERVER_MAX) return `<= ${COMPATIBLE_SERVER_MAX}`;
   return "any";
@@ -329,13 +364,21 @@ async function probeApiKeyType(
   apiKey?: string,
   configuredHeaders?: OpenVikingRequestHeaders,
 ): Promise<ApiKeyProbeResult> {
-  if (!apiKey) return { keyType: "no_key", needsAccountId: false, needsUserId: false, detail: "No API key configured" };
+  if (!apiKey)
+    return {
+      keyType: "no_key",
+      needsAccountId: false,
+      needsUserId: false,
+      detail: "No API key configured",
+    };
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 10_000);
   const sessionsUrl = `${baseUrl.replace(/\/+$/, "")}/api/v1/sessions?limit=1`;
   try {
-    const configuredRequestHeaders = resolveOpenVikingRequestHeaders({ headers: configuredHeaders });
+    const configuredRequestHeaders = resolveOpenVikingRequestHeaders({
+      headers: configuredHeaders,
+    });
     const headers: Record<string, string> = {};
     headers["X-API-Key"] = apiKey;
     Object.assign(headers, configuredRequestHeaders);
@@ -345,7 +388,12 @@ async function probeApiKeyType(
     });
 
     if (response.ok) {
-      return { keyType: "user_key", needsAccountId: false, needsUserId: false, detail: "API key has full user context" };
+      return {
+        keyType: "user_key",
+        needsAccountId: false,
+        needsUserId: false,
+        detail: "API key has full user context",
+      };
     }
 
     // Server raises InvalidArgumentError (-> HTTP 400) when a ROOT key calls
@@ -356,10 +404,16 @@ async function probeApiKeyType(
       let body = "";
       try {
         body = await response.text();
-      } catch { /* ignore parse errors */ }
+      } catch {
+        /* ignore parse errors */
+      }
       const lower = body.toLowerCase();
-      const needsAccount = /x-openviking-account|account[_ ]?id|account context|tenant/.test(lower);
-      const needsUser = /x-openviking-user|user[_ ]?id|user context|user key/.test(lower);
+      const needsAccount =
+        /x-openviking-account|account[_ ]?id|account context|tenant/.test(
+          lower,
+        );
+      const needsUser =
+        /x-openviking-user|user[_ ]?id|user context|user key/.test(lower);
       if (needsAccount || needsUser) {
         return {
           keyType: "root_key",
@@ -388,20 +442,44 @@ async function probeApiKeyType(
             keyType: "root_key",
             needsAccountId: true,
             needsUserId: true,
-            detail: body.slice(0, 200) || `HTTP ${response.status} -> ${probe2.status} after adding tenant headers`,
+            detail:
+              body.slice(0, 200) ||
+              `HTTP ${response.status} -> ${probe2.status} after adding tenant headers`,
           };
         }
-      } catch { /* ignore probe errors, fall through to unknown */ }
+      } catch {
+        /* ignore probe errors, fall through to unknown */
+      }
 
       if (response.status === 401 || response.status === 403) {
-        return { keyType: "unknown", needsAccountId: false, needsUserId: false, detail: `HTTP ${response.status} - authentication failed, verify your API key` };
+        return {
+          keyType: "unknown",
+          needsAccountId: false,
+          needsUserId: false,
+          detail: `HTTP ${response.status} - authentication failed, verify your API key`,
+        };
       }
-      return { keyType: "unknown", needsAccountId: false, needsUserId: false, detail: `HTTP ${response.status}${body ? ` - ${body.slice(0, 160)}` : ""}` };
+      return {
+        keyType: "unknown",
+        needsAccountId: false,
+        needsUserId: false,
+        detail: `HTTP ${response.status}${body ? ` - ${body.slice(0, 160)}` : ""}`,
+      };
     }
 
-    return { keyType: "unknown", needsAccountId: false, needsUserId: false, detail: `HTTP ${response.status}` };
+    return {
+      keyType: "unknown",
+      needsAccountId: false,
+      needsUserId: false,
+      detail: `HTTP ${response.status}`,
+    };
   } catch (err) {
-    return { keyType: "unknown", needsAccountId: false, needsUserId: false, detail: String(err instanceof Error ? err.message : err) };
+    return {
+      keyType: "unknown",
+      needsAccountId: false,
+      needsUserId: false,
+      detail: String(err instanceof Error ? err.message : err),
+    };
   } finally {
     clearTimeout(timeoutId);
   }
@@ -415,7 +493,9 @@ async function checkServiceHealth(
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 10_000);
   try {
-    const configuredRequestHeaders = resolveOpenVikingRequestHeaders({ headers: configuredHeaders });
+    const configuredRequestHeaders = resolveOpenVikingRequestHeaders({
+      headers: configuredHeaders,
+    });
     const headers: Record<string, string> = {};
     if (apiKey) {
       headers["X-API-Key"] = apiKey;
@@ -427,18 +507,46 @@ async function checkServiceHealth(
     });
     if (response.ok) {
       try {
-        const data = await response.json() as Record<string, unknown>;
+        const data = (await response.json()) as Record<string, unknown>;
         const result = (data.result ?? data) as Record<string, unknown>;
         const version = String(result.version ?? data.version ?? "");
         const compatibility = checkVersionCompatibility(version);
-        return { ok: true, version, error: "", compatibility, pluginVersion: PLUGIN_VERSION, compatRange: formatCompatRange() };
+        return {
+          ok: true,
+          version,
+          error: "",
+          compatibility,
+          pluginVersion: PLUGIN_VERSION,
+          compatRange: formatCompatRange(),
+        };
       } catch {
-        return { ok: true, version: "", error: "", compatibility: "unknown", pluginVersion: PLUGIN_VERSION, compatRange: formatCompatRange() };
+        return {
+          ok: true,
+          version: "",
+          error: "",
+          compatibility: "unknown",
+          pluginVersion: PLUGIN_VERSION,
+          compatRange: formatCompatRange(),
+        };
       }
     }
-    return { ok: false, version: "", error: `HTTP ${response.status}`, compatibility: "unknown", pluginVersion: PLUGIN_VERSION, compatRange: formatCompatRange() };
+    return {
+      ok: false,
+      version: "",
+      error: `HTTP ${response.status}`,
+      compatibility: "unknown",
+      pluginVersion: PLUGIN_VERSION,
+      compatRange: formatCompatRange(),
+    };
   } catch (err) {
-    return { ok: false, version: "", error: String(err instanceof Error ? err.message : err), compatibility: "unknown", pluginVersion: PLUGIN_VERSION, compatRange: formatCompatRange() };
+    return {
+      ok: false,
+      version: "",
+      error: String(err instanceof Error ? err.message : err),
+      compatibility: "unknown",
+      pluginVersion: PLUGIN_VERSION,
+      compatRange: formatCompatRange(),
+    };
   } finally {
     clearTimeout(timeoutId);
   }
@@ -453,7 +561,9 @@ function readOpenClawConfig(configPath: string): Record<string, unknown> {
   }
 }
 
-function getExistingPluginConfig(config: Record<string, unknown>): Record<string, unknown> | null {
+function getExistingPluginConfig(
+  config: Record<string, unknown>,
+): Record<string, unknown> | null {
   const plugins = config.plugins as Record<string, unknown> | undefined;
   if (!plugins) return null;
   const entries = plugins.entries as Record<string, unknown> | undefined;
@@ -571,7 +681,10 @@ type SlotActivationResult = {
   replaced: boolean;
 };
 
-function activateContextEngineSlot(configPath: string, force = false): SlotActivationResult {
+function activateContextEngineSlot(
+  configPath: string,
+  force = false,
+): SlotActivationResult {
   const config = readOpenClawConfig(configPath);
   if (!config.plugins) config.plugins = {};
   const plugins = config.plugins as Record<string, unknown>;
@@ -588,7 +701,11 @@ function activateContextEngineSlot(configPath: string, force = false): SlotActiv
 
   slots.contextEngine = "openviking";
   fs.writeFileSync(configPath, JSON.stringify(config, null, 2) + "\n", "utf-8");
-  return { activated: true, previousOwner: current || undefined, replaced: !!current };
+  return {
+    activated: true,
+    previousOwner: current || undefined,
+    replaced: !!current,
+  };
 }
 
 function isContextEngineSlotActive(configPath: string): boolean {
@@ -602,38 +719,77 @@ function isContextEngineSlotActive(configPath: string): boolean {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function registerSetupCli(api: any): void {
   if (!api.registerCli) {
-    api.logger.info("openviking: registerCli not available, setup command skipped");
+    api.logger.info(
+      "openviking: registerCli not available, setup command skipped",
+    );
     return;
   }
 
   api.registerCli(
     ({ program }: RegisterCliArgs) => {
-      const ovCmd = program.command("openviking").description("OpenViking plugin commands");
+      const ovCmd = program
+        .command("openviking")
+        .description("OpenViking plugin commands");
 
       ovCmd
         .command("setup")
-        .description("Setup OpenViking plugin (supports both interactive and non-interactive modes)")
+        .description(
+          "Setup OpenViking plugin (supports both interactive and non-interactive modes)",
+        )
         .option("--reconfigure", "Force re-entry of all configuration values")
         .option("--zh", "Chinese prompts")
-        .option("--base-url <url>", "OpenViking server URL (enables non-interactive mode)")
+        .option(
+          "--base-url <url>",
+          "OpenViking server URL (enables non-interactive mode)",
+        )
         .option("--api-key <key>", "API key for authentication")
-        .option("--peer-role <role>", "Memory scope: none (shared), assistant (per assistant), or sender (per sender); person is a legacy alias")
+        .option(
+          "--peer-role <role>",
+          "Memory scope: none (shared), assistant (per assistant), or sender (per sender); person is a legacy alias",
+        )
         .option("--peer-prefix <prefix>", "Prefix for assistant peer_id values")
         .option("--account-id <id>", "Account ID (required for root API keys)")
         .option("--user-id <id>", "User ID (required for root API keys)")
-        .option("--recall-target-types <types>", "Comma-separated recall target types: user, agent, resource")
-        .option("--allow-offline", "Allow config write even if server is unreachable")
-        .option("--force-slot", "Replace existing contextEngine slot even if owned by another plugin")
+        .option(
+          "--recall-target-types <types>",
+          "Comma-separated recall target types: user, agent, resource",
+        )
+        .option(
+          "--allow-offline",
+          "Allow config write even if server is unreachable",
+        )
+        .option(
+          "--force-slot",
+          "Replace existing contextEngine slot even if owned by another plugin",
+        )
         .option("--json", "Output result as JSON (machine-readable)")
         .action(async (...args: unknown[]) => {
           const options = (args[0] ?? {}) as Record<string, unknown>;
           const {
-            reconfigure, zh: zhOpt, baseUrl, apiKey, peerRole, peerPrefix,
-            accountId, userId, recallTargetTypes, allowOffline, forceSlot, json: jsonOpt,
+            reconfigure,
+            zh: zhOpt,
+            baseUrl,
+            apiKey,
+            peerRole,
+            peerPrefix,
+            accountId,
+            userId,
+            recallTargetTypes,
+            allowOffline,
+            forceSlot,
+            json: jsonOpt,
           } = options as {
-            reconfigure?: boolean; zh?: boolean; baseUrl?: string;
-            apiKey?: string; peerRole?: string; peerPrefix?: string; accountId?: string;
-            userId?: string; recallTargetTypes?: string; allowOffline?: boolean; forceSlot?: boolean;
+            reconfigure?: boolean;
+            zh?: boolean;
+            baseUrl?: string;
+            apiKey?: string;
+            peerRole?: string;
+            peerPrefix?: string;
+            accountId?: string;
+            userId?: string;
+            recallTargetTypes?: string;
+            allowOffline?: boolean;
+            forceSlot?: boolean;
             json?: boolean;
           };
           const zh = detectLangZh(options);
@@ -649,7 +805,8 @@ export function registerSetupCli(api: any): void {
               peerPrefix,
               accountId,
               userId,
-              recallTargetTypes: normalizeSetupRecallTargetTypes(recallTargetTypes),
+              recallTargetTypes:
+                normalizeSetupRecallTargetTypes(recallTargetTypes),
               allowOffline: !!allowOffline,
               forceSlot: !!forceSlot,
             });
@@ -675,47 +832,66 @@ export function registerSetupCli(api: any): void {
           }
 
           console.log("");
-          console.log(`🦣 ${tr(zh, "OpenViking Plugin Setup", "OpenViking 插件配置向导")}`);
+          console.log(
+            `🦣 ${tr(zh, "OpenViking Plugin Setup", "OpenViking 插件配置向导")}`,
+          );
           console.log("");
 
           const config = readOpenClawConfig(configPath);
           const existing = getExistingPluginConfig(config);
 
-          const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+          const rl = readline.createInterface({
+            input: process.stdin,
+            output: process.stdout,
+          });
           const q = (prompt: string, def = "") => ask(rl, prompt, def);
 
           try {
             if (existing && !reconfigure) {
               if (isLegacyLocalMode(existing)) {
-                console.log(tr(
-                  zh,
-                  "Existing configuration uses local mode, which is no longer supported.",
-                  "当前配置为本地模式，已不再支持。",
-                ));
-                console.log(tr(
-                  zh,
-                  "Run `openclaw openviking setup --reconfigure` to configure a remote OpenViking server.",
-                  "请运行 `openclaw openviking setup --reconfigure` 以配置远程 OpenViking 服务。",
-                ));
+                console.log(
+                  tr(
+                    zh,
+                    "Existing configuration uses local mode, which is no longer supported.",
+                    "当前配置为本地模式，已不再支持。",
+                  ),
+                );
+                console.log(
+                  tr(
+                    zh,
+                    "Run `openclaw openviking setup --reconfigure` to configure a remote OpenViking server.",
+                    "请运行 `openclaw openviking setup --reconfigure` 以配置远程 OpenViking 服务。",
+                  ),
+                );
                 console.log("");
                 return;
               }
 
-              console.log(tr(zh, "Existing configuration found:", "已找到现有配置："));
+              console.log(
+                tr(zh, "Existing configuration found:", "已找到现有配置："),
+              );
               console.log(`  mode:    ${existing.mode}`);
-              console.log(`  baseUrl: ${existing.baseUrl ?? DEFAULT_REMOTE_URL}`);
-              if (existing.apiKey) console.log(`  apiKey:  ${maskKey(String(existing.apiKey))}`);
+              console.log(
+                `  baseUrl: ${existing.baseUrl ?? DEFAULT_REMOTE_URL}`,
+              );
+              if (existing.apiKey)
+                console.log(`  apiKey:  ${maskKey(String(existing.apiKey))}`);
               console.log(`  peer_role: ${resolveExistingPeerRole(existing)}`);
               const existingPeerPrefix = resolveExistingPeerPrefix(existing);
-              if (existingPeerPrefix) console.log(`  peer_prefix: ${existingPeerPrefix}`);
+              if (existingPeerPrefix)
+                console.log(`  peer_prefix: ${existingPeerPrefix}`);
               console.log("");
-              console.log(tr(
-                zh,
-                "Press Enter to keep existing values, or use --reconfigure to change.",
-                "按 Enter 保留现有配置，或使用 --reconfigure 重新配置。",
-              ));
+              console.log(
+                tr(
+                  zh,
+                  "Press Enter to keep existing values, or use --reconfigure to change.",
+                  "按 Enter 保留现有配置，或使用 --reconfigure 重新配置。",
+                ),
+              );
               console.log("");
-              console.log(tr(zh, "✓ Using existing configuration", "✓ 使用现有配置"));
+              console.log(
+                tr(zh, "✓ Using existing configuration", "✓ 使用现有配置"),
+              );
               console.log("");
 
               await runRemoteCheck(zh, existing);
@@ -723,34 +899,48 @@ export function registerSetupCli(api: any): void {
               const slotResult = activateContextEngineSlot(configPath);
               printSlotResult(zh, slotResult);
 
-              console.log(tr(zh,
-                "✓ Plugin is ready. Run `openclaw gateway --force` to activate.",
-                "✓ 插件已就绪。运行 `openclaw gateway --force` 以激活。",
-              ));
+              console.log(
+                tr(
+                  zh,
+                  "✓ Plugin is ready. Run `openclaw gateway --force` to activate.",
+                  "✓ 插件已就绪。运行 `openclaw gateway --force` 以激活。",
+                ),
+              );
               console.log("");
               return;
             }
 
             if (existing && options.reconfigure) {
-              console.log(tr(zh, "Existing configuration found:", "已找到现有配置："));
+              console.log(
+                tr(zh, "Existing configuration found:", "已找到现有配置："),
+              );
               if (isLegacyLocalMode(existing)) {
-                console.log(tr(zh,
-                  "(Previous local-mode settings will be replaced with remote settings.)",
-                  "（将用远程模式设置替换此前的本地模式配置。）",
-                ));
+                console.log(
+                  tr(
+                    zh,
+                    "(Previous local-mode settings will be replaced with remote settings.)",
+                    "（将用远程模式设置替换此前的本地模式配置。）",
+                  ),
+                );
               } else {
                 console.log(`  mode:    ${existing.mode}`);
-                console.log(`  baseUrl: ${existing.baseUrl ?? DEFAULT_REMOTE_URL}`);
-                if (existing.apiKey) console.log(`  apiKey:  ${maskKey(String(existing.apiKey))}`);
+                console.log(
+                  `  baseUrl: ${existing.baseUrl ?? DEFAULT_REMOTE_URL}`,
+                );
+                if (existing.apiKey)
+                  console.log(`  apiKey:  ${maskKey(String(existing.apiKey))}`);
               }
               console.log("");
               console.log(tr(zh, "Reconfiguring...", "重新配置中..."));
               console.log("");
             } else {
-              console.log(tr(zh,
-                "No existing configuration found. Starting setup wizard.",
-                "未找到现有配置，开始配置向导。",
-              ));
+              console.log(
+                tr(
+                  zh,
+                  "No existing configuration found. Starting setup wizard.",
+                  "未找到现有配置，开始配置向导。",
+                ),
+              );
               console.log("");
             }
 
@@ -767,7 +957,10 @@ export function registerSetupCli(api: any): void {
         .option("--json", "Output result as JSON (machine-readable)")
         .action(async (...args: unknown[]) => {
           const options = (args[0] ?? {}) as Record<string, unknown>;
-          const { zh: zhOpt, json: jsonOpt } = options as { zh?: boolean; json?: boolean };
+          const { zh: zhOpt, json: jsonOpt } = options as {
+            zh?: boolean;
+            json?: boolean;
+          };
           const zh = detectLangZh(options);
           const configPath = path.join(OPENCLAW_DIR, "openclaw.json");
           const jsonMode = !!jsonOpt;
@@ -788,20 +981,29 @@ export function registerSetupCli(api: any): void {
 
 function printCompatibilityWarning(zh: boolean, health: HealthResult): void {
   if (health.compatibility === "server_too_old") {
-    console.log(`  ⚠ ${tr(zh,
-      `Server version ${health.version} is older than recommended (${health.compatRange}). Some features may not work. Please upgrade OpenViking server.`,
-      `服务端版本 ${health.version} 低于推荐范围（${health.compatRange}）。部分功能可能不可用，请升级 OpenViking 服务端。`,
-    )}`);
+    console.log(
+      `  ⚠ ${tr(
+        zh,
+        `Server version ${health.version} is older than recommended (${health.compatRange}). Some features may not work. Please upgrade OpenViking server.`,
+        `服务端版本 ${health.version} 低于推荐范围（${health.compatRange}）。部分功能可能不可用，请升级 OpenViking 服务端。`,
+      )}`,
+    );
   } else if (health.compatibility === "server_too_new") {
-    console.log(`  ⚠ ${tr(zh,
-      `Server version ${health.version} is newer than supported (${health.compatRange}). Please upgrade the OpenViking plugin.`,
-      `服务端版本 ${health.version} 高于插件支持范围（${health.compatRange}）。请升级 OpenViking 插件。`,
-    )}`);
+    console.log(
+      `  ⚠ ${tr(
+        zh,
+        `Server version ${health.version} is newer than supported (${health.compatRange}). Please upgrade the OpenViking plugin.`,
+        `服务端版本 ${health.version} 高于插件支持范围（${health.compatRange}）。请升级 OpenViking 插件。`,
+      )}`,
+    );
   } else if (health.compatibility === "unknown" && health.ok) {
-    console.log(`  ⚠ ${tr(zh,
-      "Could not determine server version. Compatibility check skipped.",
-      "无法获取服务端版本，已跳过兼容性检查。",
-    )}`);
+    console.log(
+      `  ⚠ ${tr(
+        zh,
+        "Could not determine server version. Compatibility check skipped.",
+        "无法获取服务端版本，已跳过兼容性检查。",
+      )}`,
+    );
   }
 }
 
@@ -812,14 +1014,24 @@ async function runRemoteCheck(
   const baseUrl = String(existing.baseUrl ?? DEFAULT_REMOTE_URL);
   const apiKey = existing.apiKey ? String(existing.apiKey) : undefined;
   const headers = nonEmptyOpenVikingRequestHeaders(existing.headers);
-  console.log(tr(zh, `Testing connectivity to ${baseUrl}...`, `正在测试连接 ${baseUrl}...`));
+  console.log(
+    tr(
+      zh,
+      `Testing connectivity to ${baseUrl}...`,
+      `正在测试连接 ${baseUrl}...`,
+    ),
+  );
   const health = await checkServiceHealth(baseUrl, apiKey, headers);
   if (health.ok) {
     const ver = health.version ? ` (version: ${health.version})` : "";
-    console.log(`  ✓ ${tr(zh, `Connected successfully${ver}`, `连接成功${ver}`)}`);
+    console.log(
+      `  ✓ ${tr(zh, `Connected successfully${ver}`, `连接成功${ver}`)}`,
+    );
     printCompatibilityWarning(zh, health);
   } else {
-    console.log(`  ✗ ${tr(zh, `Connection failed: ${health.error}`, `连接失败: ${health.error}`)}`);
+    console.log(
+      `  ✗ ${tr(zh, `Connection failed: ${health.error}`, `连接失败: ${health.error}`)}`,
+    );
   }
   console.log("");
 }
@@ -839,11 +1051,22 @@ async function setupNonInteractive(
   },
 ): Promise<SetupResult> {
   try {
-    const { baseUrl, apiKey, peerPrefix, accountId, userId, recallTargetTypes, allowOffline, forceSlot } = params;
+    const {
+      baseUrl,
+      apiKey,
+      peerPrefix,
+      accountId,
+      userId,
+      recallTargetTypes,
+      allowOffline,
+      forceSlot,
+    } = params;
     const resolvedPeerRole = resolveSetupPeerRole(params.peerRole);
     const resolvedPeerPrefix = (peerPrefix ?? "").trim();
     if (!isValidPeerPrefixInput(resolvedPeerPrefix)) {
-      throw new Error("peer_prefix may only contain letters, digits, underscores, and hyphens, or be empty");
+      throw new Error(
+        "peer_prefix may only contain letters, digits, underscores, and hyphens, or be empty",
+      );
     }
 
     // Phase 1: validate connectivity and key type BEFORE writing config
@@ -860,7 +1083,9 @@ async function setupNonInteractive(
       };
     }
 
-    const keyProbe = health.ok ? await probeApiKeyType(baseUrl, apiKey) : undefined;
+    const keyProbe = health.ok
+      ? await probeApiKeyType(baseUrl, apiKey)
+      : undefined;
 
     if (keyProbe?.keyType === "root_key" && (!accountId || !userId)) {
       const missing: string[] = [];
@@ -877,7 +1102,7 @@ async function setupNonInteractive(
         health,
         keyProbe,
         slot: { activated: false, replaced: false },
-        error: `Root API key detected. Missing: ${missing.join(", ")}. Re-run with: ${missing.map(f => `${f} <value>`).join(" ")}`,
+        error: `Root API key detected. Missing: ${missing.join(", ")}. Re-run with: ${missing.map((f) => `${f} <value>`).join(" ")}`,
       };
     }
 
@@ -907,7 +1132,9 @@ async function setupNonInteractive(
           ...(resolvedPeerPrefix ? { peer_prefix: resolvedPeerPrefix } : {}),
           ...(accountId ? { accountId } : {}),
           ...(userId ? { userId } : {}),
-          ...(recallTargetTypes && recallTargetTypes.length > 0 ? { recallTargetTypes } : {}),
+          ...(recallTargetTypes && recallTargetTypes.length > 0
+            ? { recallTargetTypes }
+            : {}),
         },
         health,
         keyProbe,
@@ -927,7 +1154,9 @@ async function setupNonInteractive(
         ...(resolvedPeerPrefix ? { peer_prefix: resolvedPeerPrefix } : {}),
         ...(accountId ? { accountId } : {}),
         ...(userId ? { userId } : {}),
-        ...(recallTargetTypes && recallTargetTypes.length > 0 ? { recallTargetTypes } : {}),
+        ...(recallTargetTypes && recallTargetTypes.length > 0
+          ? { recallTargetTypes }
+          : {}),
       },
       health,
       keyProbe,
@@ -946,35 +1175,55 @@ async function setupNonInteractive(
 function printSetupResult(zh: boolean, result: SetupResult): void {
   console.log("");
   if (result.success) {
-    console.log(`🦣 ${tr(zh, "OpenViking Plugin Setup Complete", "OpenViking 插件配置完成")}`);
+    console.log(
+      `🦣 ${tr(zh, "OpenViking Plugin Setup Complete", "OpenViking 插件配置完成")}`,
+    );
     console.log("");
     if (result.config) {
       console.log(`  mode:    ${result.config.mode}`);
       console.log(`  baseUrl: ${result.config.baseUrl}`);
-      if (result.config.apiKey) console.log(`  apiKey:  ${result.config.apiKey}`);
-      console.log(`  peer_role: ${result.config.peer_role ?? DEFAULT_SETUP_PEER_ROLE}`);
-      if (result.config.peer_prefix) console.log(`  peer_prefix: ${result.config.peer_prefix}`);
-      if (result.config.accountId) console.log(`  accountId: ${result.config.accountId}`);
-      if (result.config.userId) console.log(`  userId:  ${result.config.userId}`);
-      if (result.config.recallTargetTypes) console.log(`  recallTargetTypes: ${result.config.recallTargetTypes.join(",")}`);
+      if (result.config.apiKey)
+        console.log(`  apiKey:  ${result.config.apiKey}`);
+      console.log(
+        `  peer_role: ${result.config.peer_role ?? DEFAULT_SETUP_PEER_ROLE}`,
+      );
+      if (result.config.peer_prefix)
+        console.log(`  peer_prefix: ${result.config.peer_prefix}`);
+      if (result.config.accountId)
+        console.log(`  accountId: ${result.config.accountId}`);
+      if (result.config.userId)
+        console.log(`  userId:  ${result.config.userId}`);
+      if (result.config.recallTargetTypes)
+        console.log(
+          `  recallTargetTypes: ${result.config.recallTargetTypes.join(",")}`,
+        );
     }
     console.log("");
     if (result.health?.ok) {
-      const ver = result.health.version ? ` (version: ${result.health.version})` : "";
-      console.log(`  ✓ ${tr(zh, `Connected successfully${ver}`, `连接成功${ver}`)}`);
+      const ver = result.health.version
+        ? ` (version: ${result.health.version})`
+        : "";
+      console.log(
+        `  ✓ ${tr(zh, `Connected successfully${ver}`, `连接成功${ver}`)}`,
+      );
       printCompatibilityWarning(zh, result.health);
     } else if (result.health) {
-      console.log(`  ✗ ${tr(zh, `Connection failed: ${result.health.error}`, `连接失败: ${result.health.error}`)}`);
+      console.log(
+        `  ✗ ${tr(zh, `Connection failed: ${result.health.error}`, `连接失败: ${result.health.error}`)}`,
+      );
     }
     if (result.keyProbe) {
       printKeyProbeWarning(zh, result.keyProbe);
     }
     printSlotResult(zh, result.slot);
     console.log("");
-    console.log(tr(zh,
-      "Run `openclaw gateway --force` to activate the plugin.",
-      "运行 `openclaw gateway --force` 以激活插件。",
-    ));
+    console.log(
+      tr(
+        zh,
+        "Run `openclaw gateway --force` to activate the plugin.",
+        "运行 `openclaw gateway --force` 以激活插件。",
+      ),
+    );
   } else {
     console.log(`✗ ${tr(zh, "Setup failed", "配置失败")}: ${result.error}`);
     if (result.keyProbe?.keyType === "root_key") {
@@ -997,7 +1246,9 @@ async function getStatus(configPath: string): Promise<StatusResult> {
   const apiKey = existing.apiKey ? String(existing.apiKey) : undefined;
   const headers = nonEmptyOpenVikingRequestHeaders(existing.headers);
   const health = await checkServiceHealth(baseUrl, apiKey, headers);
-  const keyProbe = health.ok ? await probeApiKeyType(baseUrl, apiKey, headers) : undefined;
+  const keyProbe = health.ok
+    ? await probeApiKeyType(baseUrl, apiKey, headers)
+    : undefined;
 
   const peerPrefix = resolveExistingPeerPrefix(existing);
   return {
@@ -1019,49 +1270,70 @@ async function getStatus(configPath: string): Promise<StatusResult> {
 
 function printSlotResult(zh: boolean, slot: SlotActivationResult): void {
   if (slot.activated && slot.replaced) {
-    console.log(`  ⚠ ${tr(zh,
-      `Replaced context-engine slot: ${slot.previousOwner} → openviking`,
-      `已替换 context-engine 插槽: ${slot.previousOwner} → openviking`,
-    )}`);
+    console.log(
+      `  ⚠ ${tr(
+        zh,
+        `Replaced context-engine slot: ${slot.previousOwner} → openviking`,
+        `已替换 context-engine 插槽: ${slot.previousOwner} → openviking`,
+      )}`,
+    );
   } else if (slot.activated) {
-    console.log(`  ✓ ${tr(zh, "Activated context-engine slot: openviking", "已激活 context-engine 插槽: openviking")}`);
+    console.log(
+      `  ✓ ${tr(zh, "Activated context-engine slot: openviking", "已激活 context-engine 插槽: openviking")}`,
+    );
   } else if (slot.previousOwner && slot.previousOwner !== "openviking") {
-    console.log(`  ⚠ ${tr(zh,
-      `Context-engine slot is owned by "${slot.previousOwner}". Run: openclaw config set plugins.slots.contextEngine openviking`,
-      `context-engine 插槽当前由 "${slot.previousOwner}" 占用。运行: openclaw config set plugins.slots.contextEngine openviking`,
-    )}`);
+    console.log(
+      `  ⚠ ${tr(
+        zh,
+        `Context-engine slot is owned by "${slot.previousOwner}". Run: openclaw config set plugins.slots.contextEngine openviking`,
+        `context-engine 插槽当前由 "${slot.previousOwner}" 占用。运行: openclaw config set plugins.slots.contextEngine openviking`,
+      )}`,
+    );
   }
 }
 
 function printKeyProbeWarning(zh: boolean, probe: ApiKeyProbeResult): void {
   if (probe.keyType === "root_key") {
-    console.log(`  ⚠ ${tr(zh,
-      "Root API key detected. accountId and userId are required for this key type.",
-      "检测到 Root API Key，此类型密钥需要提供 accountId 和 userId。",
-    )}`);
+    console.log(
+      `  ⚠ ${tr(
+        zh,
+        "Root API key detected. accountId and userId are required for this key type.",
+        "检测到 Root API Key，此类型密钥需要提供 accountId 和 userId。",
+      )}`,
+    );
     if (probe.needsAccountId) {
-      console.log(`    ${tr(zh,
-        "→ Missing: accountId (use --account-id or set in config)",
-        "→ 缺少: accountId（使用 --account-id 或在配置中设置）",
-      )}`);
+      console.log(
+        `    ${tr(
+          zh,
+          "→ Missing: accountId (use --account-id or set in config)",
+          "→ 缺少: accountId（使用 --account-id 或在配置中设置）",
+        )}`,
+      );
     }
     if (probe.needsUserId) {
-      console.log(`    ${tr(zh,
-        "→ Missing: userId (use --user-id or set in config)",
-        "→ 缺少: userId（使用 --user-id 或在配置中设置）",
-      )}`);
+      console.log(
+        `    ${tr(
+          zh,
+          "→ Missing: userId (use --user-id or set in config)",
+          "→ 缺少: userId（使用 --user-id 或在配置中设置）",
+        )}`,
+      );
     }
   }
 }
 
 function printStatus(zh: boolean, result: StatusResult): void {
   console.log("");
-  console.log(`🦣 ${tr(zh, "OpenViking Plugin Status", "OpenViking 插件状态")}`);
+  console.log(
+    `🦣 ${tr(zh, "OpenViking Plugin Status", "OpenViking 插件状态")}`,
+  );
   console.log("");
 
   if (!result.configured) {
     console.log(`  ${tr(zh, "Status: Not configured", "状态: 未配置")}`);
-    console.log(`  ${tr(zh, "Run `openclaw openviking setup` to configure.", "运行 `openclaw openviking setup` 进行配置。")}`);
+    console.log(
+      `  ${tr(zh, "Run `openclaw openviking setup` to configure.", "运行 `openclaw openviking setup` 进行配置。")}`,
+    );
     console.log("");
     return;
   }
@@ -1072,19 +1344,26 @@ function printStatus(zh: boolean, result: StatusResult): void {
     console.log(`  baseUrl:   ${result.config.baseUrl}`);
     console.log(`  apiKey:    ${result.config.hasApiKey ? "set" : "not set"}`);
     console.log(`  peer_role: ${result.config.peer_role}`);
-    if (result.config.peer_prefix) console.log(`  peer_prefix: ${result.config.peer_prefix}`);
-    console.log(`  accountId: ${result.config.hasAccountId ? "set" : "not set"}`);
+    if (result.config.peer_prefix)
+      console.log(`  peer_prefix: ${result.config.peer_prefix}`);
+    console.log(
+      `  accountId: ${result.config.hasAccountId ? "set" : "not set"}`,
+    );
     console.log(`  userId:    ${result.config.hasUserId ? "set" : "not set"}`);
   }
   console.log(`  slot:      ${result.slotActive ? "active" : "inactive"}`);
   console.log("");
 
   if (result.health?.ok) {
-    const ver = result.health.version ? ` (version: ${result.health.version})` : "";
+    const ver = result.health.version
+      ? ` (version: ${result.health.version})`
+      : "";
     console.log(`  ✓ ${tr(zh, `Server reachable${ver}`, `服务器可达${ver}`)}`);
     printCompatibilityWarning(zh, result.health);
   } else if (result.health) {
-    console.log(`  ✗ ${tr(zh, `Server unreachable: ${result.health.error}`, `服务器不可达: ${result.health.error}`)}`);
+    console.log(
+      `  ✗ ${tr(zh, `Server unreachable: ${result.health.error}`, `服务器不可达: ${result.health.error}`)}`,
+    );
   }
 
   if (result.keyProbe) {
@@ -1103,55 +1382,95 @@ async function setupRemote(
   console.log(tr(zh, "── Remote Mode Configuration ──", "── 远程模式配置 ──"));
   console.log("");
 
-  const defaultUrl = existing?.baseUrl && String(existing.baseUrl).trim()
-    ? String(existing.baseUrl)
-    : DEFAULT_REMOTE_URL;
+  const defaultUrl =
+    existing?.baseUrl && String(existing.baseUrl).trim()
+      ? String(existing.baseUrl)
+      : DEFAULT_REMOTE_URL;
   const defaultApiKey = existing?.apiKey ? String(existing.apiKey) : "";
   const defaultPeerRole = resolveExistingPeerRole(existing);
   const defaultPeerPrefix = resolveExistingPeerPrefix(existing);
   const headers = nonEmptyOpenVikingRequestHeaders(existing?.headers);
 
-  const baseUrl = await q(tr(zh, "OpenViking server URL", "OpenViking 服务器地址"), defaultUrl);
-  const apiKey = await q(tr(zh, "API Key (optional)", "API Key（可选）"), defaultApiKey);
+  const baseUrl = await q(
+    tr(zh, "OpenViking server URL", "OpenViking 服务器地址"),
+    defaultUrl,
+  );
+  const apiKey = await q(
+    tr(zh, "API Key (optional)", "API Key（可选）"),
+    defaultApiKey,
+  );
 
   let accountId = existing?.accountId ? String(existing.accountId) : "";
   let userId = existing?.userId ? String(existing.userId) : "";
 
   if (apiKey) {
-    console.log(tr(zh, "  Detecting API key type...", "  正在检测 API Key 类型..."));
+    console.log(
+      tr(zh, "  Detecting API key type...", "  正在检测 API Key 类型..."),
+    );
     const probe = await probeApiKeyType(baseUrl, apiKey, headers);
     if (probe.keyType === "root_key") {
-      console.log(tr(zh,
-        "  ⚠ Root API key detected. accountId and userId are required.",
-        "  ⚠ 检测到 Root API Key，需要提供 accountId 和 userId。",
-      ));
-      accountId = await q(tr(zh, "Account ID (required for root key)", "Account ID（root key 必填）"), accountId);
-      userId = await q(tr(zh, "User ID (required for root key)", "User ID（root key 必填）"), userId);
+      console.log(
+        tr(
+          zh,
+          "  ⚠ Root API key detected. accountId and userId are required.",
+          "  ⚠ 检测到 Root API Key，需要提供 accountId 和 userId。",
+        ),
+      );
+      accountId = await q(
+        tr(
+          zh,
+          "Account ID (required for root key)",
+          "Account ID（root key 必填）",
+        ),
+        accountId,
+      );
+      userId = await q(
+        tr(zh, "User ID (required for root key)", "User ID（root key 必填）"),
+        userId,
+      );
     } else if (probe.keyType === "user_key") {
       console.log(tr(zh, "  ✓ User key verified", "  ✓ User key 已验证"));
     }
   }
 
   const peerRole = await askPeerRole(zh, q, defaultPeerRole);
-  const peerPrefix = peerRole === "assistant"
-    ? await askPeerPrefix(zh, q, defaultPeerPrefix)
-    : "";
+  const peerPrefix =
+    peerRole === "assistant"
+      ? await askPeerPrefix(zh, q, defaultPeerPrefix)
+      : "";
 
   console.log("");
 
-  console.log(tr(zh, `Testing connectivity to ${baseUrl}...`, `正在测试连接 ${baseUrl}...`));
-  const health = await checkServiceHealth(baseUrl, apiKey || undefined, headers);
+  console.log(
+    tr(
+      zh,
+      `Testing connectivity to ${baseUrl}...`,
+      `正在测试连接 ${baseUrl}...`,
+    ),
+  );
+  const health = await checkServiceHealth(
+    baseUrl,
+    apiKey || undefined,
+    headers,
+  );
   if (health.ok) {
     const ver = health.version ? ` (version: ${health.version})` : "";
-    console.log(`  ✓ ${tr(zh, `Connected successfully${ver}`, `连接成功${ver}`)}`);
+    console.log(
+      `  ✓ ${tr(zh, `Connected successfully${ver}`, `连接成功${ver}`)}`,
+    );
     printCompatibilityWarning(zh, health);
   } else {
-    console.log(`  ✗ ${tr(zh, `Connection failed: ${health.error}`, `连接失败: ${health.error}`)}`);
+    console.log(
+      `  ✗ ${tr(zh, `Connection failed: ${health.error}`, `连接失败: ${health.error}`)}`,
+    );
     console.log("");
-    console.log(tr(zh,
-      "  The configuration will still be saved. Make sure the server is reachable\n  before starting the gateway.",
-      "  配置仍会保存。请确保服务器在启动 gateway 前可达。",
-    ));
+    console.log(
+      tr(
+        zh,
+        "  The configuration will still be saved. Make sure the server is reachable\n  before starting the gateway.",
+        "  配置仍会保存。请确保服务器在启动 gateway 前可达。",
+      ),
+    );
   }
   console.log("");
 
@@ -1184,10 +1503,13 @@ async function setupRemote(
   if (userId) console.log(`  userId:  ${userId}`);
   printSlotResult(zh, slotResult);
   console.log("");
-  console.log(tr(zh,
-    "Run `openclaw gateway --force` to activate the plugin.",
-    "运行 `openclaw gateway --force` 以激活插件。",
-  ));
+  console.log(
+    tr(
+      zh,
+      "Run `openclaw gateway --force` to activate the plugin.",
+      "运行 `openclaw gateway --force` 以激活插件。",
+    ),
+  );
   console.log("");
 }
 

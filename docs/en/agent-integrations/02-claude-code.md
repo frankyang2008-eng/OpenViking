@@ -80,7 +80,7 @@ Tool calls and results are captured as dedicated `tool` parts, and `tool_output`
 Configuration priority: Environment variables > `ovcli.conf` > `ov.conf` > Built-in defaults (`http://127.0.0.1:1933`, no authentication).
 
 | Env Var | Default | Description |
-|---------|---------|-------------|
+| --------- | --------- | ------------- |
 | `OPENVIKING_AUTO_RECALL` | `true` | Auto-recall on every user prompt |
 | `OPENVIKING_RECALL_LIMIT` | `10` | Legacy width override converted to per-category coding quotas |
 | `OPENVIKING_RECALL_TOKEN_BUDGET` | `2000` | Inline token budget for the final raw-find fallback |
@@ -109,7 +109,7 @@ The plugin renders an OpenViking status indicator beneath your Claude Code input
 ## Troubleshooting
 
 | Issue | Cause | Solution |
-|---------|-------|-----|
+| --------- | ------- | ----- |
 | Plugin is not activating | Missing `ov.conf` or `ovcli.conf` | Run the [installer](#install), or set `OPENVIKING_MEMORY_ENABLED=1` along with the URL/API_KEY environment variables |
 | Hooks fire but recall is empty | Server is not running or the URL is incorrect | Check server health: `curl "$(jq -r '.url' ~/.openviking/ovcli.conf)/health"` |
 | MCP tools hit `127.0.0.1` instead of the remote server | `~/.openviking/ovcli.conf` has no `url` (the proxy falls back to the local default) | Fix `ovcli.conf` (or run `node <plugin-dir>/scripts/setup.mjs`), then restart Claude Code |

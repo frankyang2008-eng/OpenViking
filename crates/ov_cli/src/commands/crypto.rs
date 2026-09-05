@@ -49,12 +49,11 @@ async fn handle_init_key(output_file: Option<PathBuf>) -> Result<()> {
     }
 
     // Create parent directory if it doesn't exist
-    if let Some(parent) = key_path.parent() {
-        if !parent.exists() {
+    if let Some(parent) = key_path.parent()
+        && !parent.exists() {
             std::fs::create_dir_all(parent)
                 .map_err(|e| Error::Client(format!("Failed to create directory: {}", e)))?;
         }
-    }
 
     // Generate 32-byte random key
     let mut key = vec![0u8; 32];

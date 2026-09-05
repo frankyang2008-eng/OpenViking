@@ -87,8 +87,14 @@ function tryLoadJsonFile(envVar, defaultPath) {
  * Resolution: env vars → ovcli.conf → ov.conf → defaults.
  */
 export function loadConfig() {
-  const ovConf = tryLoadJsonFile("OPENVIKING_CONFIG_FILE", DEFAULT_OV_CONF_PATH);
-  const cliConf = tryLoadJsonFile("OPENVIKING_CLI_CONFIG_FILE", DEFAULT_OVCLI_CONF_PATH);
+  const ovConf = tryLoadJsonFile(
+    "OPENVIKING_CONFIG_FILE",
+    DEFAULT_OV_CONF_PATH,
+  );
+  const cliConf = tryLoadJsonFile(
+    "OPENVIKING_CLI_CONFIG_FILE",
+    DEFAULT_OVCLI_CONF_PATH,
+  );
 
   const ovFile = ovConf?.file || {};
   const cliFile = cliConf?.file || {};
@@ -97,7 +103,9 @@ export function loadConfig() {
   const server = ovFile.server || {};
 
   // baseUrl: env → ovcli.url → ov.server.url → http://{host}:{port}
-  const envUrl = str(process.env.OPENVIKING_URL, null) || str(process.env.OPENVIKING_BASE_URL, null);
+  const envUrl =
+    str(process.env.OPENVIKING_URL, null) ||
+    str(process.env.OPENVIKING_BASE_URL, null);
   let baseUrl;
   if (envUrl) {
     baseUrl = envUrl.replace(/\/+$/, "");
@@ -113,26 +121,32 @@ export function loadConfig() {
 
   // apiKey: env → ovcli.api_key → ov.server.root_api_key
   // Accepts OPENVIKING_BEARER_TOKEN or OPENVIKING_API_KEY (sent as Bearer either way).
-  const apiKey = str(process.env.OPENVIKING_BEARER_TOKEN, null)
-    || str(process.env.OPENVIKING_API_KEY, null)
-    || str(cliFile.api_key, null)
-    || str(server.root_api_key, "");
+  const apiKey =
+    str(process.env.OPENVIKING_BEARER_TOKEN, null) ||
+    str(process.env.OPENVIKING_API_KEY, null) ||
+    str(cliFile.api_key, null) ||
+    str(server.root_api_key, "");
 
-  const accountId = str(process.env.OPENVIKING_ACCOUNT, null)
-    || str(cliFile.account, "");
+  const accountId =
+    str(process.env.OPENVIKING_ACCOUNT, null) || str(cliFile.account, "");
 
-  const userId = str(process.env.OPENVIKING_USER, null)
-    || str(cliFile.user, "");
+  const userId =
+    str(process.env.OPENVIKING_USER, null) || str(cliFile.user, "");
 
   const peerId = str(process.env.OPENVIKING_PEER_ID, "");
 
-  const timeoutMs = Math.max(1000, Math.floor(num(
-    process.env.OPENVIKING_TIMEOUT_MS,
-    15000,
-  )));
+  const timeoutMs = Math.max(
+    1000,
+    Math.floor(num(process.env.OPENVIKING_TIMEOUT_MS, 15000)),
+  );
 
   const debug = envBool("OPENVIKING_DEBUG") ?? false;
-  const defaultLogPath = join(homedir(), ".openviking", "logs", "agent-plugins.log");
+  const defaultLogPath = join(
+    homedir(),
+    ".openviking",
+    "logs",
+    "agent-plugins.log",
+  );
   const debugLogPath = str(process.env.OPENVIKING_DEBUG_LOG, defaultLogPath);
 
   return {

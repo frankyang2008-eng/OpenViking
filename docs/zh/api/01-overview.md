@@ -50,7 +50,7 @@ defer client.CloseIdleConnections()
 Go SDK 发送的身份请求头与 Python HTTP client 一致：
 
 | Config 字段 | HTTP Header |
-|-------------|-------------|
+| ------------- | ------------- |
 | `APIKey` | `X-API-Key` |
 | `Account` | `X-OpenViking-Account` |
 | `User` | `X-OpenViking-User` |
@@ -105,7 +105,7 @@ export OPENVIKING_CLI_CONFIG_FILE=/path/to/ovcli.conf
 配置字段说明：
 
 | 字段 | 说明 | 默认值 |
-|------|------|--------|
+| ------ | ------ | -------- |
 | `url` | 服务端地址 | （必填） |
 | `api_key` | API Key | `null`（无认证） |
 | `account` | 租户级请求的默认账户请求头 | `null` |
@@ -132,6 +132,7 @@ client.initialize()
 ```
 
 ⚠️ **注意**：只要以下任一条件满足，客户端就会尝试加载配置文件：
+
 - `url` 为 `None`
 - `api_key` 为 `None`
 - `timeout` 等于 `600.0`（默认值）
@@ -298,7 +299,7 @@ JSON 输出 - 错误：
 **注：退出码是 CLI（命令行工具）的返回码，不是 HTTP API 的状态码。**
 
 | 退出码 | 说明 | 触发场景 |
-|--------|------|----------|
+| -------- | ------ | ---------- |
 | 0 | 成功 | 命令执行成功 |
 | 1 | 一般错误 | 命令执行失败（如 API 调用失败、网络错误、找不到二进制文件等） |
 | 2 | 配置错误 | 无法加载 `ovcli.conf` 配置文件、`--sudo` 需要 `root_api_key` 但未配置、`--sudo` 用于非管理员命令 |
@@ -307,7 +308,7 @@ JSON 输出 - 错误：
 ## 错误码
 
 | 错误码 | HTTP 状态码 | 说明 |
-|--------|-------------|------|
+| -------- | ------------- | ------ |
 | `OK` | 200 | 成功 |
 | `INVALID_ARGUMENT` | 400 | 无效参数 |
 | `INVALID_URI` | 400 | 无效的 Viking URI 格式 |
@@ -337,7 +338,7 @@ JSON 输出 - 错误：
 ### [系统状态](07-system.md)
 
 | 方法 | 路径 | 说明 |
-|------|------|------|
+| ------ | ------ | ------ |
 | GET | `/health` | 基础健康检查（无需认证） |
 | GET | `/ready` | AGFS、VectorDB 和 API Key 管理器就绪检查（无需认证） |
 | GET | `/api/v1/system/status` | 系统状态 |
@@ -351,7 +352,7 @@ JSON 输出 - 错误：
 ### [资源](02-resources.md)与[文件系统](03-filesystem.md)
 
 | 方法 | 路径 | 说明 |
-|------|------|------|
+| ------ | ------ | ------ |
 | POST | `/api/v1/resources/temp_upload` | 上传后续导入所需的临时文件 |
 | POST | `/api/v1/resources` | 从 URL 或临时文件添加资源 |
 | GET | `/api/v1/fs/ls` | 列出目录 |
@@ -367,7 +368,7 @@ JSON 输出 - 错误：
 ### [ACL](12-acl.md)
 
 | 方法 | 路径 | 说明 |
-|------|------|------|
+| ------ | ------ | ------ |
 | GET | `/api/v1/acl` | 获取资源的直接、继承和有效 ACL |
 | PUT | `/api/v1/acl` | 替换资源的直接 ACL |
 | DELETE | `/api/v1/acl` | 清空资源的直接 ACL |
@@ -377,7 +378,7 @@ JSON 输出 - 错误：
 ### [内容](12-content.md)
 
 | 方法 | 路径 | 说明 |
-|------|------|------|
+| ------ | ------ | ------ |
 | GET | `/api/v1/content/read` | 读取完整内容（L2） |
 | GET | `/api/v1/content/abstract` | 读取摘要（L0） |
 | GET | `/api/v1/content/overview` | 读取概览（L1） |
@@ -390,7 +391,7 @@ JSON 输出 - 错误：
 ### [技能](04-skills.md)
 
 | 方法 | 路径 | 说明 |
-|------|------|------|
+| ------ | ------ | ------ |
 | GET | `/api/v1/skills` | 列出技能 |
 | POST | `/api/v1/skills` | 添加技能 |
 | POST | `/api/v1/skills/find` | 搜索技能 |
@@ -402,7 +403,7 @@ JSON 输出 - 错误：
 ### [会话](05-sessions.md)、[记忆](16-memory.md)与 [Agent 进化](19-agent-evolution.md)
 
 | 方法 | 路径 | 说明 |
-|------|------|------|
+| ------ | ------ | ------ |
 | POST | `/api/v1/sessions` | 创建会话 |
 | GET | `/api/v1/sessions` | 列出会话 |
 | GET | `/api/v1/sessions/{session_id}` | 获取会话 |
@@ -425,7 +426,7 @@ JSON 输出 - 错误：
 ### [检索](06-retrieval.md)
 
 | 方法 | 路径 | 说明 |
-|------|------|------|
+| ------ | ------ | ------ |
 | POST | `/api/v1/search/find` | 语义搜索 |
 | POST | `/api/v1/search/search` | 上下文感知搜索；`mode="context"` 返回可注入的组装上下文 |
 | POST | `/api/v1/search/grep` | 内容模式搜索 |
@@ -434,7 +435,7 @@ JSON 输出 - 错误：
 ### [Watch](15-watches.md)、[快照](11-snapshot.md)与 [OVPack](14-ovpack.md)
 
 | 方法 | 路径 | 说明 |
-|------|------|------|
+| ------ | ------ | ------ |
 | GET | `/api/v1/watches` | 列出 watch，或按 `to_uri` 查询 |
 | GET | `/api/v1/watches/{task_id}` | 按任务 ID 获取 watch |
 | PATCH | `/api/v1/watches` | 按 `to_uri` 更新 watch |
@@ -459,7 +460,7 @@ JSON 输出 - 错误：
 ### [后台任务](17-tasks.md)、[运行观测](18-observer.md)与 [Metrics](09-metrics.md)
 
 | 方法 | 路径 | 说明 |
-|------|------|------|
+| ------ | ------ | ------ |
 | GET | `/api/v1/tasks/{task_id}` | 获取后台任务 |
 | POST | `/api/v1/tasks/{task_id}/cancel` | 取消后台任务 |
 | GET | `/api/v1/tasks` | 列出后台任务 |
@@ -475,7 +476,7 @@ JSON 输出 - 错误：
 ### [管理员](08-admin.md)与[隐私配置](10-privacy.md)
 
 | 方法 | 路径 | 说明 |
-|------|------|------|
+| ------ | ------ | ------ |
 | GET | `/api/v1/admin/agent-evolution` | 获取调用方 account 的 Agent 进化状态 |
 | PUT | `/api/v1/admin/agent-evolution` | 更新调用方 account 的 Agent 进化状态 |
 | GET | `/api/v1/admin/accounts/{account_id}/settings` | 获取 account 生效配置 |
@@ -508,7 +509,7 @@ JSON 输出 - 错误：
 ### [OpenViking Assets](22-openviking-assets.md)、[WebDAV](20-webdav.md) 与 [VikingBot API](24-vikingbot.md)
 
 | 方法 | 路径 | 说明 |
-|------|------|------|
+| ------ | ------ | ------ |
 | POST | `/api/v1/openviking-assets/resolve` | 解析并校验 Catalog 与 Manifest，返回标准化资产计划 |
 | POST | `/api/v1/openviking-assets/preflight` | 只读校验 Git 仓库和 ref 的访问权限 |
 | OPTIONS | `/webdav/resources`、`/webdav/resources/{resource_path}` | 查询 WebDAV 能力 |
@@ -533,7 +534,7 @@ JSON 输出 - 错误：
 左侧导航按职责而不是按历史文件体积组织：
 
 | 分组 | 适合查找的内容 |
-|------|----------------|
+| ------ | ---------------- |
 | 核心数据 | 资源、内容、文件系统、技能、会话、记忆 |
 | 检索 | 语义检索、代码检索 |
 | 数据生命周期 | Watch、快照、OVPack |

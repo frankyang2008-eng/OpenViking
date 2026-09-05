@@ -258,9 +258,7 @@ class TestOpenVikingVectorDB(unittest.TestCase):
         index = collection.get_index("idx_filters")
         previous_version = index.get_newest_version()
         collection.update(
-            fields=[
-                {"FieldName": "schema_flag", "FieldType": "bool", "DefaultValue": False}
-            ]
+            fields=[{"FieldName": "schema_flag", "FieldType": "bool", "DefaultValue": False}]
         )
         collection.update_index(
             "idx_filters",

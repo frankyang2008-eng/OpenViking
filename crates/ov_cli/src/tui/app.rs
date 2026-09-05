@@ -193,7 +193,7 @@ impl App {
 
     async fn load_file_content(&mut self, uri: &str) {
         // Check if this is an image file
-        let filename = uri.split('/').last().unwrap_or("");
+        let filename = uri.split('/').next_back().unwrap_or("");
         if image_preview::is_image_file(filename) {
             // Don't load image automatically - just show prompt
             self.pending_image_uri = Some((uri.to_string(), filename.to_string()));
@@ -338,7 +338,7 @@ impl App {
 
     pub fn set_status_message(&mut self, message: String) {
         if self.status_message_locked {
-            let message = format!("Error: Cannot set status message while locked");
+            let message = "Error: Cannot set status message while locked".to_string();
             self.set_error_message(message);
             return;
         }
@@ -348,21 +348,18 @@ impl App {
 
     pub fn update_messages(&mut self) {
         // Don't clear status message if locked
-        if !self.status_message_locked {
-            if let Some(time) = self.status_message_time {
-                if time.elapsed().as_secs() >= 3 {
+        if !self.status_message_locked
+            && let Some(time) = self.status_message_time
+                && time.elapsed().as_secs() >= 3 {
                     self.status_message.clear();
                     self.status_message_time = None;
                 }
-            }
-        }
 
-        if let Some(time) = self.error_message_time {
-            if time.elapsed().as_secs() >= 3 {
+        if let Some(time) = self.error_message_time
+            && time.elapsed().as_secs() >= 3 {
                 self.error_message.clear();
                 self.error_message_time = None;
             }
-        }
     }
 
     /// Clear confirmation and unlock status message in a single operation

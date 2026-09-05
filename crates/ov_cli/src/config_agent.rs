@@ -918,11 +918,10 @@ fn validate_optional_actor_peer_id(actor_peer_id: Option<&str>) -> AgentResult<(
 }
 
 fn validation_error(kind: ConfigKind, error: Error) -> AgentError {
-    if error.code() == "UNAUTHENTICATED" {
-        if let Error::Api { message, .. } = error {
+    if error.code() == "UNAUTHENTICATED"
+        && let Error::Api { message, .. } = error {
             return AgentError::auth(message);
         }
-    }
 
     match error {
         Error::Api { message, .. } => AgentError::validation(message),

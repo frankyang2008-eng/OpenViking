@@ -351,10 +351,9 @@ async def test_list_can_hide_internal_tasks_before_limit(tracker: TaskTracker):
     internal = await tracker.create("add_resource", meta={"internal": True}, **_owner_kwargs())
 
     assert [task.task_id for task in await tracker.list_tasks(limit=1)] == [internal.task_id]
-    assert [
-        task.task_id
-        for task in await tracker.list_tasks(limit=1, include_internal=False)
-    ] == [visible.task_id]
+    assert [task.task_id for task in await tracker.list_tasks(limit=1, include_internal=False)] == [
+        visible.task_id
+    ]
 
 
 async def test_list_order_most_recent_first(tracker: TaskTracker):

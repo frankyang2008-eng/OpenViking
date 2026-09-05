@@ -40,7 +40,11 @@ export class OpenVikingRuntime {
     state = {
       dshSessionId: String(session.id),
       ovSessionId: deriveHarnessSessionId("dsh-", String(session.id)),
-      config: { ...this.config, peerId: peer.peerId, legacyPeerId: peer.legacyPeerId },
+      config: {
+        ...this.config,
+        peerId: peer.peerId,
+        legacyPeerId: peer.legacyPeerId,
+      },
       ready: false,
       profileBlock: "",
       profileDelivered: false,
@@ -81,8 +85,8 @@ export class OpenVikingRuntime {
       state.config.peerId,
     );
     if (
-      !ensured.ok
-      && !(ensured.status === 409 && ensured.error?.code === "ALREADY_EXISTS")
+      !ensured.ok &&
+      !(ensured.status === 409 && ensured.error?.code === "ALREADY_EXISTS")
     ) {
       state.initializationRetryable = isRetryableFailure(ensured);
       return state;
@@ -114,7 +118,8 @@ export class OpenVikingRuntime {
 
   async profileMessage(agent) {
     const state = await this.initialize(agent);
-    if (!state.ready || !state.profileBlock || state.profileDelivered) return null;
+    if (!state.ready || !state.profileBlock || state.profileDelivered)
+      return null;
     if (hasStartupProfile(agent)) {
       state.profileDelivered = true;
       return null;
@@ -184,7 +189,11 @@ export class OpenVikingRuntime {
         state.ovSessionId,
         state.config.peerId,
       );
-      if (Number(metadata?.pending_tokens || 0) < state.config.commitTokenThreshold) return;
+      if (
+        Number(metadata?.pending_tokens || 0) <
+        state.config.commitTokenThreshold
+      )
+        return;
       const response = await this.client.commitSession(
         state.ovSessionId,
         state.config.peerId,
@@ -193,7 +202,9 @@ export class OpenVikingRuntime {
         sessionId: state.ovSessionId,
         ok: response.ok,
         trace_id: response.result?.trace_id || response.traceId,
-        error: response.ok ? undefined : response.error?.message || response.error?.code,
+        error: response.ok
+          ? undefined
+          : response.error?.message || response.error?.code,
       });
       if (isRetryableFailure(response)) {
         await this.enqueueFinalCommit(state, {
@@ -221,7 +232,12 @@ export class OpenVikingRuntime {
         const response = await this.client.commitSession(
           state.ovSessionId,
           state.config.peerId,
-          { timeoutMs: Math.min(3000, Number(state.config.requestTimeoutMs) || 3000) },
+          {
+            timeoutMs: Math.min(
+              3000,
+              Number(state.config.requestTimeoutMs) || 3000,
+            ),
+          },
         );
         this.log("shutdown_commit", {
           sessionId: state.ovSessionId,
@@ -235,31 +251,38 @@ export class OpenVikingRuntime {
       try {
         await state.writes;
       } finally {
-        if (this.states.get(session.id) === state) this.states.delete(session.id);
+        if (this.states.get(session.id) === state)
+          this.states.delete(session.id);
       }
     })();
     return state.disposing;
   }
 
   async disposeAll() {
-    await Promise.all([...this.states.values()].map(state => this.dispose({
-      id: state.dshSessionId,
-    })));
+    await Promise.all(
+      [...this.states.values()].map((state) =>
+        this.dispose({
+          id: state.dshSessionId,
+        }),
+      ),
+    );
   }
 
   enqueueWrite(state, operation) {
-    state.writes = state.writes
-      .then(operation)
-      .catch(error => this.log("write_error", {
+    state.writes = state.writes.then(operation).catch((error) =>
+      this.log("write_error", {
         sessionId: state.ovSessionId,
         error: error instanceof Error ? error.message : String(error),
-      }));
+      }),
+    );
   }
 
   async enqueuePending(state, type, payload) {
     const createdAt = Math.max(Date.now(), state.pendingCreatedAt + 1);
     state.pendingCreatedAt = createdAt;
-    const result = await enqueue(type, state.ovSessionId, payload, { createdAt });
+    const result = await enqueue(type, state.ovSessionId, payload, {
+      createdAt,
+    });
     if (result.ok) state.hasPendingWrites = true;
     if (!result.ok) {
       this.log("pending_enqueue_error", {
@@ -286,8 +309,8 @@ export class OpenVikingRuntime {
     const pending = await listPending();
     for (const item of pending) {
       if (
-        item.entry?.type === "commitSession"
-        && item.entry.sessionId === state.ovSessionId
+        item.entry?.type === "commitSession" &&
+        item.entry.sessionId === state.ovSessionId
       ) {
         await dequeue(item.filename);
       }
@@ -296,7 +319,7 @@ export class OpenVikingRuntime {
 
   async refreshPendingState(state) {
     const pending = (await listPending()).filter(
-      item => item.entry?.sessionId === state.ovSessionId,
+      (item) => item.entry?.sessionId === state.ovSessionId,
     );
     state.hasPendingWrites = pending.length > 0;
     state.pendingCreatedAt = pending.reduce(
@@ -330,18 +353,22 @@ function pluginMessage(content, form) {
 
 function hasStartupProfile(agent) {
   const session = agent.session;
-  const ownEvents = (session?.events || []).slice(session?.header?.seedLength ?? 0);
-  const inHistory = ownEvents.some(event => (
-    event?.type === "user/message" && isStartupProfile(event.data)
-  ));
+  const ownEvents = (session?.events || []).slice(
+    session?.header?.seedLength ?? 0,
+  );
+  const inHistory = ownEvents.some(
+    (event) => event?.type === "user/message" && isStartupProfile(event.data),
+  );
   if (inHistory) return true;
-  return [agent.inbox?.nextTurn, agent.inbox?.nextStep].some(messages => (
-    (messages || []).some(isStartupProfile)
-  ));
+  return [agent.inbox?.nextTurn, agent.inbox?.nextStep].some((messages) =>
+    (messages || []).some(isStartupProfile),
+  );
 }
 
 function isStartupProfile(message) {
-  return message?.source?.kind === "plugin"
-    && message.source.plugin === OPENVIKING_PLUGIN_SOURCE
-    && message.source.form === "instructions";
+  return (
+    message?.source?.kind === "plugin" &&
+    message.source.plugin === OPENVIKING_PLUGIN_SOURCE &&
+    message.source.form === "instructions"
+  );
 }

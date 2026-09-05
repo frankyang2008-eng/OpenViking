@@ -8,18 +8,23 @@
  * requests to the server's /mcp endpoint, and keeps stdout protocol-clean.
  */
 
-import { homedir } from "node:os"
-import { join, resolve as resolvePath } from "node:path"
-import { fileURLToPath } from "node:url"
-import { loadConfig } from "../lib/config.mjs"
-import { createLogger } from "../lib/shared/debug-log.mjs"
-import { buildMcpProxyConfig, resolveMcpActorPeerId } from "../lib/shared/mcp-proxy-config.mjs"
-import { createOpenVikingMcpProxy } from "../lib/shared/mcp-proxy-core.mjs"
+import { homedir } from "node:os";
+import { join, resolve as resolvePath } from "node:path";
+import { fileURLToPath } from "node:url";
+import { loadConfig } from "../lib/config.mjs";
+import { createLogger } from "../lib/shared/debug-log.mjs";
+import {
+  buildMcpProxyConfig,
+  resolveMcpActorPeerId,
+} from "../lib/shared/mcp-proxy-config.mjs";
+import { createOpenVikingMcpProxy } from "../lib/shared/mcp-proxy-core.mjs";
 
-export { createOpenVikingMcpProxy } from "../lib/shared/mcp-proxy-core.mjs"
+export { createOpenVikingMcpProxy } from "../lib/shared/mcp-proxy-core.mjs";
 
 function readProxyConfig() {
-  const cfg = loadConfig(resolvePath(fileURLToPath(import.meta.url), "..", ".."))
+  const cfg = loadConfig(
+    resolvePath(fileURLToPath(import.meta.url), "..", ".."),
+  );
   return buildMcpProxyConfig({
     baseUrl: cfg.endpoint,
     mcpUrl: cfg.mcpUrl,
@@ -38,9 +43,15 @@ function readProxyConfig() {
       cfg.configPath,
       join(homedir(), ".config", "opencode", "openviking-config.json"),
     ],
-  })
+  });
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === resolvePath(process.argv[1])) {
-  createOpenVikingMcpProxy({ readConfig: readProxyConfig, loggerFactory: createLogger }).start()
+if (
+  process.argv[1] &&
+  fileURLToPath(import.meta.url) === resolvePath(process.argv[1])
+) {
+  createOpenVikingMcpProxy({
+    readConfig: readProxyConfig,
+    loggerFactory: createLogger,
+  }).start();
 }

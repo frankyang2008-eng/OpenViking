@@ -20,27 +20,38 @@ import { resolve as resolvePath } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadConfig } from "./config.mjs";
 import { createLogger } from "./debug-log.mjs";
-import { buildMcpProxyConfig, resolveMcpActorPeerId } from "./shared/mcp-proxy-config.mjs";
+import {
+   buildMcpProxyConfig,
+   resolveMcpActorPeerId,
+} from "./shared/mcp-proxy-config.mjs";
 import { createOpenVikingMcpProxy } from "./shared/mcp-proxy-core.mjs";
 
 function readProxyConfig() {
-  const cfg = loadConfig();
-  return buildMcpProxyConfig({
-    baseUrl: cfg.baseUrl,
-    apiKey: cfg.apiKey,
-    account: cfg.accountId,
-    user: cfg.userId,
-    peerId: resolveMcpActorPeerId(cfg),
-    userAgent: cfg.userAgent,
-    timeoutMs: cfg.timeoutMs,
-    debug: cfg.debug,
-    debugLogPath: cfg.debugLogPath,
-    credentialSource: cfg.configPath?.endsWith("ovcli.conf") ? "ovcli" : "auto",
-    credentialPath: cfg.configPath,
-    watchedPaths: [cfg.configPath],
-  });
+   const cfg = loadConfig();
+   return buildMcpProxyConfig({
+      baseUrl: cfg.baseUrl,
+      apiKey: cfg.apiKey,
+      account: cfg.accountId,
+      user: cfg.userId,
+      peerId: resolveMcpActorPeerId(cfg),
+      userAgent: cfg.userAgent,
+      timeoutMs: cfg.timeoutMs,
+      debug: cfg.debug,
+      debugLogPath: cfg.debugLogPath,
+      credentialSource: cfg.configPath?.endsWith("ovcli.conf")
+         ? "ovcli"
+         : "auto",
+      credentialPath: cfg.configPath,
+      watchedPaths: [cfg.configPath],
+   });
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === resolvePath(process.argv[1])) {
-  createOpenVikingMcpProxy({ readConfig: readProxyConfig, loggerFactory: createLogger }).start();
+if (
+   process.argv[1] &&
+   fileURLToPath(import.meta.url) === resolvePath(process.argv[1])
+) {
+   createOpenVikingMcpProxy({
+      readConfig: readProxyConfig,
+      loggerFactory: createLogger,
+   }).start();
 }

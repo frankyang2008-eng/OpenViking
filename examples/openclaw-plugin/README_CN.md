@@ -55,7 +55,7 @@ Agent 会自动完成安装 → 配置 → 重启 → 验证。详见 [INSTALL-A
 ## 工作原理
 
 | 阶段 | 行为 |
-|------|------|
+| ------ | ------ |
 | **每轮对话后** (`afterTurn`) | 新消息追加到 OpenViking session；commit/抽取由阈值触发 |
 | **明确要求记住** (`memory_store`) | 重要长期事实可立即写入并提交 |
 | **`/compact` 时** (`compact`) | 待提交 session 消息被 commit 并抽取为长期记忆 |
@@ -66,7 +66,7 @@ Agent 会自动完成安装 → 配置 → 重启 → 验证。详见 [INSTALL-A
 安装后，插件默认为 Agent 提供以下工具：
 
 | 工具 | 用途 |
-|------|------|
+| ------ | ------ |
 | `memory_recall` | 在 `user`、`agent`、`resource` 目标中显式语义召回 |
 | `memory_store` | 立即持久化明确的长期事实 |
 | `memory_forget` | 按精确 URI 删除记忆，或搜索并删除唯一高置信匹配 |
@@ -102,7 +102,7 @@ openclaw config get plugins.slots.contextEngine  # 应输出：openviking
 ## 文档
 
 | 文档 | 说明 |
-|------|------|
+| ------ | ------ |
 | [INSTALL-ZH.md](./INSTALL-ZH.md) | 完整安装、升级、卸载指南 |
 | [INSTALL.md](./INSTALL.md) | English install guide |
 | [INSTALL-AGENT.md](./INSTALL-AGENT.md) | Agent 专用操作文档 |

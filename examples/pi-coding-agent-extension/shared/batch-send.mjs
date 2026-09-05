@@ -20,7 +20,14 @@ function makeResult() {
   };
 }
 
-async function enqueueRemainder(sessionId, payloads, startIndex, result, retryable, lastError) {
+async function enqueueRemainder(
+  sessionId,
+  payloads,
+  startIndex,
+  result,
+  retryable,
+  lastError,
+) {
   result.retryable = retryable;
   result.lastError = lastError ?? null;
 
@@ -46,7 +53,14 @@ async function enqueueRemainder(sessionId, payloads, startIndex, result, retryab
   return result;
 }
 
-async function sendSerial(fetchJSON, sessionId, payloads, startIndex, opts, result) {
+async function sendSerial(
+  fetchJSON,
+  sessionId,
+  payloads,
+  startIndex,
+  opts,
+  result,
+) {
   result.usedBatch = false;
   const encodedSid = encodeURIComponent(sessionId);
   for (let i = startIndex; i < payloads.length; i++) {
@@ -62,7 +76,14 @@ async function sendSerial(fetchJSON, sessionId, payloads, startIndex, opts, resu
 
     const retryable = isRetryableSendFailure(res);
     if (opts.enqueueOnRetryable) {
-      return enqueueRemainder(sessionId, payloads, i, result, retryable, res?.error ?? res);
+      return enqueueRemainder(
+        sessionId,
+        payloads,
+        i,
+        result,
+        retryable,
+        res?.error ?? res,
+      );
     }
     result.retryable = retryable;
     result.lastError = res?.error ?? res ?? null;
@@ -83,7 +104,12 @@ async function sendSerial(fetchJSON, sessionId, payloads, startIndex, opts, resu
  * @param {Function} opts.onSent - called with the number of messages durably sent after each success
  * @returns {Promise<{sent:number,queued:number,enqueueFailed:number,failed:number,retryable:boolean,usedBatch:boolean,lastError:any}>}
  */
-export async function sendSessionMessages(fetchJSON, sessionId, payloads, opts = {}) {
+export async function sendSessionMessages(
+  fetchJSON,
+  sessionId,
+  payloads,
+  opts = {},
+) {
   const result = makeResult();
   const messages = Array.isArray(payloads) ? payloads : [];
   if (messages.length === 0) return result;
@@ -91,10 +117,13 @@ export async function sendSessionMessages(fetchJSON, sessionId, payloads, opts =
   const encodedSid = encodeURIComponent(sessionId);
   for (let start = 0; start < messages.length; start += BATCH_LIMIT) {
     const chunk = messages.slice(start, start + BATCH_LIMIT);
-    const res = await fetchJSON(`/api/v1/sessions/${encodedSid}/messages/batch`, {
-      method: "POST",
-      body: JSON.stringify({ messages: chunk }),
-    });
+    const res = await fetchJSON(
+      `/api/v1/sessions/${encodedSid}/messages/batch`,
+      {
+        method: "POST",
+        body: JSON.stringify({ messages: chunk }),
+      },
+    );
 
     if (res?.ok) {
       result.sent += chunk.length;
@@ -109,7 +138,14 @@ export async function sendSessionMessages(fetchJSON, sessionId, payloads, opts =
 
     const retryable = isRetryableSendFailure(res);
     if (opts.enqueueOnRetryable) {
-      return enqueueRemainder(sessionId, messages, start, result, retryable, res?.error ?? res);
+      return enqueueRemainder(
+        sessionId,
+        messages,
+        start,
+        result,
+        retryable,
+        res?.error ?? res,
+      );
     }
     result.retryable = retryable;
     result.lastError = res?.error ?? res ?? null;

@@ -71,7 +71,7 @@ bash <(curl -fsSL https://ovrelease.tos-cn-beijing.volces.com/memory-plugin-shar
 凭证解析顺序为 `OPENVIKING_*` 环境变量 → `~/.openviking/ovcli.conf` → `~/.openviking/ov.conf`，与 Claude Code、Codex、OpenCode、pi 共用同一条链路；这些文件变更后会自动重载。
 
 | 环境变量 | 默认值 | 说明 |
-|---------|--------|------|
+| --------- | -------- | ------ |
 | `OPENVIKING_URL` / `OPENVIKING_BASE_URL` | `http://127.0.0.1:1933` | 服务端点 |
 | `OPENVIKING_API_KEY` / `OPENVIKING_BEARER_TOKEN` | — | API Key（以 `Authorization: Bearer` 发送） |
 | `OPENVIKING_ACCOUNT` / `OPENVIKING_USER` | — | 可信模式下的 account 与 user |
@@ -110,7 +110,7 @@ patch 中写的凭证优先于环境变量；行为开关则优先读环境变�
 ## 常见问题
 
 | 现象 | 排查方向 |
-|------|----------|
+| ------ | ---------- |
 | 没有注入，也没有 OpenViking 工具 | `dsh --profile web --dump-config` 里应能看到 `openviking-memory`；重新运行安装器或 `dsh plugin --profile web add …` |
 | 装到了错误的 profile | 安装器默认 `web`；用 `--dsh-profile <name>` 重新运行 |
 | 安装时报 `ERESOLVE` | `@deepseek-ai/dsh-*` 各包预发布 tag 不同步；请精确安装 `@deepseek-ai/dsh@0.1.0-rc.6` |

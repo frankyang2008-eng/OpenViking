@@ -73,7 +73,7 @@ node ~/.pi/agent/extensions/openviking/scripts/setup.mjs
 Credential environment variables:
 
 | Env Var | Meaning |
-|---------|---------|
+| --------- | --------- |
 | `OPENVIKING_URL` | OpenViking server URL |
 | `OPENVIKING_API_KEY` / `OPENVIKING_BEARER_TOKEN` | Bearer token |
 | `OPENVIKING_ACCOUNT` | Trusted-mode account |

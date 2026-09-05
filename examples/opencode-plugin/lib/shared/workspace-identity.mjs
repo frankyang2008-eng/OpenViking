@@ -13,7 +13,14 @@
  */
 
 import { createHash } from "node:crypto";
-import { mkdirSync, readFileSync, realpathSync, renameSync, statSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  readFileSync,
+  realpathSync,
+  renameSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, parse, resolve, sep } from "node:path";
 
@@ -34,7 +41,9 @@ export function stateDir(env = process.env) {
   const explicit = String(env.OPENVIKING_STATE_DIR || "").trim();
   if (explicit) return explicit;
   const home = String(env.OPENVIKING_HOME || "").trim();
-  const base = home ? home.replace(/^~(?=$|\/)/, homedir()) : join(homedir(), ".openviking");
+  const base = home
+    ? home.replace(/^~(?=$|\/)/, homedir())
+    : join(homedir(), ".openviking");
   return join(base, "state");
 }
 
@@ -60,11 +69,16 @@ export function legacySanitize(value) {
  */
 export function sanitizePeerId(value) {
   const raw = String(value || "").trim();
-  let cleaned = raw.replace(/[^a-zA-Z0-9_.@-]+/g, "-").replace(/-{2,}/g, "-").replace(/^[-.]+|[-.]+$/g, "");
+  let cleaned = raw
+    .replace(/[^a-zA-Z0-9_.@-]+/g, "-")
+    .replace(/-{2,}/g, "-")
+    .replace(/^[-.]+|[-.]+$/g, "");
   if (!cleaned) return "";
   // The server accepts at most one `@` in an identifier part.
   const at = cleaned.indexOf("@");
-  if (at !== -1) cleaned = cleaned.slice(0, at + 1) + cleaned.slice(at + 1).replace(/@/g, "-");
+  if (at !== -1)
+    cleaned =
+      cleaned.slice(0, at + 1) + cleaned.slice(at + 1).replace(/@/g, "-");
   // `ext-` is the server's namespace for base64-encoded external identities,
   // and `__self` its operation-target sentinel. Neither is ours to occupy.
   if (cleaned.startsWith("ext-")) cleaned = `x-${cleaned}`;
@@ -113,7 +127,11 @@ export function normalizeGitRemote(url) {
   }
 
   host = host.toLowerCase().replace(/^\[|\]$/g, "");
-  path = path.replace(/^\/+/, "").replace(/\/+$/, "").replace(/\.git$/i, "").toLowerCase();
+  path = path
+    .replace(/^\/+/, "")
+    .replace(/\/+$/, "")
+    .replace(/\.git$/i, "")
+    .toLowerCase();
   if (!host || !path) return "";
   return `${host}/${path}`;
 }
@@ -140,7 +158,8 @@ export function readGitRemoteUrl(commonDir, remote = "origin") {
   let inSection = false;
   for (const line of text.split("\n")) {
     const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#") || trimmed.startsWith(";")) continue;
+    if (!trimmed || trimmed.startsWith("#") || trimmed.startsWith(";"))
+      continue;
     const section = /^\[([^\]]+)\]/.exec(trimmed);
     if (section) {
       const header = section[1].trim();
@@ -155,7 +174,11 @@ export function readGitRemoteUrl(commonDir, remote = "origin") {
     const pair = /^url\s*=\s*(.*)$/i.exec(trimmed);
     // git treats an unquoted `#` or `;` as starting a comment anywhere on the
     // line, so a trailing note is not part of the URL.
-    if (pair) return pair[1].split(/[#;]/)[0].trim().replace(/^["']|["']$/g, "");
+    if (pair)
+      return pair[1]
+        .split(/[#;]/)[0]
+        .trim()
+        .replace(/^["']|["']$/g, "");
   }
   return "";
 }
@@ -168,7 +191,8 @@ function resolveGitDir(root) {
   } catch {
     return null;
   }
-  if (stat.isDirectory()) return { gitDir: dotGit, commonDir: dotGit, kind: "repo" };
+  if (stat.isDirectory())
+    return { gitDir: dotGit, commonDir: dotGit, kind: "repo" };
   if (!stat.isFile()) return null;
 
   const pointer = /^gitdir:\s*(.+)$/m.exec(readFileOrEmpty(dotGit));
@@ -179,7 +203,9 @@ function resolveGitDir(root) {
   // that merely lives under a directory called `modules` is not a submodule.
   const commonRef = readFileOrEmpty(join(gitDir, "commondir")).trim();
   const commonDir = commonRef
-    ? (isAbsolute(commonRef) ? commonRef : resolve(gitDir, commonRef))
+    ? isAbsolute(commonRef)
+      ? commonRef
+      : resolve(gitDir, commonRef)
     : gitDir;
 
   // A submodule keeps its own remote under the superproject's
@@ -189,7 +215,9 @@ function resolveGitDir(root) {
   // a submodule resolves here through its own commondir.
   const kind = /[/\\]\.git[/\\]modules[/\\]/.test(`${commonDir}${sep}`)
     ? "submodule"
-    : (commonRef ? "worktree" : "repo");
+    : commonRef
+      ? "worktree"
+      : "repo";
   return { gitDir, commonDir, kind };
 }
 
@@ -198,12 +226,19 @@ function hasWorkspaceMarker(dir) {
   for (const name of [TEAM_FILE, LOCAL_FILE]) {
     try {
       if (statSync(join(dir, CONFIG_DIR_NAME, name)).isFile()) return true;
-    } catch { /* not marked here */ }
+    } catch {
+      /* not marked here */
+    }
   }
   return false;
 }
 
-const NO_ROOT = Object.freeze({ root: "", rootKind: "", git: null, gitRoot: "" });
+const NO_ROOT = Object.freeze({
+  root: "",
+  rootKind: "",
+  git: null,
+  gitRoot: "",
+});
 
 /**
  * Walk up from `cwd` to the nearest workspace root.
@@ -251,7 +286,13 @@ export function findWorkspaceRoot(cwd, env = process.env) {
   let rootKind = "";
   while (current && current !== filesystemRoot && current !== stopAt) {
     const git = resolveGitDir(current);
-    if (git) return { root: root || current, rootKind: rootKind || "git", git, gitRoot: current };
+    if (git)
+      return {
+        root: root || current,
+        rootKind: rootKind || "git",
+        git,
+        gitRoot: current,
+      };
     if (!root && hasWorkspaceMarker(current)) {
       root = current;
       rootKind = "config";
@@ -272,12 +313,24 @@ function readCache(path, now) {
     const cached = JSON.parse(readFileSync(path, "utf-8"));
     // Bounded on both sides: an entry stamped in the future — a clock that ran
     // fast, or `Infinity` — would otherwise pin a stale identity indefinitely.
-    if (typeof cached?.ts !== "number" || cached.ts > now || now - cached.ts > IDENTITY_CACHE_TTL_MS) return null;
+    if (
+      typeof cached?.ts !== "number" ||
+      cached.ts > now ||
+      now - cached.ts > IDENTITY_CACHE_TTL_MS
+    )
+      return null;
     const identity = cached.identity;
-    if (identity && typeof identity === "object" && identity.vars && typeof identity.vars === "object") {
+    if (
+      identity &&
+      typeof identity === "object" &&
+      identity.vars &&
+      typeof identity.vars === "object"
+    ) {
       return identity;
     }
-  } catch { /* a cold or corrupt cache just costs one walk */ }
+  } catch {
+    /* a cold or corrupt cache just costs one walk */
+  }
   return null;
 }
 
@@ -287,7 +340,9 @@ function writeCache(path, identity, now) {
     const tmp = `${path}.${process.pid}.tmp`;
     writeFileSync(tmp, JSON.stringify({ ts: now, identity }), { mode: 0o600 });
     renameSync(tmp, path);
-  } catch { /* best effort */ }
+  } catch {
+    /* best effort */
+  }
 }
 
 /**
@@ -297,7 +352,12 @@ function writeCache(path, identity, now) {
  * legacy byte-for-byte rule, because they are the two that must reproduce a
  * peer minted before any of this existed.
  */
-export function resolveWorkspaceIdentity({ cwd = "", env = process.env, cache = true, now = Date.now() } = {}) {
+export function resolveWorkspaceIdentity({
+  cwd = "",
+  env = process.env,
+  cache = true,
+  now = Date.now(),
+} = {}) {
   const key = String(cwd || "");
   const path = cachePath(key, env);
   if (cache) {
@@ -326,7 +386,9 @@ export function resolveWorkspaceIdentity({ cwd = "", env = process.env, cache = 
       // preset resolves to nothing there rather than to a bare path.
       git_root: git ? legacySanitize(gitRoot) : "",
       cwd: legacySanitize(key),
-      dir: root ? sanitizePeerId(root.split(/[/\\]/).filter(Boolean).pop() || "") : "",
+      dir: root
+        ? sanitizePeerId(root.split(/[/\\]/).filter(Boolean).pop() || "")
+        : "",
     },
   };
   if (cache) writeCache(path, identity, now);

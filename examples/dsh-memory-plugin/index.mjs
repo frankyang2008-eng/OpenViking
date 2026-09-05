@@ -13,14 +13,10 @@ export function apply(ctx, input = {}) {
   const config = resolveConfig(input);
   const client = new OpenVikingClient(config);
   const runtime = new OpenVikingRuntime(client, config, ctx.logger);
-  const skipMemory = session => (
-    config.skipSubagentSessions && session?.header?.origin === "subagent"
-  );
+  const skipMemory = (session) =>
+    config.skipSubagentSessions && session?.header?.origin === "subagent";
   ctx.provide("openvikingMemory", runtime);
-  ctx.effect(
-    () => () => runtime.disposeAll(),
-    "openvikingMemory.disposeAll()",
-  );
+  ctx.effect(() => () => runtime.disposeAll(), "openvikingMemory.disposeAll()");
 
   ctx.on("agent/session-start", ({ agent }) => {
     if (skipMemory(agent.session)) return false;
@@ -36,20 +32,24 @@ export function apply(ctx, input = {}) {
   // Profile + recall are independent after `next()`; run them concurrently so
   // the agent/pre-step waterfall (which currently gates user/message push in
   // dsh-agent-loop) spends less wall time (#4515).
-  ctx.on("agent/pre-step", async ({ agent, messages, signal }, next) => {
-    const decision = await next();
-    if (skipMemory(agent.session)) return decision;
-    if (decision.kind !== "enter" || signal.aborted) return decision;
-    const [profile, recall] = await Promise.all([
-      runtime.profileMessage(agent),
-      runtime.recallMessage(agent, decision.messages),
-    ]);
-    if (signal.aborted) return decision;
-    const additions = [profile, recall].filter(Boolean);
-    return additions.length > 0
-      ? { kind: "enter", messages: [...decision.messages, ...additions] }
-      : decision;
-  }, { prepend: true });
+  ctx.on(
+    "agent/pre-step",
+    async ({ agent, messages, signal }, next) => {
+      const decision = await next();
+      if (skipMemory(agent.session)) return decision;
+      if (decision.kind !== "enter" || signal.aborted) return decision;
+      const [profile, recall] = await Promise.all([
+        runtime.profileMessage(agent),
+        runtime.recallMessage(agent, decision.messages),
+      ]);
+      if (signal.aborted) return decision;
+      const additions = [profile, recall].filter(Boolean);
+      return additions.length > 0
+        ? { kind: "enter", messages: [...decision.messages, ...additions] }
+        : decision;
+    },
+    { prepend: true },
+  );
 
   ctx.on("session/event", (session, event) => {
     if (skipMemory(session)) return;
@@ -57,7 +57,7 @@ export function apply(ctx, input = {}) {
     runtime.maybeCommit(session, event);
   });
 
-  ctx.on("session/flush", async session => {
+  ctx.on("session/flush", async (session) => {
     if (skipMemory(session)) return;
     await runtime.flush(session);
   });

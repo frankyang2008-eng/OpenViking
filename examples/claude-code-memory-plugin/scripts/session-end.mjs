@@ -48,7 +48,9 @@ async function main() {
   let input = {};
   try {
     input = JSON.parse((await readHookStdin()) || "{}");
-  } catch { /* best effort */ }
+  } catch {
+    /* best effort */
+  }
 
   const sessionId = input.session_id;
   const cwd = input.cwd;
@@ -77,13 +79,25 @@ async function main() {
   const ovSessionId = deriveOvSessionId(sessionId);
   const health = await fetchJSON("/health");
   if (!health.ok && isRetryableFailure(health)) {
-    const queued = await enqueuePendingDirectly("commitSession", ovSessionId, {});
-    log("commit", { ovSessionId, ok: false, queued: queued.ok, reason: "health_retryable" });
+    const queued = await enqueuePendingDirectly(
+      "commitSession",
+      ovSessionId,
+      {},
+    );
+    log("commit", {
+      ovSessionId,
+      ok: false,
+      queued: queued.ok,
+      reason: "health_retryable",
+    });
     approve();
     return;
   }
   if (!health.ok) {
-    logError("health_check", `non-retryable status ${health.status || "unknown"}`);
+    logError(
+      "health_check",
+      `non-retryable status ${health.status || "unknown"}`,
+    );
     approve();
     return;
   }
@@ -100,4 +114,7 @@ async function main() {
   approve();
 }
 
-main().catch((err) => { logError("uncaught", err); approve(); });
+main().catch((err) => {
+  logError("uncaught", err);
+  approve();
+});

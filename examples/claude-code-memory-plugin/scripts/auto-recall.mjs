@@ -16,7 +16,11 @@
 
 import { isPluginEnabled, loadConfig } from "./config.mjs";
 import { createLogger } from "./debug-log.mjs";
-import { deriveOvSessionId, isBypassed, makeFetchJSON } from "./lib/ov-session.mjs";
+import {
+  deriveOvSessionId,
+  isBypassed,
+  makeFetchJSON,
+} from "./lib/ov-session.mjs";
 import { writeJsonState } from "./lib/state.mjs";
 import { createHostCompressor } from "./lib/host-compressor.mjs";
 import { getEffectivePeerId } from "./lib/workspace-peer.mjs";
@@ -37,7 +41,11 @@ function output(obj) {
 
 function approve(msg) {
   const out = { decision: "approve" };
-  if (msg) out.hookSpecificOutput = { hookEventName: "UserPromptSubmit", additionalContext: msg };
+  if (msg)
+    out.hookSpecificOutput = {
+      hookEventName: "UserPromptSubmit",
+      additionalContext: msg,
+    };
   output(out);
 }
 
@@ -50,18 +58,42 @@ function clampScore(v) {
   return Math.max(0, Math.min(1, v));
 }
 
-const PREFERENCE_QUERY_RE = /prefer|preference|favorite|favourite|like|偏好|喜欢|爱好|更倾向/i;
-const TEMPORAL_QUERY_RE = /when|what time|date|day|month|year|yesterday|today|tomorrow|last|next|什么时候|何时|哪天|几月|几年|昨天|今天|明天/i;
+const PREFERENCE_QUERY_RE =
+  /prefer|preference|favorite|favourite|like|偏好|喜欢|爱好|更倾向/i;
+const TEMPORAL_QUERY_RE =
+  /when|what time|date|day|month|year|yesterday|today|tomorrow|last|next|什么时候|何时|哪天|几月|几年|昨天|今天|明天/i;
 const QUERY_TOKEN_RE = /[a-z0-9一-龥]{2,}/gi;
 const STOPWORDS = new Set([
-  "what","when","where","which","who","whom","whose","why","how","did","does",
-  "is","are","was","were","the","and","for","with","from","that","this","your","you",
+  "what",
+  "when",
+  "where",
+  "which",
+  "who",
+  "whom",
+  "whose",
+  "why",
+  "how",
+  "did",
+  "does",
+  "is",
+  "are",
+  "was",
+  "were",
+  "the",
+  "and",
+  "for",
+  "with",
+  "from",
+  "that",
+  "this",
+  "your",
+  "you",
 ]);
 
 function buildQueryProfile(query) {
   const text = query.trim();
   const allTokens = text.toLowerCase().match(QUERY_TOKEN_RE) || [];
-  const tokens = allTokens.filter(t => !STOPWORDS.has(t));
+  const tokens = allTokens.filter((t) => !STOPWORDS.has(t));
   return {
     tokens,
     wantsPreference: PREFERENCE_QUERY_RE.test(text),
@@ -84,10 +116,20 @@ function rankItem(item, profile) {
   const abstract = (item.abstract || item.overview || "").trim();
   const cat = (item.category || "").toLowerCase();
   const uri = (item.uri || "").toLowerCase();
-  const leafBoost = (item.level === 2 || uri.endsWith(".md")) ? 0.12 : 0;
-  const eventBoost = profile.wantsTemporal && (cat === "events" || uri.includes("/events/")) ? 0.1 : 0;
-  const prefBoost = profile.wantsPreference && (cat === "preferences" || uri.includes("/preferences/")) ? 0.08 : 0;
-  const overlapBoost = lexicalOverlapBoost(profile.tokens, `${item.uri} ${abstract}`);
+  const leafBoost = item.level === 2 || uri.endsWith(".md") ? 0.12 : 0;
+  const eventBoost =
+    profile.wantsTemporal && (cat === "events" || uri.includes("/events/"))
+      ? 0.1
+      : 0;
+  const prefBoost =
+    profile.wantsPreference &&
+    (cat === "preferences" || uri.includes("/preferences/"))
+      ? 0.08
+      : 0;
+  const overlapBoost = lexicalOverlapBoost(
+    profile.tokens,
+    `${item.uri} ${abstract}`,
+  );
   return base + leafBoost + eventBoost + prefBoost + overlapBoost;
 }
 
@@ -98,7 +140,12 @@ function rankItem(item, profile) {
 function isEventOrCaseItem(item) {
   const cat = (item.category || "").toLowerCase();
   const uri = (item.uri || "").toLowerCase();
-  return cat === "events" || cat === "cases" || uri.includes("/events/") || uri.includes("/cases/");
+  return (
+    cat === "events" ||
+    cat === "cases" ||
+    uri.includes("/events/") ||
+    uri.includes("/cases/")
+  );
 }
 
 function dedupeItems(items) {
@@ -107,7 +154,8 @@ function dedupeItems(items) {
   for (const item of items) {
     const key = isEventOrCaseItem(item)
       ? `uri:${item.uri}`
-      : ((item.abstract || item.overview || "").trim().toLowerCase() || `uri:${item.uri}`);
+      : (item.abstract || item.overview || "").trim().toLowerCase() ||
+        `uri:${item.uri}`;
     if (seen.has(key)) continue;
     seen.add(key);
     out.push(item);
@@ -127,7 +175,11 @@ async function resolveUserSpace(actorPeerId = "") {
 
   let fallbackSpace = "default";
   const status = await fetchJSON("/api/v1/system/status");
-  if (status.ok && typeof status.result?.user === "string" && status.result.user.trim()) {
+  if (
+    status.ok &&
+    typeof status.result?.user === "string" &&
+    status.result.user.trim()
+  ) {
     fallbackSpace = status.result.user.trim();
   }
 
@@ -138,13 +190,22 @@ async function resolveUserSpace(actorPeerId = "") {
   );
   if (lsRes.ok && Array.isArray(lsRes.result)) {
     const spaces = lsRes.result
-      .filter(e => e?.isDir)
-      .map(e => (typeof e.name === "string" ? e.name.trim() : ""))
-      .filter(n => n && !n.startsWith(".") && !USER_RESERVED_DIRS.has(n));
+      .filter((e) => e?.isDir)
+      .map((e) => (typeof e.name === "string" ? e.name.trim() : ""))
+      .filter((n) => n && !n.startsWith(".") && !USER_RESERVED_DIRS.has(n));
     if (spaces.length > 0) {
-      if (spaces.includes(fallbackSpace)) { _userSpaceCache = fallbackSpace; return fallbackSpace; }
-      if (spaces.includes("default")) { _userSpaceCache = "default"; return "default"; }
-      if (spaces.length === 1) { _userSpaceCache = spaces[0]; return spaces[0]; }
+      if (spaces.includes(fallbackSpace)) {
+        _userSpaceCache = fallbackSpace;
+        return fallbackSpace;
+      }
+      if (spaces.includes("default")) {
+        _userSpaceCache = "default";
+        return "default";
+      }
+      if (spaces.length === 1) {
+        _userSpaceCache = spaces[0];
+        return spaces[0];
+      }
     }
   }
   _userSpaceCache = fallbackSpace;
@@ -155,7 +216,8 @@ async function resolveTargetUri(targetUri, actorPeerId = "") {
   const trimmed = targetUri.trim().replace(/\/+$/, "");
   // viking://~ is the home alias: the server expands it to the caller's own user
   // space, so it needs no client-side rewrite.
-  if (trimmed === "viking://~" || trimmed.startsWith("viking://~/")) return trimmed;
+  if (trimmed === "viking://~" || trimmed.startsWith("viking://~/"))
+    return trimmed;
   // Legacy compat: uid-less viking://user/<reserved> URIs may still sit in plugin
   // configs. Newer servers reject them, so rewrite to an explicit-uid URI here.
   const m = trimmed.match(/^viking:\/\/user(?:\/(.*))?$/);
@@ -175,27 +237,39 @@ async function resolveTargetUri(targetUri, actorPeerId = "") {
 // ---------------------------------------------------------------------------
 
 const SOURCES = [
-  { type: "memory", uri: "viking://~/memories",  bucket: "memories" },
-  { type: "skill",  uri: "viking://~/skills",    bucket: "skills"   },
+  { type: "memory", uri: "viking://~/memories", bucket: "memories" },
+  { type: "skill", uri: "viking://~/skills", bucket: "skills" },
 ];
 
 async function searchOneSource(query, source, limit, actorPeerId = "") {
   const resolvedUri = await resolveTargetUri(source.uri, actorPeerId);
   const body = { query, target_uri: resolvedUri, limit, score_threshold: 0 };
-  const res = await fetchJSON("/api/v1/search/find", {
-    method: "POST",
-    body: JSON.stringify(body),
-  }, { actorPeerId });
+  const res = await fetchJSON(
+    "/api/v1/search/find",
+    {
+      method: "POST",
+      body: JSON.stringify(body),
+    },
+    { actorPeerId },
+  );
   if (!res.ok) return [];
   const items = res.result?.[source.bucket] || [];
-  return items.map(item => ({ ...item, _sourceType: source.type }));
+  return items.map((item) => ({ ...item, _sourceType: source.type }));
 }
 
 async function searchAllSources(query, perSourceLimit, actorPeerId = "") {
-  const results = await Promise.all(SOURCES.map(src => searchOneSource(query, src, perSourceLimit, actorPeerId)));
+  const results = await Promise.all(
+    SOURCES.map((src) =>
+      searchOneSource(query, src, perSourceLimit, actorPeerId),
+    ),
+  );
   const all = results.flat();
   log("search_summary", {
-    counts: SOURCES.map((src, i) => ({ type: src.type, uri: src.uri, count: results[i].length })),
+    counts: SOURCES.map((src, i) => ({
+      type: src.type,
+      uri: src.uri,
+      count: results[i].length,
+    })),
     total: all.length,
   });
   return all;
@@ -221,7 +295,10 @@ function estimateTokens(text) {
 async function resolveItemContent(item, actorPeerId = "") {
   let content;
 
-  if (cfg.recallPreferAbstract && (item.abstract || item.overview || "").trim()) {
+  if (
+    cfg.recallPreferAbstract &&
+    (item.abstract || item.overview || "").trim()
+  ) {
     content = (item.abstract || item.overview).trim();
   } else if (item.level === 2) {
     try {
@@ -230,8 +307,10 @@ async function resolveItemContent(item, actorPeerId = "") {
         {},
         { actorPeerId },
       );
-      const body = res.ok && typeof res.result === "string" ? res.result.trim() : "";
-      content = body || (item.abstract || item.overview || "").trim() || item.uri;
+      const body =
+        res.ok && typeof res.result === "string" ? res.result.trim() : "";
+      content =
+        body || (item.abstract || item.overview || "").trim() || item.uri;
     } catch {
       content = (item.abstract || item.overview || "").trim() || item.uri;
     }
@@ -299,21 +378,32 @@ async function buildInjectionBlock(items, actorPeerId = "") {
   return { block: lines.join("\n"), contentCount, hintCount, budgetUsed };
 }
 
-async function recallViaServerAssembly(query, actorPeerId = "", sessionId = "", legacyPeerId = "") {
+async function recallViaServerAssembly(
+  query,
+  actorPeerId = "",
+  sessionId = "",
+  legacyPeerId = "",
+) {
   const runCompressor = await createHostCompressor(cfg, log);
-  const assemble = (peerId) => buildServerAssembledBlock(fetchJSON, cfg, query, {
-    actorPeerId: peerId,
-    sessionId,
-    log,
-    runCompressor,
-    localCompressorAvailable: Boolean(runCompressor),
-  });
+  const assemble = (peerId) =>
+    buildServerAssembledBlock(fetchJSON, cfg, query, {
+      actorPeerId: peerId,
+      sessionId,
+      log,
+      runCompressor,
+      localCompressorAvailable: Boolean(runCompressor),
+    });
 
   const block = await assemble(actorPeerId);
   // `peer_scope: "all"` already sweeps every peer under this user, so the peer
   // this workspace used before the identity rule changed needs asking only
   // when that sweep is off.
-  if (cfg.recallPeerScope !== "actor" || !legacyPeerId || legacyPeerId === actorPeerId) return block;
+  if (
+    cfg.recallPeerScope !== "actor" ||
+    !legacyPeerId ||
+    legacyPeerId === actorPeerId
+  )
+    return block;
 
   const legacy = await assemble(legacyPeerId);
   if (!legacy) return block;
@@ -330,11 +420,12 @@ async function main() {
   // Snapshot state for the statusline. Always written, even on early-exit
   // branches, so the indicator reflects the latest turn rather than stale
   // data from the previous run.
-  const writeRecallState = (extra) => writeJsonState("last-recall.json", {
-    server_url: cfg.baseUrl,
-    latency_ms: Date.now() - t0,
-    ...extra,
-  });
+  const writeRecallState = (extra) =>
+    writeJsonState("last-recall.json", {
+      server_url: cfg.baseUrl,
+      latency_ms: Date.now() - t0,
+      ...extra,
+    });
 
   let input;
   try {
@@ -386,7 +477,11 @@ async function main() {
 
   if (!userPrompt || userPrompt.length < cfg.minQueryLength) {
     log("skip", { reason: "query too short or empty" });
-    writeRecallState({ count: 0, reason: "short_query", cc_session_id: sessionId });
+    writeRecallState({
+      count: 0,
+      reason: "short_query",
+      cc_session_id: sessionId,
+    });
     approve();
     return;
   }
@@ -401,7 +496,8 @@ async function main() {
 
   // The OV session id is what unlocks server-side query expansion and the
   // cross-turn dedup ledger; it must match the id auto-capture writes to.
-  const ovSessionId = sessionId && sessionId !== "unknown" ? deriveOvSessionId(sessionId) : "";
+  const ovSessionId =
+    sessionId && sessionId !== "unknown" ? deriveOvSessionId(sessionId) : "";
   const endpointBlock = await recallViaServerAssembly(
     userPrompt,
     effectivePeer.peerId,
@@ -411,12 +507,17 @@ async function main() {
   if (endpointBlock !== null) {
     if (!endpointBlock) {
       log("skip", { reason: "recall_endpoint_no_results" });
-      writeRecallState({ count: 0, reason: "no_results", cc_session_id: sessionId });
+      writeRecallState({
+        count: 0,
+        reason: "no_results",
+        cc_session_id: sessionId,
+      });
       approve();
       return;
     }
     writeRecallState({
-      count: new Set(endpointBlock.match(/viking:\/\/[^\s<>"')\]]+/g) || []).size,
+      count: new Set(endpointBlock.match(/viking:\/\/[^\s<>"')\]]+/g) || [])
+        .size,
       content_items: 1,
       hint_items: 0,
       tokens_used: estimateTokens(endpointBlock),
@@ -429,16 +530,26 @@ async function main() {
   }
 
   const perSourceLimit = Math.max(cfg.recallLimit * 2, 8);
-  const raw = await searchAllSources(userPrompt, perSourceLimit, effectivePeer.peerId);
+  const raw = await searchAllSources(
+    userPrompt,
+    perSourceLimit,
+    effectivePeer.peerId,
+  );
   if (raw.length === 0) {
     log("skip", { reason: "no results" });
-    writeRecallState({ count: 0, reason: "no_results", cc_session_id: sessionId });
+    writeRecallState({
+      count: 0,
+      reason: "no_results",
+      cc_session_id: sessionId,
+    });
     approve();
     return;
   }
 
   const profile = buildQueryProfile(userPrompt);
-  const filtered = raw.filter(it => clampScore(it.score) >= cfg.scoreThreshold);
+  const filtered = raw.filter(
+    (it) => clampScore(it.score) >= cfg.scoreThreshold,
+  );
   filtered.sort((a, b) => rankItem(b, profile) - rankItem(a, profile));
   const deduped = dedupeItems(filtered);
   const picked = deduped.slice(0, cfg.recallLimit);
@@ -447,11 +558,19 @@ async function main() {
     filteredCount: filtered.length,
     dedupedCount: deduped.length,
     pickedCount: picked.length,
-    items: picked.map(it => ({ type: it._sourceType, uri: it.uri, score: clampScore(it.score) })),
+    items: picked.map((it) => ({
+      type: it._sourceType,
+      uri: it.uri,
+      score: clampScore(it.score),
+    })),
   });
 
   if (picked.length === 0) {
-    writeRecallState({ count: 0, reason: "filtered_out", cc_session_id: sessionId });
+    writeRecallState({
+      count: 0,
+      reason: "filtered_out",
+      cc_session_id: sessionId,
+    });
     approve();
     return;
   }
@@ -474,4 +593,7 @@ async function main() {
   approve(built?.block);
 }
 
-main().catch((err) => { logError("uncaught", err); approve(); });
+main().catch((err) => {
+  logError("uncaught", err);
+  approve();
+});

@@ -140,9 +140,7 @@ class TestEmbeddingConfigContextualEmbedders:
         assert "input_type" not in call_kwargs
 
     @patch("openviking.models.embedder.OpenAIDenseEmbedder")
-    def test_get_embedder_openai_passes_explicit_multimodal_input(
-        self, mock_embedder_class
-    ):
+    def test_get_embedder_openai_passes_explicit_multimodal_input(self, mock_embedder_class):
         """Explicit input=multimodal should opt OpenAI-compatible embedders into multimodal."""
         mock_embedder_class.return_value = MagicMock()
         config = EmbeddingConfig(

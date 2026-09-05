@@ -17,10 +17,13 @@ function okResponse(result: unknown): Response {
 }
 
 function errorResponse(message: string, code = "INVALID_ARGUMENT"): Response {
-  return new Response(JSON.stringify({ status: "error", error: { code, message } }), {
-    status: 400,
-    headers: { "Content-Type": "application/json" },
-  });
+  return new Response(
+    JSON.stringify({ status: "error", error: { code, message } }),
+    {
+      status: 400,
+      headers: { "Content-Type": "application/json" },
+    },
+  );
 }
 
 afterEach(() => {
@@ -38,7 +41,9 @@ describe("isMemoryUri", () => {
   });
 
   it("returns true for user memory URI isolated by agent", () => {
-    expect(isMemoryUri("viking://user/alice/agent/work/memories/item-1")).toBe(true);
+    expect(isMemoryUri("viking://user/alice/agent/work/memories/item-1")).toBe(
+      true,
+    );
   });
 
   it("returns true for valid agent memory URI", () => {
@@ -64,7 +69,9 @@ describe("isMemoryUri", () => {
   it("accepts the ~ home alias", () => {
     expect(isMemoryUri("viking://~/memories")).toBe(true);
     expect(isMemoryUri("viking://~/memories/abc-123")).toBe(true);
-    expect(isMemoryUri("viking://~/peers/assistant/memories/item-1")).toBe(true);
+    expect(isMemoryUri("viking://~/peers/assistant/memories/item-1")).toBe(
+      true,
+    );
     expect(isMemoryUri("viking://~/skills/abc")).toBe(false);
   });
 
@@ -91,11 +98,24 @@ describe("isMemoryUri", () => {
 
 describe("OpenVikingClient resource and skill import", () => {
   it("addResource posts remote URL as path", async () => {
-    const transport = vi.fn().mockResolvedValue(
-      okResponse({ root_uri: "viking://resources/site", status: "success" }),
-    );
+    const transport = vi
+      .fn()
+      .mockResolvedValue(
+        okResponse({ root_uri: "viking://resources/site", status: "success" }),
+      );
 
-    const client = new OpenVikingClient("http://127.0.0.1:1933", "", "agent", 5000, "", "", undefined, false, true, { transport });
+    const client = new OpenVikingClient(
+      "http://127.0.0.1:1933",
+      "",
+      "agent",
+      5000,
+      "",
+      "",
+      undefined,
+      false,
+      true,
+      { transport },
+    );
     const result = await client.addResource({
       pathOrUrl: "https://example.com/docs",
       to: "viking://resources/site",
@@ -119,20 +139,42 @@ describe("OpenVikingClient resource and skill import", () => {
     const transport = vi
       .fn()
       .mockResolvedValueOnce(okResponse({ temp_file_id: "upload_resource.md" }))
-      .mockResolvedValueOnce(okResponse({
-        root_uri: "viking://resources/demo",
-        status: "success",
-        queue_status: { completed: true },
-      }));
+      .mockResolvedValueOnce(
+        okResponse({
+          root_uri: "viking://resources/demo",
+          status: "success",
+          queue_status: { completed: true },
+        }),
+      );
 
-    const client = new OpenVikingClient("http://127.0.0.1:1933", "", "agent", 5000, "", "", undefined, false, true, { transport });
-    const result = await client.addResource({ pathOrUrl: filePath, wait: true });
+    const client = new OpenVikingClient(
+      "http://127.0.0.1:1933",
+      "",
+      "agent",
+      5000,
+      "",
+      "",
+      undefined,
+      false,
+      true,
+      { transport },
+    );
+    const result = await client.addResource({
+      pathOrUrl: filePath,
+      wait: true,
+    });
 
     expect(result.queue_status).toEqual({ completed: true });
     expect(transport).toHaveBeenCalledTimes(2);
-    expect(transport.mock.calls[0]![0]).toBe("http://127.0.0.1:1933/api/v1/resources/temp_upload");
-    expect((transport.mock.calls[0]![1] as RequestInit).body).toBeInstanceOf(FormData);
-    expect(JSON.parse(String((transport.mock.calls[1]![1] as RequestInit).body))).toMatchObject({
+    expect(transport.mock.calls[0]![0]).toBe(
+      "http://127.0.0.1:1933/api/v1/resources/temp_upload",
+    );
+    expect((transport.mock.calls[0]![1] as RequestInit).body).toBeInstanceOf(
+      FormData,
+    );
+    expect(
+      JSON.parse(String((transport.mock.calls[1]![1] as RequestInit).body)),
+    ).toMatchObject({
       temp_file_id: "upload_resource.md",
       wait: true,
     });
@@ -156,18 +198,41 @@ describe("OpenVikingClient resource and skill import", () => {
     };
     const transport = vi
       .fn()
-      .mockResolvedValueOnce(okResponse({ temp_file_id: "upload_resource.zip" }))
-      .mockResolvedValueOnce(okResponse({ root_uri: "viking://resources/resource-dir" }));
+      .mockResolvedValueOnce(
+        okResponse({ temp_file_id: "upload_resource.zip" }),
+      )
+      .mockResolvedValueOnce(
+        okResponse({ root_uri: "viking://resources/resource-dir" }),
+      );
 
-    const client = new OpenVikingClient("http://127.0.0.1:1933", "", "agent", 5000, "", "", undefined, false, true, { transport, resourcePackager });
+    const client = new OpenVikingClient(
+      "http://127.0.0.1:1933",
+      "",
+      "agent",
+      5000,
+      "",
+      "",
+      undefined,
+      false,
+      true,
+      { transport, resourcePackager },
+    );
     await client.addResource({ pathOrUrl: dirPath });
 
-    expect(resourcePackager.prepareResourceSource).toHaveBeenCalledWith(dirPath);
-    expect(resourcePackager.createTempUploadBody).toHaveBeenCalledWith("/virtual/resource-dir.zip");
+    expect(resourcePackager.prepareResourceSource).toHaveBeenCalledWith(
+      dirPath,
+    );
+    expect(resourcePackager.createTempUploadBody).toHaveBeenCalledWith(
+      "/virtual/resource-dir.zip",
+    );
     expect(resourcePackager.cleanup).toHaveBeenCalledWith(packaged);
     expect(transport).toHaveBeenCalledTimes(2);
-    expect((transport.mock.calls[0]![1] as RequestInit).body).toBeInstanceOf(FormData);
-    expect(JSON.parse(String((transport.mock.calls[1]![1] as RequestInit).body))).toMatchObject({
+    expect((transport.mock.calls[0]![1] as RequestInit).body).toBeInstanceOf(
+      FormData,
+    );
+    expect(
+      JSON.parse(String((transport.mock.calls[1]![1] as RequestInit).body)),
+    ).toMatchObject({
       temp_file_id: "upload_resource.zip",
       source_name: "resource-dir",
     });
@@ -176,20 +241,42 @@ describe("OpenVikingClient resource and skill import", () => {
   it("addSkill uploads local SKILL.md file", async () => {
     const tempDir = await mkdtemp(join(tmpdir(), "ov-client-test-"));
     const filePath = join(tempDir, "SKILL.md");
-    await writeFile(filePath, "---\nname: demo\ndescription: demo\n---\n\n# Demo\n");
+    await writeFile(
+      filePath,
+      "---\nname: demo\ndescription: demo\n---\n\n# Demo\n",
+    );
     const transport = vi
       .fn()
       .mockResolvedValueOnce(okResponse({ temp_file_id: "upload_skill.md" }))
-      .mockResolvedValueOnce(okResponse({ uri: "viking://user/skills/demo", name: "demo" }));
+      .mockResolvedValueOnce(
+        okResponse({ uri: "viking://user/skills/demo", name: "demo" }),
+      );
 
-    const client = new OpenVikingClient("http://127.0.0.1:1933", "", "agent", 5000, "", "", undefined, false, true, { transport });
+    const client = new OpenVikingClient(
+      "http://127.0.0.1:1933",
+      "",
+      "agent",
+      5000,
+      "",
+      "",
+      undefined,
+      false,
+      true,
+      { transport },
+    );
     const result = await client.addSkill({ path: filePath, wait: true });
 
     expect(result.uri).toBe("viking://user/skills/demo");
     expect(transport).toHaveBeenCalledTimes(2);
-    expect(transport.mock.calls[0]![0]).toBe("http://127.0.0.1:1933/api/v1/resources/temp_upload");
-    expect((transport.mock.calls[0]![1] as RequestInit).body).toBeInstanceOf(FormData);
-    expect(JSON.parse(String((transport.mock.calls[1]![1] as RequestInit).body))).toMatchObject({
+    expect(transport.mock.calls[0]![0]).toBe(
+      "http://127.0.0.1:1933/api/v1/resources/temp_upload",
+    );
+    expect((transport.mock.calls[0]![1] as RequestInit).body).toBeInstanceOf(
+      FormData,
+    );
+    expect(
+      JSON.parse(String((transport.mock.calls[1]![1] as RequestInit).body)),
+    ).toMatchObject({
       temp_file_id: "upload_skill.md",
       wait: true,
     });
@@ -213,17 +300,38 @@ describe("OpenVikingClient resource and skill import", () => {
     const transport = vi
       .fn()
       .mockResolvedValueOnce(okResponse({ temp_file_id: "upload_skill.zip" }))
-      .mockResolvedValueOnce(okResponse({ uri: "viking://user/skills/demo", name: "demo" }));
+      .mockResolvedValueOnce(
+        okResponse({ uri: "viking://user/skills/demo", name: "demo" }),
+      );
 
-    const client = new OpenVikingClient("http://127.0.0.1:1933", "", "agent", 5000, "", "", undefined, false, true, { transport, resourcePackager });
+    const client = new OpenVikingClient(
+      "http://127.0.0.1:1933",
+      "",
+      "agent",
+      5000,
+      "",
+      "",
+      undefined,
+      false,
+      true,
+      { transport, resourcePackager },
+    );
     await client.addSkill({ path: dirPath, wait: true });
 
-    expect(resourcePackager.prepareLocalUploadSource).toHaveBeenCalledWith(dirPath);
-    expect(resourcePackager.createTempUploadBody).toHaveBeenCalledWith("/virtual/skill-dir.zip");
+    expect(resourcePackager.prepareLocalUploadSource).toHaveBeenCalledWith(
+      dirPath,
+    );
+    expect(resourcePackager.createTempUploadBody).toHaveBeenCalledWith(
+      "/virtual/skill-dir.zip",
+    );
     expect(resourcePackager.cleanup).toHaveBeenCalledWith(packaged);
     expect(transport).toHaveBeenCalledTimes(2);
-    expect((transport.mock.calls[0]![1] as RequestInit).body).toBeInstanceOf(FormData);
-    expect(JSON.parse(String((transport.mock.calls[1]![1] as RequestInit).body))).toMatchObject({
+    expect((transport.mock.calls[0]![1] as RequestInit).body).toBeInstanceOf(
+      FormData,
+    );
+    expect(
+      JSON.parse(String((transport.mock.calls[1]![1] as RequestInit).body)),
+    ).toMatchObject({
       temp_file_id: "upload_skill.zip",
       wait: true,
     });
@@ -231,15 +339,30 @@ describe("OpenVikingClient resource and skill import", () => {
 
   it("addSkill posts raw skill data directly", async () => {
     const data = "---\nname: inline\ndescription: inline\n---\n\n# Inline\n";
-    const transport = vi.fn().mockResolvedValue(
-      okResponse({ uri: "viking://user/skills/inline", name: "inline" }),
-    );
+    const transport = vi
+      .fn()
+      .mockResolvedValue(
+        okResponse({ uri: "viking://user/skills/inline", name: "inline" }),
+      );
 
-    const client = new OpenVikingClient("http://127.0.0.1:1933", "", "agent", 5000, "", "", undefined, false, true, { transport });
+    const client = new OpenVikingClient(
+      "http://127.0.0.1:1933",
+      "",
+      "agent",
+      5000,
+      "",
+      "",
+      undefined,
+      false,
+      true,
+      { transport },
+    );
     await client.addSkill({ data });
 
     expect(transport).toHaveBeenCalledTimes(1);
-    expect(JSON.parse(String((transport.mock.calls[0]![1] as RequestInit).body))).toMatchObject({
+    expect(
+      JSON.parse(String((transport.mock.calls[0]![1] as RequestInit).body)),
+    ).toMatchObject({
       data,
       wait: false,
     });
@@ -251,14 +374,32 @@ describe("OpenVikingClient resource and skill import", () => {
       description: "demo",
       inputSchema: { type: "object", properties: {} },
     };
-    const transport = vi.fn().mockResolvedValue(
-      okResponse({ uri: "viking://user/skills/demo-tool", name: "demo-tool" }),
-    );
+    const transport = vi
+      .fn()
+      .mockResolvedValue(
+        okResponse({
+          uri: "viking://user/skills/demo-tool",
+          name: "demo-tool",
+        }),
+      );
 
-    const client = new OpenVikingClient("http://127.0.0.1:1933", "", "agent", 5000, "", "", undefined, false, true, { transport });
+    const client = new OpenVikingClient(
+      "http://127.0.0.1:1933",
+      "",
+      "agent",
+      5000,
+      "",
+      "",
+      undefined,
+      false,
+      true,
+      { transport },
+    );
     await client.addSkill({ data });
 
-    expect(JSON.parse(String((transport.mock.calls[0]![1] as RequestInit).body))).toMatchObject({
+    expect(
+      JSON.parse(String((transport.mock.calls[0]![1] as RequestInit).body)),
+    ).toMatchObject({
       data,
     });
   });
@@ -266,25 +407,41 @@ describe("OpenVikingClient resource and skill import", () => {
   it("surfaces OpenViking error responses", async () => {
     const transport = vi.fn().mockResolvedValue(errorResponse("bad import"));
 
-    const client = new OpenVikingClient("http://127.0.0.1:1933", "", "agent", 5000, "", "", undefined, false, true, { transport });
-    await expect(client.addResource({ pathOrUrl: "https://example.com/bad" })).rejects.toThrow(
+    const client = new OpenVikingClient(
+      "http://127.0.0.1:1933",
+      "",
+      "agent",
+      5000,
+      "",
+      "",
+      undefined,
+      false,
+      true,
+      { transport },
+    );
+    await expect(
+      client.addResource({ pathOrUrl: "https://example.com/bad" }),
+    ).rejects.toThrow(
       "OpenViking request failed [INVALID_ARGUMENT]: bad import",
     );
   });
 
   it("includes a response error trace_id in the thrown request error", async () => {
     const transport = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({
-        status: "error",
-        error: {
-          code: "INTERNAL",
-          message: "commit failed",
-          trace_id: "trace-client-error",
+      new Response(
+        JSON.stringify({
+          status: "error",
+          error: {
+            code: "INTERNAL",
+            message: "commit failed",
+            trace_id: "trace-client-error",
+          },
+        }),
+        {
+          status: 500,
+          headers: { "Content-Type": "application/json" },
         },
-      }), {
-        status: 500,
-        headers: { "Content-Type": "application/json" },
-      }),
+      ),
     );
     const client = new OpenVikingClient(
       "http://127.0.0.1:1933",
@@ -306,14 +463,35 @@ describe("OpenVikingClient resource and skill import", () => {
 
   it("uses an extended request timeout for wait=true imports", async () => {
     vi.useFakeTimers();
-    const transport = vi.fn((_url: string, init?: RequestInit) => new Promise<Response>((resolve, reject) => {
-      init?.signal?.addEventListener("abort", () => reject(new Error("aborted")));
-      setTimeout(() => {
-        resolve(okResponse({ root_uri: "viking://resources/site", status: "success" }));
-      }, 20_000);
-    }));
+    const transport = vi.fn(
+      (_url: string, init?: RequestInit) =>
+        new Promise<Response>((resolve, reject) => {
+          init?.signal?.addEventListener("abort", () =>
+            reject(new Error("aborted")),
+          );
+          setTimeout(() => {
+            resolve(
+              okResponse({
+                root_uri: "viking://resources/site",
+                status: "success",
+              }),
+            );
+          }, 20_000);
+        }),
+    );
 
-    const client = new OpenVikingClient("http://127.0.0.1:1933", "", "agent", 15_000, "", "", undefined, false, true, { transport });
+    const client = new OpenVikingClient(
+      "http://127.0.0.1:1933",
+      "",
+      "agent",
+      15_000,
+      "",
+      "",
+      undefined,
+      false,
+      true,
+      { transport },
+    );
     const pending = client.addResource({
       pathOrUrl: "https://example.com/docs",
       wait: true,
@@ -330,14 +508,35 @@ describe("OpenVikingClient resource and skill import", () => {
 
   it("still uses the default request timeout for non-wait imports", async () => {
     vi.useFakeTimers();
-    const transport = vi.fn((_url: string, init?: RequestInit) => new Promise<Response>((resolve, reject) => {
-      init?.signal?.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")));
-      setTimeout(() => {
-        resolve(okResponse({ root_uri: "viking://resources/site", status: "success" }));
-      }, 20_000);
-    }));
+    const transport = vi.fn(
+      (_url: string, init?: RequestInit) =>
+        new Promise<Response>((resolve, reject) => {
+          init?.signal?.addEventListener("abort", () =>
+            reject(new DOMException("Aborted", "AbortError")),
+          );
+          setTimeout(() => {
+            resolve(
+              okResponse({
+                root_uri: "viking://resources/site",
+                status: "success",
+              }),
+            );
+          }, 20_000);
+        }),
+    );
 
-    const client = new OpenVikingClient("http://127.0.0.1:1933", "", "agent", 15_000, "", "", undefined, false, true, { transport });
+    const client = new OpenVikingClient(
+      "http://127.0.0.1:1933",
+      "",
+      "agent",
+      15_000,
+      "",
+      "",
+      undefined,
+      false,
+      true,
+      { transport },
+    );
     const pending = client.addResource({
       pathOrUrl: "https://example.com/docs",
       wait: false,
@@ -353,28 +552,43 @@ describe("OpenVikingClient resource and skill import", () => {
     vi.useFakeTimers();
     const transport = vi.fn((url: string) => {
       if (url.endsWith("/api/v1/sessions/slow-session/commit")) {
-        return Promise.resolve(okResponse({
-          session_id: "slow-session",
-          status: "accepted",
-          task_id: "task-slow",
-          archived: true,
-        }));
+        return Promise.resolve(
+          okResponse({
+            session_id: "slow-session",
+            status: "accepted",
+            task_id: "task-slow",
+            archived: true,
+          }),
+        );
       }
       if (url.endsWith("/api/v1/tasks/task-slow")) {
         const completed = Date.now() >= 200_000;
-        return Promise.resolve(okResponse({
-          task_id: "task-slow",
-          task_type: "session_commit",
-          status: completed ? "completed" : "running",
-          created_at: 0,
-          updated_at: 0,
-          result: completed ? { memories_extracted: { core: 1 } } : {},
-        }));
+        return Promise.resolve(
+          okResponse({
+            task_id: "task-slow",
+            task_type: "session_commit",
+            status: completed ? "completed" : "running",
+            created_at: 0,
+            updated_at: 0,
+            result: completed ? { memories_extracted: { core: 1 } } : {},
+          }),
+        );
       }
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const client = new OpenVikingClient("http://127.0.0.1:1933", "", "agent", 5_000, "", "", undefined, false, true, { transport });
+    const client = new OpenVikingClient(
+      "http://127.0.0.1:1933",
+      "",
+      "agent",
+      5_000,
+      "",
+      "",
+      undefined,
+      false,
+      true,
+      { transport },
+    );
     const pending = client.commitSession("slow-session", { wait: true });
 
     await vi.advanceTimersByTimeAsync(200_500);
@@ -420,23 +634,45 @@ describe("OpenVikingClient tenant headers (advanced accountId / userId overrides
   it.each([
     ["prefix", "prefix_main"],
     ["", "main"],
-  ])("sends OpenClaw default agent for health checks with prefix %j", async (prefix, expected) => {
-    const transport = vi.fn().mockResolvedValue(okResponse({ status: "ok" }));
+  ])(
+    "sends OpenClaw default agent for health checks with prefix %j",
+    async (prefix, expected) => {
+      const transport = vi.fn().mockResolvedValue(okResponse({ status: "ok" }));
 
-    const client = new OpenVikingClient("http://127.0.0.1:1933", "sk-test", prefix, 5000, "", "", undefined, false, true, { transport });
-    await client.healthCheck();
+      const client = new OpenVikingClient(
+        "http://127.0.0.1:1933",
+        "sk-test",
+        prefix,
+        5000,
+        "",
+        "",
+        undefined,
+        false,
+        true,
+        { transport },
+      );
+      await client.healthCheck();
 
-    const [, init] = transport.mock.calls[0] as [string, RequestInit];
-    const headers = new Headers(init.headers);
-    expect(headers.get("X-OpenViking-Actor-Peer")).toBe(expected);
-  });
+      const [, init] = transport.mock.calls[0] as [string, RequestInit];
+      const headers = new Headers(init.headers);
+      expect(headers.get("X-OpenViking-Actor-Peer")).toBe(expected);
+    },
+  );
 
   it("sends explicitly configured accountId and userId in request headers", async () => {
     const transport = vi.fn().mockResolvedValue(okResponse({ status: "ok" }));
 
     const client = new OpenVikingClient(
-      "http://127.0.0.1:1933", "sk-test", "agent", 5000,
-      "acct-123", "user-456", undefined, false, true, { transport },
+      "http://127.0.0.1:1933",
+      "sk-test",
+      "agent",
+      5000,
+      "acct-123",
+      "user-456",
+      undefined,
+      false,
+      true,
+      { transport },
     );
     await client.healthCheck();
 
@@ -450,8 +686,16 @@ describe("OpenVikingClient tenant headers (advanced accountId / userId overrides
     const transport = vi.fn().mockResolvedValue(okResponse({ status: "ok" }));
 
     const client = new OpenVikingClient(
-      "http://127.0.0.1:1933", "sk-user", "agent", 5000,
-      "", "", undefined, false, true, { transport },
+      "http://127.0.0.1:1933",
+      "sk-user",
+      "agent",
+      5000,
+      "",
+      "",
+      undefined,
+      false,
+      true,
+      { transport },
     );
     await client.healthCheck();
 
@@ -466,8 +710,16 @@ describe("OpenVikingClient tenant headers (advanced accountId / userId overrides
     const transport = vi.fn().mockResolvedValue(okResponse({ status: "ok" }));
 
     const client = new OpenVikingClient(
-      "http://127.0.0.1:1933", "sk-root", "agent", 5000,
-      "acct-123", "user-456", undefined, false, true, { transport },
+      "http://127.0.0.1:1933",
+      "sk-root",
+      "agent",
+      5000,
+      "acct-123",
+      "user-456",
+      undefined,
+      false,
+      true,
+      { transport },
     );
     await client.healthCheck();
 
@@ -482,8 +734,15 @@ describe("OpenVikingClient tenant headers (advanced accountId / userId overrides
     const transport = vi.fn().mockResolvedValue(okResponse({ status: "ok" }));
 
     const client = new OpenVikingClient(
-      "http://127.0.0.1:1933", "sk-explicit", "agent", 5000,
-      "acct-explicit", "user-explicit", undefined, false, true,
+      "http://127.0.0.1:1933",
+      "sk-explicit",
+      "agent",
+      5000,
+      "acct-explicit",
+      "user-explicit",
+      undefined,
+      false,
+      true,
       {
         transport,
         headers: {
@@ -510,9 +769,19 @@ describe("OpenVikingClient tenant headers (advanced accountId / userId overrides
     const transport = vi.fn().mockResolvedValue(okResponse({ status: "ok" }));
 
     const client = new OpenVikingClient(
-      "http://127.0.0.1:1933", "", "agent", 5000,
-      "", "", undefined, false, true,
-      { transport, headers: { "X-API-Key": "sk-from-config", token: "root-token" } },
+      "http://127.0.0.1:1933",
+      "",
+      "agent",
+      5000,
+      "",
+      "",
+      undefined,
+      false,
+      true,
+      {
+        transport,
+        headers: { "X-API-Key": "sk-from-config", token: "root-token" },
+      },
     );
     await client.healthCheck();
 
@@ -526,8 +795,16 @@ describe("OpenVikingClient tenant headers (advanced accountId / userId overrides
     const transport = vi.fn().mockResolvedValue(okResponse({ status: "ok" }));
 
     const client = new OpenVikingClient(
-      "http://127.0.0.1:1933", "", "agent", 5000,
-      "", "", undefined, false, true, { transport },
+      "http://127.0.0.1:1933",
+      "",
+      "agent",
+      5000,
+      "",
+      "",
+      undefined,
+      false,
+      true,
+      { transport },
     );
     await client.healthCheck();
 
@@ -541,8 +818,16 @@ describe("OpenVikingClient tenant headers (advanced accountId / userId overrides
     const transport = vi.fn().mockResolvedValue(okResponse({ status: "ok" }));
 
     const client = new OpenVikingClient(
-      "http://127.0.0.1:1933", "", "agent", 5000,
-      "  acct  ", "  user  ", undefined, false, true, { transport },
+      "http://127.0.0.1:1933",
+      "",
+      "agent",
+      5000,
+      "  acct  ",
+      "  user  ",
+      undefined,
+      false,
+      true,
+      { transport },
     );
     await client.healthCheck();
 
@@ -555,15 +840,26 @@ describe("OpenVikingClient tenant headers (advanced accountId / userId overrides
 
 describe("OpenVikingClient canonical namespace policy", () => {
   it("keeps server-assembled context requests aligned with the shared contract", async () => {
-    const transport = vi.fn().mockResolvedValue(okResponse({
-      entries: [{ uri: "viking://user/memories/events/a.md" }],
-      rendered: '<memory uri="viking://user/memories/events/a.md">body</memory>',
-      stats: { used_tokens: 12 },
-    }));
+    const transport = vi.fn().mockResolvedValue(
+      okResponse({
+        entries: [{ uri: "viking://user/memories/events/a.md" }],
+        rendered:
+          '<memory uri="viking://user/memories/events/a.md">body</memory>',
+        stats: { used_tokens: 12 },
+      }),
+    );
     const routingDebugLog = vi.fn();
     const client = new OpenVikingClient(
-      "http://127.0.0.1:1933", "", "agent", 5000,
-      "acct-123", "user-456", routingDebugLog, false, true, { transport },
+      "http://127.0.0.1:1933",
+      "",
+      "agent",
+      5000,
+      "acct-123",
+      "user-456",
+      routingDebugLog,
+      false,
+      true,
+      { transport },
     );
 
     const result = await client.searchContext("continue the refactor", {
@@ -584,46 +880,71 @@ describe("OpenVikingClient canonical namespace policy", () => {
     const [url, init] = transport.mock.calls[0] as [string, RequestInit];
     expect(url).toBe("http://127.0.0.1:1933/api/v1/search/search");
     const requestBody = JSON.parse(String(init.body));
-    const { context_type: contextType, detail, ...sharedRequestBody } = requestBody;
+    const {
+      context_type: contextType,
+      detail,
+      ...sharedRequestBody
+    } = requestBody;
     expect(sharedRequestBody).toEqual({
-      ...buildContextSearchBody({
-        recallLimit: 6,
-        recallLimitConfigured: true,
-        recallMaxTokens: 1000,
-        recallMaxTokensConfigured: true,
-        scoreThreshold: 0.15,
-        recallQueryExpansion: "auto",
-        recallQueryExpansionConfigured: true,
-        recallDedupTurns: 5,
-        recallPeerScope: "actor",
-        timeoutMs: 5000,
-      }, { sessionId: "ov-session-1" }),
+      ...buildContextSearchBody(
+        {
+          recallLimit: 6,
+          recallLimitConfigured: true,
+          recallMaxTokens: 1000,
+          recallMaxTokensConfigured: true,
+          scoreThreshold: 0.15,
+          recallQueryExpansion: "auto",
+          recallQueryExpansionConfigured: true,
+          recallDedupTurns: 5,
+          recallPeerScope: "actor",
+          timeoutMs: 5000,
+        },
+        { sessionId: "ov-session-1" },
+      ),
       query: "continue the refactor",
     });
     expect(contextType).toEqual(["memory", "resource"]);
     expect(detail).toBe("abstract");
     expect(requestBody).not.toHaveProperty("limit");
-    expect(new Headers(init.headers).get("X-OpenViking-Actor-Peer")).toBe("agent-main");
-    expect(new Headers(init.headers).get("X-OpenViking-Account")).toBe("acct-123");
+    expect(new Headers(init.headers).get("X-OpenViking-Actor-Peer")).toBe(
+      "agent-main",
+    );
+    expect(new Headers(init.headers).get("X-OpenViking-Account")).toBe(
+      "acct-123",
+    );
     expect(new Headers(init.headers).get("X-OpenViking-User")).toBe("user-456");
-    expect(routingDebugLog).toHaveBeenCalledWith(expect.stringContaining('"query_expansion":"auto"'));
+    expect(routingDebugLog).toHaveBeenCalledWith(
+      expect.stringContaining('"query_expansion":"auto"'),
+    );
   });
 
   it("normalizes context entries through the shared response contract", async () => {
-    const transport = vi.fn().mockResolvedValue(okResponse({
-      entries: [{
-        uri: "viking://user/memories/events/legacy.md",
-        type: "events",
-        mode: "abstract",
-        content: "legacy response body",
-        score: "0.82",
-        origin: "self",
-      }],
-      rendered: "legacy response body",
-    }));
+    const transport = vi.fn().mockResolvedValue(
+      okResponse({
+        entries: [
+          {
+            uri: "viking://user/memories/events/legacy.md",
+            type: "events",
+            mode: "abstract",
+            content: "legacy response body",
+            score: "0.82",
+            origin: "self",
+          },
+        ],
+        rendered: "legacy response body",
+      }),
+    );
     const client = new OpenVikingClient(
-      "http://127.0.0.1:1933", "", "agent", 5000,
-      "", "", undefined, false, true, { transport },
+      "http://127.0.0.1:1933",
+      "",
+      "agent",
+      5000,
+      "",
+      "",
+      undefined,
+      false,
+      true,
+      { transport },
     );
 
     const result = await client.searchContext("legacy response");
@@ -650,12 +971,24 @@ describe("OpenVikingClient canonical namespace policy", () => {
       });
     });
     const client = new OpenVikingClient(
-      "http://127.0.0.1:1933", "", "agent", 5000,
-      "", "", undefined, false, true, { transport },
+      "http://127.0.0.1:1933",
+      "",
+      "agent",
+      5000,
+      "",
+      "",
+      undefined,
+      false,
+      true,
+      { transport },
     );
 
-    const pending = client.searchContext("session-aware timeout", { sessionId: "ov-session-1" });
-    const rejection = expect(pending).rejects.toMatchObject({ name: "AbortError" });
+    const pending = client.searchContext("session-aware timeout", {
+      sessionId: "ov-session-1",
+    });
+    const rejection = expect(pending).rejects.toMatchObject({
+      name: "AbortError",
+    });
     await vi.advanceTimersByTimeAsync(5001);
     expect(requestSignal?.aborted).toBe(false);
     await vi.advanceTimersByTimeAsync(9999);
@@ -675,13 +1008,22 @@ describe("OpenVikingClient canonical namespace policy", () => {
     });
 
     const client = new OpenVikingClient(
-      "http://127.0.0.1:1933", "", "my-agent", 5000,
-      "", "", undefined,
+      "http://127.0.0.1:1933",
+      "",
+      "my-agent",
+      5000,
+      "",
+      "",
+      undefined,
       false,
       true,
       { transport },
     );
-    await client.find("test query", { targetUri: "viking://~/memories" }, "my-agent");
+    await client.find(
+      "test query",
+      { targetUri: "viking://~/memories" },
+      "my-agent",
+    );
 
     const findCall = transport.mock.calls.find((c) =>
       String(c[0]).endsWith("/api/v1/search/find"),
@@ -704,13 +1046,22 @@ describe("OpenVikingClient canonical namespace policy", () => {
     });
 
     const client = new OpenVikingClient(
-      "http://127.0.0.1:1933", "", "my-agent", 5000,
-      "", "", undefined,
+      "http://127.0.0.1:1933",
+      "",
+      "my-agent",
+      5000,
+      "",
+      "",
+      undefined,
       true,
       true,
       { transport },
     );
-    await client.find("test query", { targetUri: "viking://~/memories" }, "my-agent");
+    await client.find(
+      "test query",
+      { targetUri: "viking://~/memories" },
+      "my-agent",
+    );
 
     const findCall = transport.mock.calls.find((c) =>
       String(c[0]).endsWith("/api/v1/search/find"),
@@ -733,13 +1084,22 @@ describe("OpenVikingClient canonical namespace policy", () => {
     });
 
     const client = new OpenVikingClient(
-      "http://127.0.0.1:1933", "", "shared-agent", 5000,
-      "", "", undefined,
+      "http://127.0.0.1:1933",
+      "",
+      "shared-agent",
+      5000,
+      "",
+      "",
+      undefined,
       false,
       true,
       { transport },
     );
-    await client.find("test", { targetUri: "viking://~/memories" }, "shared-agent");
+    await client.find(
+      "test",
+      { targetUri: "viking://~/memories" },
+      "shared-agent",
+    );
 
     const findCall = transport.mock.calls.find((c) =>
       String(c[0]).endsWith("/api/v1/search/find"),
@@ -760,13 +1120,22 @@ describe("OpenVikingClient canonical namespace policy", () => {
     });
 
     const client = new OpenVikingClient(
-      "http://127.0.0.1:1933", "", "shared-agent", 5000,
-      "", "", undefined,
+      "http://127.0.0.1:1933",
+      "",
+      "shared-agent",
+      5000,
+      "",
+      "",
+      undefined,
       false,
       false,
       { transport },
     );
-    await client.find("test", { targetUri: "viking://~/skills" }, "shared-agent");
+    await client.find(
+      "test",
+      { targetUri: "viking://~/skills" },
+      "shared-agent",
+    );
 
     const findCall = transport.mock.calls.find((c) =>
       String(c[0]).endsWith("/api/v1/search/find"),
@@ -776,9 +1145,22 @@ describe("OpenVikingClient canonical namespace policy", () => {
   });
 
   it("includes peer_id when addSessionMessage receives one", async () => {
-    const transport = vi.fn().mockResolvedValue(okResponse({ session_id: "s1" }));
+    const transport = vi
+      .fn()
+      .mockResolvedValue(okResponse({ session_id: "s1" }));
 
-    const client = new OpenVikingClient("http://127.0.0.1:1933", "", "agent", 5000, "", "", undefined, false, true, { transport });
+    const client = new OpenVikingClient(
+      "http://127.0.0.1:1933",
+      "",
+      "agent",
+      5000,
+      "",
+      "",
+      undefined,
+      false,
+      true,
+      { transport },
+    );
     await client.addSessionMessage(
       "s1",
       "user",

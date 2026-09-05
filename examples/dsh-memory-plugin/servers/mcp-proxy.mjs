@@ -18,29 +18,35 @@ import { buildMcpProxyConfig } from "../shared/mcp-proxy-config.mjs";
 import { createOpenVikingMcpProxy } from "../shared/mcp-proxy-core.mjs";
 
 export function readProxyConfig(env = process.env, cwd = process.cwd()) {
-  const cfg = resolveConfig({}, env, cwd);
-  const creds = resolveOpenVikingCredentials(env);
-  return buildMcpProxyConfig({
-    baseUrl: cfg.endpoint,
-    apiKey: cfg.apiKey,
-    account: cfg.account,
-    user: cfg.user,
-    // Not gated through `resolveMcpActorPeerId` like the other proxies: DSH's
-    // parent process resolves the peer per session and hands it over in the
-    // child env (`mcp.mjs` `buildMcpConfig`), so this one is not a guess at the
-    // launch directory.
-    peerId: cfg.peerId,
-    userAgent: cfg.userAgent,
-    timeoutMs: cfg.requestTimeoutMs,
-    debug: Boolean(env.OV_DEBUG_LOG),
-    debugLogPath: env.OV_DEBUG_LOG,
-    credentialSource: creds.credentialSource,
-    credentialPath: creds.cliPath || creds.ovPath,
-    watchedPaths: [creds.cliPath, creds.ovPath, creds.cliPathCandidate],
-    env,
-  });
+   const cfg = resolveConfig({}, env, cwd);
+   const creds = resolveOpenVikingCredentials(env);
+   return buildMcpProxyConfig({
+      baseUrl: cfg.endpoint,
+      apiKey: cfg.apiKey,
+      account: cfg.account,
+      user: cfg.user,
+      // Not gated through `resolveMcpActorPeerId` like the other proxies: DSH's
+      // parent process resolves the peer per session and hands it over in the
+      // child env (`mcp.mjs` `buildMcpConfig`), so this one is not a guess at the
+      // launch directory.
+      peerId: cfg.peerId,
+      userAgent: cfg.userAgent,
+      timeoutMs: cfg.requestTimeoutMs,
+      debug: Boolean(env.OV_DEBUG_LOG),
+      debugLogPath: env.OV_DEBUG_LOG,
+      credentialSource: creds.credentialSource,
+      credentialPath: creds.cliPath || creds.ovPath,
+      watchedPaths: [creds.cliPath, creds.ovPath, creds.cliPathCandidate],
+      env,
+   });
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === resolvePath(process.argv[1])) {
-  createOpenVikingMcpProxy({ readConfig: readProxyConfig, loggerFactory: createLogger }).start();
+if (
+   process.argv[1] &&
+   fileURLToPath(import.meta.url) === resolvePath(process.argv[1])
+) {
+   createOpenVikingMcpProxy({
+      readConfig: readProxyConfig,
+      loggerFactory: createLogger,
+   }).start();
 }

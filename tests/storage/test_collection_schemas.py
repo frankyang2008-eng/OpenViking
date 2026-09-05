@@ -189,12 +189,8 @@ async def test_init_context_collection_backfills_metadata_for_empty_legacy_colle
     schema_updates = []
     config = _DummyConfig(_DummyEmbedder(), backend="local")
     existing_schema = CollectionSchemas.context_collection("context", config.embedding.dimension)
-    existing_fields = [
-        field for field in existing_schema["Fields"] if field["FieldName"] != "tags"
-    ]
-    existing_scalar_index = [
-        field for field in existing_schema["ScalarIndex"] if field != "tags"
-    ]
+    existing_fields = [field for field in existing_schema["Fields"] if field["FieldName"] != "tags"]
+    existing_scalar_index = [field for field in existing_schema["ScalarIndex"] if field != "tags"]
 
     class _FakeStorage:
         async def create_collection(self, name, schema):

@@ -13,6 +13,7 @@ List, inspect, update, and trigger watch tasks created via [`add_resource`](02-r
 This control plane wraps the `WatchManager` primitives without changing any server-side behavior. Every endpoint and CLI command resolves the target task by either its `task_id` (path) or its `to_uri` (query). The two keys are interchangeable; if both are supplied they must refer to the same task, otherwise the request is rejected with 400.
 
 **Operations**:
+
 - **List** (`GET /api/v1/watches`) — returns `{tasks, total}`; pass `?active_only=true` to filter; pass `?to_uri=...` to collapse to a single-task lookup
 - **Show** (`GET /api/v1/watches/{task_id}`) — inspect one task; optional `?to_uri=` performs a cross-key sanity check
 - **Update** (`PATCH /api/v1/watches/{task_id}` or `PATCH /api/v1/watches?to_uri=...`) — partial update of `watch_interval`, `is_active`, `reason`, `instruction`. `is_active` is orthogonal to `watch_interval`: flip `is_active` to pause/resume without losing the configured cadence.
@@ -20,6 +21,7 @@ This control plane wraps the `WatchManager` primitives without changing any serv
 - **Trigger** (`POST /api/v1/watches/{task_id}/trigger` or `POST /api/v1/watches/trigger?to_uri=...`) — fire-and-forget refresh; returns immediately while the underlying re-ingest runs in the background
 
 **Code Entry Points**:
+
 - `openviking/server/routers/watches.py` — REST router for `/api/v1/watches`
 - `crates/ov_cli/src/commands/watch.rs` — `ov task watch` CLI subcommand group
 - `openviking/server/mcp_endpoint.py` — MCP `list_watches` / `cancel_watch` tools and the `watch_interval` / `to` parameters on `add_resource`
@@ -32,7 +34,7 @@ For every single-task endpoint the path `{task_id}` can be replaced with a `?to_
 **`PATCH /watches` body** (all fields optional; at least one is required)
 
 | Field | Type | Description |
-|-------|------|-------------|
+| ------- | ------ | ------------- |
 | watch_interval | float | New cadence in minutes. Must be `> 0`; use `is_active=false` to pause without losing the cadence. |
 | is_active | bool | Toggle activation without losing the cadence (pause / resume). |
 | reason | string | Update the recorded reason for the watch. |

@@ -13,6 +13,7 @@ Watch API 管理资源的周期检查、暂停、恢复和手动触发。
 此控制面封装了 `WatchManager` 原语，未改动任何服务端行为。每个端点和 CLI 命令都支持通过 `task_id`（路径）或 `to_uri`（查询参数）定位目标任务，两种键可以互换；如果同时提供，二者必须指向同一任务，否则返回 400。
 
 **操作**：
+
 - **列出**（`GET /api/v1/watches`）— 返回 `{tasks, total}`；可传 `?active_only=true` 过滤；传 `?to_uri=...` 时降级为单任务查找
 - **查看**（`GET /api/v1/watches/{task_id}`）— 查看单个任务；可选 `?to_uri=` 做跨键一致性校验
 - **更新**（`PATCH /api/v1/watches/{task_id}` 或 `PATCH /api/v1/watches?to_uri=...`）— 部分更新 `watch_interval`、`is_active`、`reason`、`instruction`。`is_active` 与 `watch_interval` 正交：翻转 `is_active` 可在不丢失配置周期的前提下暂停/恢复任务。
@@ -20,6 +21,7 @@ Watch API 管理资源的周期检查、暂停、恢复和手动触发。
 - **触发**（`POST /api/v1/watches/{task_id}/trigger` 或 `POST /api/v1/watches/trigger?to_uri=...`）— 触发即返回（fire-and-forget），重新摄取在后台异步执行
 
 **代码入口**：
+
 - `openviking/server/routers/watches.py` — `/api/v1/watches` REST 路由
 - `crates/ov_cli/src/commands/watch.rs` — `ov task watch` CLI 子命令组
 - `openviking/server/mcp_endpoint.py` — MCP `list_watches` / `cancel_watch` 工具，以及 `add_resource` 上的 `watch_interval` / `to` 参数
@@ -32,7 +34,7 @@ Watch API 管理资源的周期检查、暂停、恢复和手动触发。
 **`PATCH /watches` 请求体**（字段均可选，至少需提供一个）
 
 | 字段 | 类型 | 说明 |
-|------|------|------|
+| ------ | ------ | ------ |
 | watch_interval | float | 新的检查周期（分钟），必须 `> 0`；如需暂停而保留周期请改用 `is_active=false`。 |
 | is_active | bool | 切换激活状态而保留配置周期（暂停 / 恢复）。 |
 | reason | string | 更新该监控任务的记录原因。 |

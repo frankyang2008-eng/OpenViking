@@ -647,7 +647,7 @@ openclaw config get plugins.slots.contextEngine
 
 | 参数 | 说明 |
 | --- | --- |
-| `--channel stg|ppe|prod` | 选择 release 环境 / TOS 前缀，默认 `prod` |
+| `--channel stg | ppe | prod` | 选择 release 环境 / TOS 前缀，默认 `prod` |
 | `--latest` | 使用 `<channel>/latest.json` 指向的版本，默认行为 |
 | `--version <version>` / `--rollback-to <version>` | 使用 `<channel>/releases/<version>/manifest.json` |
 | `--manifest-url <url>` | 直接指定 manifest 地址，用于临时验证 |

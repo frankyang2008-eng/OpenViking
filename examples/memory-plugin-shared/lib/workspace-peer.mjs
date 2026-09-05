@@ -13,7 +13,11 @@
  * The old behaviour is still one word away, byte for byte.
  */
 
-import { legacySanitize, resolveWorkspaceIdentity, sanitizePeerId } from "./workspace-identity.mjs";
+import {
+ legacySanitize,
+ resolveWorkspaceIdentity,
+ sanitizePeerId,
+} from "./workspace-identity.mjs";
 
 /**
  * `git` is the default, and it resolves only inside a repository: the remote
@@ -30,9 +34,9 @@ import { legacySanitize, resolveWorkspaceIdentity, sanitizePeerId } from "./work
  * their own template.
  */
 export const PEER_SOURCE_PRESETS = {
-  git: ["{git_remote}", "{git_root}"],
-  cwd: ["{cwd}"],
-  none: [],
+ git: ["{git_remote}", "{git_root}"],
+ cwd: ["{cwd}"],
+ none: [],
 };
 
 export const DEFAULT_PEER_SOURCE = "git";
@@ -40,7 +44,7 @@ export const DEFAULT_PEER_SOURCE = "git";
 const VARIABLE_RE = /\{([a-z_]+)\}/g;
 
 export function deriveWorkspacePeerId(cwd) {
-  return legacySanitize(cwd);
+ return legacySanitize(cwd);
 }
 
 /**
@@ -53,18 +57,19 @@ export function deriveWorkspacePeerId(cwd) {
  * list is explicit enough to mean the constant it contains.
  */
 export function peerSourceTemplates(source, onWarn = null) {
-  if (Array.isArray(source)) return source.map(String).filter(Boolean);
-  const raw = String(source ?? "").trim();
-  if (!raw) return PEER_SOURCE_PRESETS[DEFAULT_PEER_SOURCE];
-  if (Object.hasOwn(PEER_SOURCE_PRESETS, raw)) return PEER_SOURCE_PRESETS[raw];
-  if (raw.includes("{")) return [raw];
+ if (Array.isArray(source)) return source.map(String).filter(Boolean);
+ const raw = String(source ?? "").trim();
+ if (!raw) return PEER_SOURCE_PRESETS[DEFAULT_PEER_SOURCE];
+ if (Object.hasOwn(PEER_SOURCE_PRESETS, raw)) return PEER_SOURCE_PRESETS[raw];
+ if (raw.includes("{")) return [raw];
 
-  const message = `OpenViking: ignored peer.source ${JSON.stringify(raw)}: it is neither a preset `
-    + `(${Object.keys(PEER_SOURCE_PRESETS).join(", ")}) nor a template such as "team-{dir}". `
-    + `Falling back to ${DEFAULT_PEER_SOURCE}.`;
-  if (typeof onWarn === "function") onWarn(message);
-  else process.stderr.write(`${message}\n`);
-  return PEER_SOURCE_PRESETS[DEFAULT_PEER_SOURCE];
+ const message =
+  `OpenViking: ignored peer.source ${JSON.stringify(raw)}: it is neither a preset ` +
+  `(${Object.keys(PEER_SOURCE_PRESETS).join(", ")}) nor a template such as "team-{dir}". ` +
+  `Falling back to ${DEFAULT_PEER_SOURCE}.`;
+ if (typeof onWarn === "function") onWarn(message);
+ else process.stderr.write(`${message}\n`);
+ return PEER_SOURCE_PRESETS[DEFAULT_PEER_SOURCE];
 }
 
 /**
@@ -75,19 +80,19 @@ export function peerSourceTemplates(source, onWarn = null) {
  * template instead.
  */
 export function renderPeerTemplate(template, vars) {
-  const text = String(template || "");
-  if (!text) return "";
-  let empty = false;
-  const rendered = text.replace(VARIABLE_RE, (match, name) => {
-    if (!Object.hasOwn(vars, name)) {
-      empty = true;
-      return "";
-    }
-    const value = String(vars[name] ?? "");
-    if (!value) empty = true;
-    return value;
-  });
-  return empty ? "" : rendered;
+ const text = String(template || "");
+ if (!text) return "";
+ let empty = false;
+ const rendered = text.replace(VARIABLE_RE, (match, name) => {
+  if (!Object.hasOwn(vars, name)) {
+   empty = true;
+   return "";
+  }
+  const value = String(vars[name] ?? "");
+  if (!value) empty = true;
+  return value;
+ });
+ return empty ? "" : rendered;
 }
 
 /**
@@ -99,35 +104,49 @@ export function renderPeerTemplate(template, vars) {
  * the pre-git id whenever it differs, so recall can still reach memories
  * written under it.
  */
-export function resolveEffectivePeerId({ cfg = {}, cwd = "", identity = null, env = process.env, onWarn = null } = {}) {
-  const explicit = String(cfg.peerId || "").trim();
-  if (explicit) return { peerId: explicit, source: "explicit", origin: "explicit", legacyPeerId: "" };
-
-  // `OPENVIKING_WORKSPACE_PEER=0` predates `peer.source` and still means "none".
-  if (cfg.workspacePeer === false) return { peerId: "", source: "none", origin: "disabled", legacyPeerId: "" };
-
-  const templates = peerSourceTemplates(cfg.peerSource, onWarn);
-  if (!templates.length) return { peerId: "", source: "none", origin: "none", legacyPeerId: "" };
-
-  // `harness` is composed here rather than in the identity, whose result is
-  // cached on disk under a cwd-only key — two harnesses in one directory would
-  // otherwise read each other's peer back out of that cache.
-  const vars = {
-    ...((identity || resolveWorkspaceIdentity({ cwd, env })).vars || {}),
-    harness: sanitizePeerId(cfg.harness || cfg.clientId || ""),
+export function resolveEffectivePeerId({
+ cfg = {},
+ cwd = "",
+ identity = null,
+ env = process.env,
+ onWarn = null,
+} = {}) {
+ const explicit = String(cfg.peerId || "").trim();
+ if (explicit)
+  return {
+   peerId: explicit,
+   source: "explicit",
+   origin: "explicit",
+   legacyPeerId: "",
   };
-  const legacyPeerId = deriveWorkspacePeerId(cwd);
-  for (const template of templates) {
-    const peerId = renderPeerTemplate(template, vars);
-    if (!peerId) continue;
-    return {
-      peerId,
-      source: "workspace",
-      origin: template,
-      legacyPeerId: peerId === legacyPeerId ? "" : legacyPeerId,
-    };
-  }
-  // No peer, but the pre-git id is still what earlier sessions in this
-  // directory wrote under, so recall keeps reaching it.
-  return { peerId: "", source: "none", origin: "unresolved", legacyPeerId };
+
+ // `OPENVIKING_WORKSPACE_PEER=0` predates `peer.source` and still means "none".
+ if (cfg.workspacePeer === false)
+  return { peerId: "", source: "none", origin: "disabled", legacyPeerId: "" };
+
+ const templates = peerSourceTemplates(cfg.peerSource, onWarn);
+ if (!templates.length)
+  return { peerId: "", source: "none", origin: "none", legacyPeerId: "" };
+
+ // `harness` is composed here rather than in the identity, whose result is
+ // cached on disk under a cwd-only key — two harnesses in one directory would
+ // otherwise read each other's peer back out of that cache.
+ const vars = {
+  ...((identity || resolveWorkspaceIdentity({ cwd, env })).vars || {}),
+  harness: sanitizePeerId(cfg.harness || cfg.clientId || ""),
+ };
+ const legacyPeerId = deriveWorkspacePeerId(cwd);
+ for (const template of templates) {
+  const peerId = renderPeerTemplate(template, vars);
+  if (!peerId) continue;
+  return {
+   peerId,
+   source: "workspace",
+   origin: template,
+   legacyPeerId: peerId === legacyPeerId ? "" : legacyPeerId,
+  };
+ }
+ // No peer, but the pre-git id is still what earlier sessions in this
+ // directory wrote under, so recall keeps reaching it.
+ return { peerId: "", source: "none", origin: "unresolved", legacyPeerId };
 }

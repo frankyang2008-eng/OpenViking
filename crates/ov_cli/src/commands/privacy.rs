@@ -65,7 +65,7 @@ fn to_kv_row(key: &str, value: &Value) -> Value {
 
 fn to_kv_rows(map: &Map<String, Value>) -> Vec<Value> {
     let mut items: Vec<(&String, &Value)> = map.iter().collect();
-    items.sort_by(|(a, _), (b, _)| a.cmp(b));
+    items.sort_by_key(|(a, _)| *a);
     items.into_iter().map(|(k, v)| to_kv_row(k, v)).collect()
 }
 
@@ -74,7 +74,7 @@ fn split_kv_rows_by_keys(
     selected_keys: &HashSet<String>,
 ) -> (Vec<Value>, Vec<Value>) {
     let mut items: Vec<(&String, &Value)> = map.iter().collect();
-    items.sort_by(|(a, _), (b, _)| a.cmp(b));
+    items.sort_by_key(|(a, _)| *a);
 
     let mut selected_rows: Vec<Value> = Vec::new();
     let mut other_rows: Vec<Value> = Vec::new();

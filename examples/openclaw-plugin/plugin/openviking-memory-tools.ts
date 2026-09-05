@@ -51,7 +51,9 @@ export type OpenVikingMemoryToolsDeps = {
   normalizeSessionId: (sessionId: string) => string;
   createTempSessionId: () => string;
   peerRole: OpenVikingPeerRole;
-  resolvePluginSessionRouting: (ctx?: OpenVikingMemoryToolContext) => OpenVikingMemorySession;
+  resolvePluginSessionRouting: (
+    ctx?: OpenVikingMemoryToolContext,
+  ) => OpenVikingMemorySession;
   isBypassedSession: (ctx?: OpenVikingMemoryToolContext) => boolean;
   makeBypassedToolResult: (toolName: string) => unknown;
   defaultTargetUri: string;
@@ -69,7 +71,9 @@ function totalCommitMemories(r: CommitSessionResult): number {
   return Object.values(m).reduce((sum, n) => sum + (n ?? 0), 0);
 }
 
-export function registerOpenVikingMemoryTools(deps: OpenVikingMemoryToolsDeps): void {
+export function registerOpenVikingMemoryTools(
+  deps: OpenVikingMemoryToolsDeps,
+): void {
   deps.registerTool(
     (ctx: OpenVikingMemoryToolContext) => ({
       name: "memory_store",
@@ -77,9 +81,15 @@ export function registerOpenVikingMemoryTools(deps: OpenVikingMemoryToolsDeps): 
       description:
         "Store text in OpenViking memory pipeline by writing to a session and running memory extraction. Use when the user explicitly asks to remember, save, or store an important long-term fact, preference, project, or decision; automatic capture is threshold/commit dependent.",
       parameters: Type.Object({
-        text: Type.String({ description: "Information to store as memory source text" }),
-        role: Type.Optional(Type.String({ description: "Session role, default user" })),
-        sessionId: Type.Optional(Type.String({ description: "Existing OpenViking session ID" })),
+        text: Type.String({
+          description: "Information to store as memory source text",
+        }),
+        role: Type.Optional(
+          Type.String({ description: "Session role, default user" }),
+        ),
+        sessionId: Type.Optional(
+          Type.String({ description: "Existing OpenViking session ID" }),
+        ),
       }),
       async execute(_toolCallId: string, params: Record<string, unknown>) {
         if (deps.isBypassedSession(ctx)) {
@@ -94,7 +104,9 @@ export function registerOpenVikingMemoryTools(deps: OpenVikingMemoryToolsDeps): 
         const explicitSessionId =
           typeof (params as { sessionId?: unknown }).sessionId === "string" &&
           (params as { sessionId: string }).sessionId.trim()
-            ? deps.normalizeSessionId((params as { sessionId: string }).sessionId)
+            ? deps.normalizeSessionId(
+                (params as { sessionId: string }).sessionId,
+              )
             : undefined;
 
         if (deps.logFindRequests) {
@@ -136,11 +148,16 @@ export function registerOpenVikingMemoryTools(deps: OpenVikingMemoryToolsDeps): 
                 `${commitResult.error ?? "unknown"}, trace_id=${commitResult.trace_id ?? "none"}`,
             );
             return {
-              content: [{
-                type: "text",
-                text: `Memory extraction failed for session ${sessionId}: ${commitResult.error ?? "unknown"}` +
-                  (commitResult.trace_id ? ` (trace_id=${commitResult.trace_id})` : ""),
-              }],
+              content: [
+                {
+                  type: "text",
+                  text:
+                    `Memory extraction failed for session ${sessionId}: ${commitResult.error ?? "unknown"}` +
+                    (commitResult.trace_id
+                      ? ` (trace_id=${commitResult.trace_id})`
+                      : ""),
+                },
+              ],
               details: {
                 action: "failed",
                 sessionId,
@@ -158,12 +175,15 @@ export function registerOpenVikingMemoryTools(deps: OpenVikingMemoryToolsDeps): 
                 "Memories may still be extracting in background.",
             );
             return {
-              content: [{
-                type: "text",
-                text: `Memory extraction timed out for session ${sessionId}. ` +
-                  `It may still complete in the background (task_id=${commitResult.task_id ?? "none"}` +
-                  `${commitResult.trace_id ? `, trace_id=${commitResult.trace_id}` : ""}).`,
-              }],
+              content: [
+                {
+                  type: "text",
+                  text:
+                    `Memory extraction timed out for session ${sessionId}. ` +
+                    `It may still complete in the background (task_id=${commitResult.task_id ?? "none"}` +
+                    `${commitResult.trace_id ? `, trace_id=${commitResult.trace_id}` : ""}).`,
+                },
+              ],
               details: {
                 action: "timeout",
                 sessionId,
@@ -189,8 +209,11 @@ export function registerOpenVikingMemoryTools(deps: OpenVikingMemoryToolsDeps): 
             content: [
               {
                 type: "text",
-                text: `Stored in OpenViking session ${sessionId} and committed ${memoriesCount} memories.` +
-                  (commitResult.trace_id ? ` (trace_id=${commitResult.trace_id})` : ""),
+                text:
+                  `Stored in OpenViking session ${sessionId} and committed ${memoriesCount} memories.` +
+                  (commitResult.trace_id
+                    ? ` (trace_id=${commitResult.trace_id})`
+                    : ""),
               },
             ],
             details: {
@@ -219,14 +242,24 @@ export function registerOpenVikingMemoryTools(deps: OpenVikingMemoryToolsDeps): 
       description:
         "Forget memory by URI, or search then delete when a strong single match is found.",
       parameters: Type.Object({
-        uri: Type.Optional(Type.String({ description: "Exact memory URI to delete" })),
-        query: Type.Optional(Type.String({ description: "Search query to find memory URI" })),
-        targetUri: Type.Optional(
-          Type.String({ description: "Search scope URI (default: plugin config)" }),
+        uri: Type.Optional(
+          Type.String({ description: "Exact memory URI to delete" }),
         ),
-        limit: Type.Optional(Type.Number({ description: "Search limit (default: 5)" })),
+        query: Type.Optional(
+          Type.String({ description: "Search query to find memory URI" }),
+        ),
+        targetUri: Type.Optional(
+          Type.String({
+            description: "Search scope URI (default: plugin config)",
+          }),
+        ),
+        limit: Type.Optional(
+          Type.Number({ description: "Search limit (default: 5)" }),
+        ),
         scoreThreshold: Type.Optional(
-          Type.Number({ description: "Minimum score (0-1, default: plugin config)" }),
+          Type.Number({
+            description: "Minimum score (0-1, default: plugin config)",
+          }),
         ),
       }),
       async execute(_toolCallId: string, params: Record<string, unknown>) {
@@ -239,7 +272,12 @@ export function registerOpenVikingMemoryTools(deps: OpenVikingMemoryToolsDeps): 
         if (uri) {
           if (!isMemoryUri(uri)) {
             return {
-              content: [{ type: "text", text: `Refusing to delete non-memory URI: ${uri}` }],
+              content: [
+                {
+                  type: "text",
+                  text: `Refusing to delete non-memory URI: ${uri}`,
+                },
+              ],
               details: { action: "rejected", uri },
             };
           }
@@ -263,8 +301,15 @@ export function registerOpenVikingMemoryTools(deps: OpenVikingMemoryToolsDeps): 
             ? Math.max(1, Math.floor((params as { limit: number }).limit))
             : 5;
         const scoreThreshold =
-          typeof (params as { scoreThreshold?: number }).scoreThreshold === "number"
-            ? Math.max(0, Math.min(1, (params as { scoreThreshold: number }).scoreThreshold))
+          typeof (params as { scoreThreshold?: number }).scoreThreshold ===
+          "number"
+            ? Math.max(
+                0,
+                Math.min(
+                  1,
+                  (params as { scoreThreshold: number }).scoreThreshold,
+                ),
+              )
             : deps.defaultRecallScoreThreshold;
         const targetUri =
           typeof (params as { targetUri?: string }).targetUri === "string"
@@ -307,7 +352,10 @@ export function registerOpenVikingMemoryTools(deps: OpenVikingMemoryToolsDeps): 
         }
 
         const list = candidates
-          .map((item) => `- ${item.uri} (${(clampScore(item.score) * 100).toFixed(0)}%)`)
+          .map(
+            (item) =>
+              `- ${item.uri} (${(clampScore(item.score) * 100).toFixed(0)}%)`,
+          )
           .join("\n");
 
         return {
@@ -317,7 +365,12 @@ export function registerOpenVikingMemoryTools(deps: OpenVikingMemoryToolsDeps): 
               text: `Found ${candidates.length} candidates. Specify uri:\n${list}`,
             },
           ],
-          details: { action: "candidates", candidates, scoreThreshold, requestLimit },
+          details: {
+            action: "candidates",
+            candidates,
+            scoreThreshold,
+            requestLimit,
+          },
         };
       },
     }),

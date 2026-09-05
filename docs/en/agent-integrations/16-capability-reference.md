@@ -3,7 +3,7 @@
 ## Reading guide
 
 | What you want to know | Where to look |
-|---|---|
+| --- | --- |
 | Which tools an agent can call autonomously per harness | [§1.1](#_1-1-active-tool-surface-agentic-calls) Active tool surface + [§2.1](#_2-1-server-side-mcp-tool-surface) (MCP surface) + the profile cards |
 | How memory archiving behaves under different shutdown methods | **[§3.3.3](#_3-3-3-shutdown-method-×-harness-outcome-matrix) Shutdown path × harness end-state matrix** |
 | Whether auto-recall includes `session_id`, and its impact | [§3.2.2](#_3-2-2-decision-matrix) / [§3.2.3](#_3-2-3-profile-opening-injection) |
@@ -26,7 +26,7 @@
 - `trae-cli` means TraeCode CLI 2.0 (2.0 only). It is installed via a `codex` plugin alias and maintains format compatibility with `codex`. Therefore, it is consolidated into the `codex` row in the matrices below.
 
 | harness | tool surface | tools (enabled by default) | search memory | search resource | search skill | write memory | write resource | write skill | delete type boundary |
-|---|---|---|---|---|---|---|---|---|---|
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | claude-code | MCP passthrough | 15 | ✅ | ✅ | ✅ | ✅ | ✅ | ❌¹ | no type distinction² |
 | codex / trae-cli | MCP passthrough | 15 | ✅ | ✅ | ✅ | ✅ | ✅ | ❌¹ | no type distinction² |
 | cursor | MCP passthrough | 15 | ✅ | ✅ | ✅ | ✅ | ✅ | ❌¹ | no type distinction² |
@@ -50,7 +50,7 @@
 ## 1.2 Automatic hook surface (driven by the harness)
 
 | harness | how it plugs in | auto-recall | recall carries session_id | digest (client)* | profile injection | takes over host compaction | offline compensation (pending queue) | statusline |
-|---|---|---|---|---|---|---|---|---|
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | claude-code | 9 hooks + MCP proxy + slash + statusline + skill | ✅ | ✅ | ✅ local `claude -p` / server-side rewrite (auto by default) | ✅ (10000) | ❌ (PreCompact only commits) | ✅ | ✅ |
 | codex / trae-cli | 4 hooks + MCP proxy + skill | ✅ | ✅ | ✅ local `codex exec` (on by default) | ✅ (10000) | ❌ | ❌ no on-disk queue (the cursor stays put and the next turn resends) | ❌ |
 | cursor | 7 hooks + MCP proxy + rule + skill | ✅ | ✅ | ❌ | ✅ (6000) | ❌ | ✅ | ❌ |
@@ -81,12 +81,13 @@
 # 2. Shared capability core
 
 The individual harness sections (profile cards) focus exclusively on differences and specific implementations. All shared capabilities and universal behaviors are documented once in this section.
+
 ## 2.1 Server-side MCP tool surface
 
 These tools are defined on the server side, and future updates will be centrally published there. Harnesses only need to proxy the MCP to obtain the latest `~/.openviking/ovcli.conf`.
 
 | # | Tool | What it does | Key parameters (definition line) |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | 1 | `find` | Fast semantic search requiring no session context | `query, target_uri="", limit=10, min_score=0.35, level, context_type` (`:259`) |
 | 2 | `search` | Deep search, featuring optional `session_id` integration and intent analysis | The session is only loaded if the server has `retrieval.enable_intent` enabled (defaults to true) (`:285`, `:302-304`) |
 | 3 | `read` | Read the full text of one or more `viking://` files | Uses a concurrency semaphore of 10; a single failure yields `(nothing found at <uri>)` rather than raising an exception (`:389`) |
@@ -118,7 +119,7 @@ The `examples/memory-plugin-shared/lib/` directory contains 23 `.mjs` modules an
 Core modules at a glance (detailed further in the per-dimension sections):
 
 | Module | Responsibility | Consumers |
-|---|---|---|
+| --- | --- | --- |
 | `recall-core.mjs` | Handles recall request construction, three-tier degradation, and local fallback ranking/injection | All JS-based harnesses |
 | `agent-hook-runtime.mjs` | All-in-one "thin hook" runtime handling 19 configuration environment variables, session ID derivation, cross-process locking, fetching, and commits | cursor / trae / trae-cn / zcode |
 | `mcp-proxy-core.mjs` | stdio ↔ streamable-HTTP MCP proxy core | All MCP-based integrations + agent-plugins |
@@ -155,12 +156,13 @@ Core modules at a glance (detailed further in the per-dimension sections):
 ---
 
 # 3. Dimensions in detail
+
 ## 3.1 Integration forms, installation, and configuration
 
 ### 3.1.1 Decision matrix
 
 | Harness | Integration Form | Install Channel | Session ID Prefix/Format | Config Source | Standalone Setup Wizard |
-|---|---|---|---|---|---|
+| --- | --- | --- | --- | --- | --- |
 | claude-code | CC plugin (marketplace): 9 hooks + MCP proxy + slash + statusline + skill | One-line `install.sh --harness claude` (supports both the modern plugin path and the legacy `claude mcp add` compatibility path) / manual marketplace / TOS mirror | `cc-<CC session_id verbatim>`; subagents use `…__subagent-<agent_id>` | env + ovcli.conf `plugin.claude_code` + ov.conf `claude_code` | ✅ `scripts/setup.mjs` |
 | codex | Codex plugin (marketplace): 4 hooks + MCP proxy + skill | One-line `--harness codex` / `codex plugin marketplace add` (the TOS channel uses dumb-HTTP git to ensure remote updates continue working) | `cx-<safeId>` (deterministically derived, without reading state) | env + ovcli.conf `plugin.codex` + ov.conf `codex` | ✅ |
 | trae-cli | **Installed as a codex plugin alias** (TraeCode CLI 2.0, 2.0 only; a Codex-family CLI: uses the `traecli` binary and `~/.trae/traecli.toml` config; its capability surface is identical to codex) | One-line `--harness trae-cli` (reuses the codex install flow; marketplace commands run against the targeted binary, e.g., `traecli plugin marketplace add`) | Same derivation rule as codex | Same as codex (env + ovcli.conf `plugin.codex` + ov.conf) | ✅ (same as codex) |
@@ -191,7 +193,7 @@ The unified install script (`examples/memory-plugin-shared/install.sh`, 3424 lin
 Four parallel credential-resolution systems coexist within the codebase, each utilizing its own environment variable names and authentication headers. When troubleshooting, your first step should be identifying which system is currently in use:
 
 | Family | Consumers | URL Env | Key Env | Identity Env | Auth Header |
-|---|---|---|---|---|---|
+| --- | --- | --- | --- | --- | --- |
 | **A. Shared JS core** (`credentials.mjs`) | claude-code / codex (including trae-cli) / cursor / trae×2 / zcode / opencode / pi / dsh / agent-plugins | `OPENVIKING_URL` → `OPENVIKING_BASE_URL` | `OPENVIKING_BEARER_TOKEN` → `OPENVIKING_API_KEY` | `OPENVIKING_ACCOUNT` / `OPENVIKING_USER` / `OPENVIKING_PEER_ID` | `Authorization: Bearer`. Note: codex's four hook scripts also send an `X-API-Key` compatibility header. |
 | **B. openclaw** (its own `config.ts`) | openclaw | `OPENVIKING_BASE_URL` → `OPENVIKING_URL` | `OPENVIKING_API_KEY` (supports SecretRef env/file) | `OPENVIKING_ACCOUNT_ID` / `OPENVIKING_USER_ID` (note the `_ID` suffix here) | `X-API-Key`. (When pointing to OV Cloud, note that it actually authenticates using Bearer). |
 | **C. hermes** (Python) | hermes | `OPENVIKING_ENDPOINT` | `OPENVIKING_API_KEY` | `OPENVIKING_ACCOUNT` / `OPENVIKING_USER` / `OPENVIKING_AGENT` (= actor peer) | Sends both `X-API-Key` and `Bearer`. When a key is present, it omits tenant headers by default (if the server rejects the call with a trusted error, it appends them and retries once). |
@@ -209,14 +211,14 @@ Family A resolves credentials in the following order (refer to individual profil
 **Workspace peer** (applies to every Family A harness; the agent-plugins package derives nothing and sends only an explicit `OPENVIKING_PEER_ID`): If no explicit `peerId` is provided and `OPENVIKING_WORKSPACE_PEER≠0`, the peer is derived from the workspace and sent as the `X-OpenViking-Actor-Peer` (the server validates this header and returns a `400` error if it contains `/` or `\`). The derivation rule is `peer.source`, which **defaults to `git`**: the normalized `origin` URL first, falling back to the repository root. Outside a repository nothing is sent, and what is remembered there goes to the user-level space `viking://user/<you>/memories` instead. In `/Users/x/Dev/OpenViking/examples/codex-memory-plugin` with an origin of `git@github.com:volcengine/OpenViking.git`, the peer is `github.com-volcengine-openviking` — the same value from any subdirectory, any worktree, any machine, and any clone. `peer.source` is read from the env var `OPENVIKING_PEER_SOURCE`, the ovcli.conf `plugin.peerSource` / `plugin.<harness>.peerSource` keys, and the workspace file's `peer.source`; only claude-code and codex read those layers, so every other Family A harness always runs on the default.
 
 | `peer.source` | Expands to | Resulting peer |
-|---|---|---|
+| --- | --- | --- |
 | `git` (the default) | `["{git_remote}", "{git_root}"]` | The normalized origin, else the repository root. Outside a repository nothing is sent. No preset adds a prefix. |
 | `cwd` | `["{cwd}"]` | The previous behavior, byte for byte: every non-alphanumeric character in the path becomes a hyphen (`/Users/x/Dev/OpenViking` → `-Users-x-Dev-OpenViking`). |
 | `none` | `[]` | No peer is sent at all. `OPENVIKING_WORKSPACE_PEER=0` still means the same thing. |
 | A template (e.g. `"git-{git_remote}"`, `"team-{dir}"`) | Itself | Free-form. A list of templates (e.g. `["team-{dir}", "{cwd}"]`) is tried in order, and a template whose variables are empty falls through to the next one. |
 
 | Variable | Value | Empty when |
-|---|---|---|
+| --- | --- | --- |
 | `{git_remote}` | The normalized `origin` URL as `github.com-org-repo`. Host and path are lowercased and `.git` plus any userinfo is dropped, so the ssh and https spellings of one repo agree and an embedded token can never reach the peer id. | Not a git repository, or `origin` is unset |
 | `{git_root}` | The repository root path, under the legacy sanitation above | Outside a git repository. A marker file inside a repository still leaves this the repository's own root, so marking a subdirectory does not split the default peer |
 | `{cwd}` | The working directory, under the legacy sanitation above | Never — and it is in no default chain, so a bare path becomes a peer only when you ask for one |
@@ -234,7 +236,7 @@ For `openclaw`, the peer is derived from `peer_role`/`peer_prefix` (note that if
 ### 3.1.4 Configuration layers
 
 | Config Layer | Applies To | Notes |
-|---|---|---|
+| --- | --- | --- |
 | env `OPENVIKING_*` | Per family, see above; behavior knobs are listed on each profile card | The only layer that spans every JS-based integration. |
 | Workspace layers: the per-machine registry `~/.openviking/workspaces/<slot>.json` > `<repo-root>/.openviking/config.local.json` (private, gitignored) > `<repo-root>/.openviking/config.json` (committed, shared by the team) | claude-code / codex | Schema v1; `version: 1` is required and a file declaring another version is skipped with a warning. Keys: `peer.source`, `peer.id`, `recall.{enabled,peer_scope,dedup_turns,max_items,score_threshold}`, `capture.{enabled,commit_token_threshold}`, `bypass.session_patterns`, `labels`. Lists union across layers, and a leading `"!reset"` clears what was inherited; unknown keys are kept and ignored. These files are trusted without a prompt because a hook is non-interactive, so the refusals are structural instead: connection and credential keys (`url`, `api_key`, `account`, `user`, `extra_headers`, …) are stripped with a warning and `${VAR}` is never expanded. Nothing writes the registry today: an entry is created by hand, and `ov-memory-doctor` prints the slot path to put it at. What a committed file switches off is announced in `ov-memory-doctor` rather than blocked. |
 | ovcli.conf `plugin` section (`plugin.claude_code` / `plugin.codex` / shared scalars) | claude-code / codex | `plugin.<x>` entries named after any other harness are ignored. Note: `ov config add/edit` rewrites the entire file from the Rust Config struct, thereby dropping any `plugin` sections it does not recognize; however, `ov config switch` simply copies bytes and remains unaffected. |
@@ -249,6 +251,7 @@ For `openclaw`, the peer is derived from `peer_role`/`peer_prefix` (note that if
 - `OPENVIKING_RECALL_DEDUP_TURNS`, `OPENVIKING_RECALL_QUERY_EXPANSION`: claude-code / codex.
 - `OPENVIKING_PEER_SOURCE` and the workspace config files: claude-code / codex (every other Family A harness derives its peer with the default `git` rule and still honors `OPENVIKING_PEER_ID` and `OPENVIKING_WORKSPACE_PEER`).
 - ovcli.conf `plugin` section: claude-code / codex.
+
 ## 3.2 Automatic recall and injection
 
 ### 3.2.1 Mechanism foundation: one shared pipeline, two server-side paths
@@ -272,7 +275,7 @@ On the server side, `session_id` handling diverges into two distinct execution p
 ### 3.2.2 Decision matrix
 
 | harness | trigger | query construction | session_id | server path | injection format / location | digest (client)* |
-|---|---|---|---|---|---|---|
+| --- | --- | --- | --- | --- | --- | --- |
 | claude-code | every `UserPromptSubmit` | prompt verbatim, trimmed | ✅ `cc-` | A (context face) | `<openviking-context>` → `hookSpecificOutput.additionalContext` | ✅ local/server (default auto, [§3.2.5](#_3-2-5-recall-digest)) |
 | codex / trae-cli | every `UserPromptSubmit` (hard 120s deadline for the whole hook) | prompt verbatim | ✅ `cx-` (derived deterministically, no state read) | A; second-level degradation searchScope lands in B | `<openviking-context source="auto-recall" format="digest">` | ✅ local `codex exec` ([§3.2.5](#_3-2-5-recall-digest)) |
 | cursor | `beforeSubmitPrompt` | prompt verbatim; deduped by event id and a 500ms window, reusing the cached block for the same promptHash | ✅ `cu-` | A | `additional_context` | ❌ |
@@ -318,7 +321,7 @@ On the server side, `session_id` handling diverges into two distinct execution p
 
 ### 3.2.5 Recall digest
 
-**Server implementation (available to all callers)**: The context retrieval face (covering REST `mode="context"` and legacy `/recall`) accepts a `rewrite` parameter—which can be `false`, `true`, or `"auto"` (defaulting to `false`)—alongside `rewrite_max_bullets` (defaulting to 6, with a range of 1-20). When enabled, the server leverages the `query_planner` model to rewrite recall results into a digest with citations. (If `rewrite=true` but `query_planner` is unconfigured, it falls back to the main `vlm`; `"auto"` only takes effect if `query_planner` is explicitly configured). The digest features an `OpenViking memory digest:` header followed by bullet points (`- `). Each bullet must be ≤500 characters and must cite a valid `viking://` URI from the hit set (bullets with missing or out-of-range citations are dropped). If the model determines there are no relevant memories, it emits a sentinel value and clears the injection block, ensuring that turn is not recorded in the deduplication ledger. This model call is protected by a fuse (`retrieval.recall_rewrite_timeout_s=30s`). On timeout, it falls back to providing the un-rewritten, rendered block (`rewrite.py:78-141`, `pipeline.py:122-130`, `search.py:195-196`).
+**Server implementation (available to all callers)**: The context retrieval face (covering REST `mode="context"` and legacy `/recall`) accepts a `rewrite` parameter—which can be `false`, `true`, or `"auto"` (defaulting to `false`)—alongside `rewrite_max_bullets` (defaulting to 6, with a range of 1-20). When enabled, the server leverages the `query_planner` model to rewrite recall results into a digest with citations. (If `rewrite=true` but `query_planner` is unconfigured, it falls back to the main `vlm`; `"auto"` only takes effect if `query_planner` is explicitly configured). The digest features an `OpenViking memory digest:` header followed by bullet points (`-`). Each bullet must be ≤500 characters and must cite a valid `viking://` URI from the hit set (bullets with missing or out-of-range citations are dropped). If the model determines there are no relevant memories, it emits a sentinel value and clears the injection block, ensuring that turn is not recorded in the deduplication ledger. This model call is protected by a fuse (`retrieval.recall_rewrite_timeout_s=30s`). On timeout, it falls back to providing the un-rewritten, rendered block (`rewrite.py:78-141`, `pipeline.py:122-130`, `search.py:195-196`).
 
 **Client-side status**:
 
@@ -331,9 +334,11 @@ On the server side, `session_id` handling diverges into two distinct execution p
 To prevent injected content from being captured a second time, the injection process wraps the content in deterministic tags (like `<openviking-context>`), which the capture mechanism then mechanically strips. Specifically, `capture-utils`' `sanitizeCapturedText` function removes injection blocks, digest blocks, metadata fences, and timestamp prefixes.
 
 **Per-harness specifics:**
+
 - **trae / zcode**: Utilize their own cleaning functions (zcode's strips three distinct types of injection blocks).
 - **openclaw**: Strips `<relevant-memories>` twice—once when writing data back during `afterTurn`, and again when constructing the query for the next turn.
 - **hermes**: Goes a step further by entirely dropping the `tool_call` and `result` of all three recall-type tools from the sync batch (while retaining write-type tools).
+
 ## 3.3 Session and commit lifecycle
 
 ### 3.3.1 Mechanism foundations
@@ -346,7 +351,7 @@ To prevent injected content from being captured a second time, the injection pro
 ### 3.3.2 Regular commit triggers
 
 | harness | turn-level threshold | explicit / boundary trigger | compaction trigger |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | claude-code | Stop: `pending_tokens ≥ 20000` (reads the server value), keep 10 | SessionEnd: unconditional; SubagentStop: unconditional (no threshold); SessionStart: replays pending | PreCompact: unconditional (runs synchronously, no detach) |
 | codex / trae-cli | Stop: same as above, 20000 / keep 10 | SessionEnd (Codex ≥ 0.145): unconditional, after catching up the turns Stop missed — the parent hook writes an `.ended` marker and detaches the worker (Codex budgets it at 1s, clamped to 3s); SessionStart(startup\|clear): a fallback sweep committing states that carry an `.ended` marker or have been idle >30min. a trae-cli build without `SessionEnd` falls back to the sweep and relies on the sweep | PreCompact: full commit (sends an empty body `{}`), then sets `ovSessionId=null` |
 | cursor | stop: `capturedSinceCommit ≥ 8` (counted in messages, ~4 Q&A turns; purely client-side counting), keep 0 | sessionEnd: registered (but never reached in practice, see [§3.3.3](#_3-3-3-shutdown-method-×-harness-outcome-matrix)) | preCompact: unconditional |
@@ -367,7 +372,7 @@ To prevent injected content from being captured a second time, the injection pro
 Legend: **C** = commits; **C\*** = commits, with a precondition (see notes); **—** = does not commit (messages already POSTed stay in the server's live area: the message bodies are not lost, they wait for a later trigger to archive and extract them); **n/a** = not applicable. The server-side behavior is **—** on every row ([§2.3](#_2-3-server-side-session-and-commit-semantics)).
 
 | harness | normal exit | Ctrl+C | SIGTERM | SIGHUP / close terminal / close window·tab | kill -9 / crash | recovery path |
-|---|---|---|---|---|---|---|
+| --- | --- | --- | --- | --- | --- | --- |
 | claude-code | **C** (SessionEnd → a detached child process commits, so the user does not wait) | **C** | **C** | **C** (the detached worker forms its own process group and is unaffected by SIGHUP) | **—** | Next Stop over the threshold / `/compact` / next SessionEnd |
 | codex | **C** (SessionEnd → a detached worker commits, so the user does not wait; Codex ≥ 0.145) | **C\*** | **—** | **—** | **—** | C\* precondition: double `Ctrl-C` is a graceful quit and fires SessionEnd; a single one is not. Anything that does not commit is recovered at the next `SessionStart(startup\|clear)`: `ended_retry` when the marker survives, otherwise the 30min idle-TTL sweep |
 | trae-cli | **—** (unless the TraeCode CLI build ships `SessionEnd`) | **—** | **—** | **—** | **—** | The 30min idle-TTL sweep at the next `SessionStart(startup\|clear)` |
@@ -393,7 +398,7 @@ Legend: **C** = commits; **C\*** = commits, with a precondition (see notes); **�
 ### 3.3.4 pending queue / offline compensation comparison
 
 | harness | mechanism | notes |
-|---|---|---|
+| --- | --- | --- |
 | cc / cursor / trae×2 / zcode / opencode / dsh / pi | On-disk queue `~/.openviking/pending` (0700/0600) | Only retryable failures are queued (4xx errors, including 401/403, are considered non-retryable and are not queued, though they appear in debug logs); replay runs at session start: ≤50 entries per run, ≤3 attempts per entry, TTL 7 days; `.processing` claims entries atomically, with a 10min stale reclaim; an addMessage failure breaks execution immediately to preserve order |
 | codex / trae-cli | No on-disk queue | When the server is unreachable, compensation occurs because the `capturedTurnCount` cursor does not advance, prompting the next Stop to resend the same batch. This works provided the process survives and a subsequent turn occurs |
 | openclaw | No local queue | An addSessionMessage failure is caught, and that turn's messages are not replayed |
@@ -404,7 +409,7 @@ Legend: **C** = commits; **C\*** = commits, with a precondition (see notes); **�
 ### 3.3.5 subagent session comparison
 
 | harness | handling |
-|---|---|
+| --- | --- |
 | claude-code | Offers the most complete isolation: SubagentStart derives a separate `cc-<sid>__subagent-<agent_id>` session, and SubagentStop reads the subagent transcript, pushes it, commits unconditionally, and clears the state |
 | codex / trae-cli | No separate session: Subagent output (`agent_message` / `sub_agent_activity`) is folded into the main session's assistant/tool components |
 | opencode | `oc-<parent>__subagent-<child>` hangs under the parent namespace; the session-start injection skips subagents (though recall does not); ID derivation is sensitive to event order — when `chat.message` arrives before `session.created`, the `__subagent-` suffix is lost |
@@ -412,12 +417,13 @@ Legend: **C** = commits; **C\*** = commits, with a precondition (see notes); **�
 | hermes | `delegate_task` passes `skip_memory=True` → the subagent is disconnected from OV (no session, recall, or tool surface); subtask output is not fed back |
 | cursor / trae×2 / zcode / pi / openclaw | No specific subagent handling (anything generating its own session ID becomes its own session; otherwise, it mixes into the main session. `openclaw` can mask this behavior using `bypassSessionPatterns`) |
 | ingest | The `claude_code` adapter skips `isSidechain` / `isMeta` records, meaning subagent conversations are not ingested |
+
 ## 3.4 Compaction takeover
 
 ### 3.4.1 Decision matrix
 
 | harness | Stance on host compaction | Before compaction | After compaction |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | claude-code | No takeover | PreCompact commits synchronously. This is the only write path that does not detach, as CC rewrites the transcript immediately afterward. | A SessionStart with `source="compact"` re-injects OV's `latest_archive_overview` plus ≤5 abstracts. |
 | codex / trae-cli | No takeover | PreCompact backfills uncaptured turns → full commit → `ovSessionId=null`. If the backfill is incomplete, no commit occurs and it is left for retry. There is no PostCompact wiring; it relies instead on the transcript shrinkage observed at Stop for defensive correction. | Injects the archive digest upon resume. |
 | cursor / trae×2 / zcode | No takeover | Cursor: `preCompact` commits unconditionally (Trae×2/Zcode lack this upstream event). | — |
@@ -445,7 +451,7 @@ Legend: **C** = commits; **C\*** = commits, with a precondition (see notes); **�
 ### 3.4.4 pi vs. openclaw takeover
 
 | Dimension | pi takeover | openclaw ContextEngine |
-|---|---|---|
+| --- | --- | --- |
 | Host contract | Rewrites the messages of a single context hook | Registers a `ContextEngine` with `ownsCompaction: true` |
 | Source of truth for history | Pi's local branch | OV server-side `getSessionContext` |
 | Trigger | Client-side token threshold (30000) + keep 3 turns | Host invocations of `assemble` or `compact` |
@@ -473,12 +479,13 @@ There are three primary guards on MCP `write` and REST `content/write` (`content
 **Tier 4: No deletion offered by default (LangChain / Open WebUI).** LangChain's `viking_forget` is only exposed as a tool when configured with `profile="admin"` or `allow_forget=True`. Open WebUI does not offer any deletion tools.
 
 **Add/delete boundary for skills:** The entry points for adding skills are openclaw's `add_skill` (enabled by default), `ov add-skill`, and REST. The delete surfaces that remain entirely read-only for skills (permitting neither addition nor deletion) are openclaw's `memory_forget` and hermes' `viking_forget`. Conversely, the MCP surface, dsh, Pi, and `ov rm` cannot *add* a skill but can *delete* one. This is because addition is blocked by `_USER_MANAGED_SUBTREES` on the write path, whereas deletion succeeds because the delete path does not check that specific constraint.
+
 ## 3.6 Degradation and fault tolerance
 
 ### 3.6.1 Decision matrix
 
 | harness | When the server is unreachable | Negative cache | HTTP retry | Failure blocks the host |
-|---|---|---|---|---|
+| --- | --- | --- | --- | --- |
 | claude-code | All hooks catch exceptions → approve (never blocks); at session-start, even pending replays are skipped | context-face 6h + host-cli probe 7d + health 5s | None (relies on pending replay); `peer_scope` degrades once; batch falls back to sequential | No (`uri-guard` deny is by design) |
 | codex / trae-cli | All hooks catch exceptions → noop | context-face 6h + compressor runtime_failed (until the next startup) | Same as above (no on-disk pending; resends from the cursor) | No |
 | cursor/trae×2/zcode | Fetch errors are swallowed as `status:0`, and catch returns an empty injection; silently skips if the lock isn't acquired within 5s | context-face 6h (no negative cache for unreachable servers; every turn waits the full 15s) | None | No |
@@ -496,7 +503,7 @@ General HTTP timeouts are 15000ms (with a 1000ms floor). MCP proxy requests time
 ## 3.7 Additional UX comparison
 
 | harness | statusline | slash command | rule/skill | setup wizard | other |
-|---|---|---|---|---|---|
+| --- | --- | --- | --- | --- | --- |
 | claude-code | ✅ A separate process writes to `settings.json` (rich segments, 1-min TTL) | ✅ `/openviking-memory:ov` (server status + identity + injection provenance) | 1 experience skill | ✅ Line-based Q&A | Diagnostic scripts (`debug-recall`/`debug-capture`); `uri-guard` is not gated by the plugin toggle |
 | codex / trae-cli | ❌ | ❌ | 1 experience skill | ✅ | 8-step SOP in `VERIFICATION.md` |
 | cursor | ❌ | ❌ | Rule (`alwaysApply`) + skill | ❌ (Shares the installer TUI) | Standalone `uri-guard`, independent of the plugin toggle |
@@ -549,6 +556,7 @@ Each card serves as a quick-reference entry point. It records only the facts and
 - **Behavior notes**: The session ID format is `cu-<conversation_id>`. `stop` commits every 8 messages (`commitTurnThreshold=8`, counted in messages, keep 0). `sessionEnd` only fires on `window_close`. By then, the host has already destroyed the shell-exec host, so it practically never runs ([§3.3.3](#_3-3-3-shutdown-method-×-harness-outcome-matrix)) — sessions ending below the 8-message watermark leave their tail to be archived by a later message in the same session ([§3.3.3](#_3-3-3-shutdown-method-×-harness-outcome-matrix)). If the server is unreachable, every turn waits out the full 15s recall timeout.
 - **Configuration**: Configured strictly via environment variables (the `plugin` section is ignored).
 - **Dimension index**: tool surface [§2.1](#_2-1-server-side-mcp-tool-surface) | recall [§3.2](#_3-2-automatic-recall-and-injection) | commit [§3.3.2](#_3-3-2-regular-commit-triggers)/[§3.3.3](#_3-3-3-shutdown-method-×-harness-outcome-matrix) | degradation [§3.6](#_3-6-degradation-and-fault-tolerance).
+
 ## trae / trae-cn (IDE editions)
 
 - **Integration docs**: [TRAE Memory Integration](./13-trae.md)
@@ -610,6 +618,7 @@ Each card serves as a quick-reference entry point. It records only the facts and
 - **Behavior**: During recall, only the preferred `search/search` path carries a session ID and routes to path B (`mode="deep"`). Conversely, the `auto` and `fast` modes call `/find` without a session ID ([§3.2.2](#_3-2-2-decision-matrix)). The `queue_prefetch` hook is implemented synchronously without warm-up. Subagents configured with `skip_memory=True` will not interact with OpenViking ([§3.3.5](#_3-3-5-subagent-session-comparison)). This integration lacks profile injection, a status line, and slash commands. Commits strictly follow a "keep 0" policy; if the queue drain does not finish cleanly, the commit is skipped for that round. Additionally, the in-process queue is never written to disk. Session IDs follow the `%Y%m%d_%H%M%S_<hex6>` format. Recall parameters are strictly defined: 6 results, a 0.15 threshold, a 4000-character budget, and a 4-second total timeout. Memory URIs are formatted as `viking://~/peers/{agent}/memories/{subdir}/mem_<uuid12>.md`. The shutdown sequence incorporates a 1.5-second SIGTERM grace period alongside a 30-second exit watchdog. Finally, a complementary path (`openviking-server ingest hermes`) enables offline replays, though this is disabled by default ([§7](#_7-appendix-non-coding-integrations-at-a-glance) E).
 - **Config**: Configured through `OPENVIKING_ENDPOINT` (not `_URL`), 8 `OPENVIKING_RECALL_*` environment variables, and `config.yaml`. In `use_ovcli_config` mode, the corresponding variables in `.env` are cleared.
 - **Dimension index**: tool surface [§1.1](#_1-1-active-tool-surface-agentic-calls) | recall [§3.2](#_3-2-automatic-recall-and-injection) | commit [§3.3.2](#_3-3-2-regular-commit-triggers)/[§3.3.3](#_3-3-3-shutdown-method-×-harness-outcome-matrix) | deletion [§3.5](#_3-5-type-boundaries-for-writes-and-deletes).
+
 ## ov CLI
 
 - **Integration docs**: [Deployment Guide → CLI](../guides/03-deployment.md#cli)
@@ -668,7 +677,7 @@ If your preferred agent or harness is not among the 11 listed previously, you ca
 ## 6.1 Integration path × capabilities you get
 
 | Path | Effort | Agent-initiated tool surface | Auto recall/capture hooks | Session/commit | Compaction takeover |
-|---|---|---|---|---|---|
+| --- | --- | --- | --- | --- | --- |
 | ① [Direct MCP connection](./06-mcp-clients.md) | Minutes (fill in one config block) | ✅ All 15 tools | ❌ The model calls them itself | Only `remember` creates a temporary session | ❌ |
 | ② HTTP API / SDK / [LangChain](./07-langchain-langgraph.md) | Hours (requires code) | Flexible (call REST as needed) | Custom implementation | Custom implementation (or use the LangChain middleware) | ❌ |
 | ③ Reuse shared-core / the [Agent Plugins portable package](./15-agent-plugins.md) | Days (requires hook adapters) | ✅ 15 tools (through the MCP proxy) | ✅ Full recall/capture/commit/pending set | ✅ | Depends on which events you wire up |
@@ -700,6 +709,7 @@ The last three headers are optional; however, omitting them disables workspace p
 - **Direct REST**: Trigger recall via `POST /api/v1/search/search` (note that expansion and deduplication require `mode:"context"` alongside a `session_id`, as per [§3.2.1](#_3-2-1-mechanism-foundation-one-shared-pipeline-two-server-side-paths); pass `rewrite` to generate a server-side digest, see [§3.2.5](#_3-2-5-recall-digest)). Write data using `POST /api/v1/sessions/{id}/messages/batch` (supports up to 100 messages per batch with `auto_create`). Finalize sessions via `POST /api/v1/sessions/{id}/commit`, and retrieve content using `GET /api/v1/content/read` and related endpoints. To enable server-side auto-commits, explicitly pass the `auto_commit_policy` during `POST /api/v1/sessions`, or modify it later via `PATCH /{id}/config` ([§2.3](#_2-3-server-side-session-and-commit-semantics)).
 - **LangChain / LangGraph SDK** (`pip install langchain-openviking`): The `OpenVikingContextMiddleware` provides `wrap_model_call` (which injects recalled content into `<openviking_context>`) and `after_agent` (handling capture and commit actions according to the `CommitPolicy`, which defaults to `never`). Within this group, this is the only out-of-the-box automatic recall solution that includes both session management and a token budget. Its fault-tolerance strategy is to retry read-only methods once and never retry writes. Partial successes raise an `OpenVikingPartialWriteError`, allowing you to retry a specific slice based on `input_messages_consumed`. See [§7](#_7-appendix-non-coding-integrations-at-a-glance) B for more details.
 - **Open WebUI** (OpenAPI tool server): Running `python -m openviking_openwebui` launches a standalone process. By adding the resulting Tool Server URL to Open WebUI, you gain access to 7 tools (note that deletion and hooks are unsupported). See [§7](#_7-appendix-non-coding-integrations-at-a-glance) A for more details.
+
 ## 6.4 Path ③: Reuse a Reference Implementation for Automatic Hooks
 
 If you need the full spectrum of automation—recall, capture, commit, and pending state management—there is no need to build it from scratch. Consider studying and reusing one of these two existing implementations:
@@ -714,7 +724,7 @@ If you need the full spectrum of automation—recall, capture, commit, and pendi
 # 7. Appendix: Non-Coding Integrations at a Glance
 
 | Integration | Form | Tool Surface | Session/Commit | Fault Tolerance | Default State |
-|---|---|---|---|---|---|
+| --- | --- | --- | --- | --- | --- |
 | **A. [Open WebUI](./08-community-plugins.md)** | Standalone FastAPI OpenAPI tool server | 7 local OpenAPI routes (`ov_search`/`ov_recall_memories`/`ov_add_memory`/`ov_list_memories`/`ov_read_resource`/`ov_add_resource`/`ov_session_status`), no deletion tool | No session concept | Most lightweight: bare `httpx`, no retries or negative caching; `/health` only echoes the config and does not probe OpenViking. | Inactive until the process is explicitly started. |
 | **B. [LangChain/LangGraph](./07-langchain-langgraph.md)** | Python SDK adapter layer (retriever/tools/store/middleware/recorder) | `create_openviking_tools()` provides 12 StructuredTools (`viking_forget` is not in the agent profile by default) | `thread_id`/`session_id` come from the caller; `CommitPolicy` defaults to `never` | Most robust in this group: read-only methods automatically retry once, writes never retry (to prevent duplicates), and partial successes raise a structured exception that can be retried as a slice. | Requires explicit construction before taking effect. |
 | **C. [Agent Plugins 1.0](./15-agent-plugins.md)** | Portable package: `plugin.json` + `skills/` + `mcp.json` (stdio→HTTP proxy) | MCP passthrough for all 15 tools; intentionally excludes hooks (recall relies on a skill instructing the model). | Only `remember` creates a temporary session | Retries handled at the MCP proxy layer (401/403 triggers credential swap, 400/404 triggers re-initialization; max 1 retry each). | Active as soon as loaded by the client. |

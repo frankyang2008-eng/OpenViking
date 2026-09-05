@@ -22,8 +22,8 @@ import { isBypassed } from "./lib/ov-session.mjs";
 import { readJsonState } from "./lib/state.mjs";
 import { probeServer } from "./lib/server-probe.mjs";
 
-const STATE_MAX_AGE_MS = 30 * 60_000;        // 30 min — older = "idle"
-const SESSION_EVENT_MAX_AGE_MS = 60_000;     // 1 min — "🔗 resumed" fades
+const STATE_MAX_AGE_MS = 30 * 60_000; // 30 min — older = "idle"
+const SESSION_EVENT_MAX_AGE_MS = 60_000; // 1 min — "🔗 resumed" fades
 const MAX_WIDTH = 100;
 const ESC = "\x1b[";
 
@@ -59,7 +59,8 @@ function num(v) {
 // indicator — so we have to reproduce it. Color thresholds mirror native CC:
 // <70% dim, 70–89% yellow, >=90% red.
 function ctxSegment(stdin) {
-  if ((process.env.OPENVIKING_STATUSLINE_CTX || "").toLowerCase() === "off") return null;
+  if ((process.env.OPENVIKING_STATUSLINE_CTX || "").toLowerCase() === "off")
+    return null;
   const cw = stdin.context_window;
   if (!cw || typeof cw !== "object") return null;
   let pct = num(cw.used_percentage);
@@ -83,7 +84,10 @@ function ctxSegment(stdin) {
 // Model + context cluster, one segment: "Fable 5 · ctx 42%". The model name
 // rarely changes but anchors the fast-moving percentage next to it.
 function modelCtxSegment(stdin) {
-  const name = typeof stdin.model?.display_name === "string" ? stdin.model.display_name.trim() : "";
+  const name =
+    typeof stdin.model?.display_name === "string"
+      ? stdin.model.display_name.trim()
+      : "";
   const ctx = ctxSegment(stdin);
   if (name && ctx) return `${dim(name)}${dim(" · ")}${ctx}`;
   if (ctx) return ctx;
@@ -135,7 +139,11 @@ function truncate(line) {
   while (i < line.length && visibleLen < MAX_WIDTH - 1) {
     if (line[i] === "\x1b") {
       const m = line.slice(i).match(/^\x1b\[[0-9;]*m/);
-      if (m) { out += m[0]; i += m[0].length; continue; }
+      if (m) {
+        out += m[0];
+        i += m[0].length;
+        continue;
+      }
     }
     out += line[i];
     visibleLen++;
@@ -165,9 +173,15 @@ async function main() {
     return;
   }
 
-  const recall = readJsonState("last-recall.json", { maxAgeMs: STATE_MAX_AGE_MS });
-  const capture = readJsonState("last-capture.json", { maxAgeMs: STATE_MAX_AGE_MS });
-  const sessionEvent = readJsonState("last-session-event.json", { maxAgeMs: SESSION_EVENT_MAX_AGE_MS });
+  const recall = readJsonState("last-recall.json", {
+    maxAgeMs: STATE_MAX_AGE_MS,
+  });
+  const capture = readJsonState("last-capture.json", {
+    maxAgeMs: STATE_MAX_AGE_MS,
+  });
+  const sessionEvent = readJsonState("last-session-event.json", {
+    maxAgeMs: SESSION_EVENT_MAX_AGE_MS,
+  });
   const daily = readJsonState("daily-stats.json");
   const probe = await probeServer(cfg);
 
@@ -192,8 +206,11 @@ async function main() {
   // turn. Skip the segment for empty/bypass/no-results reasons to keep the
   // line tight. Count confirms the injection; latency shows its round-trip cost.
   if (recall && recall.reason === "ok" && recall.count > 0) {
-    const seg = `↩ ${recall.count} mem`
-      + (typeof recall.latency_ms === "number" ? ` · ${recall.latency_ms}ms` : "");
+    const seg =
+      `↩ ${recall.count} mem` +
+      (typeof recall.latency_ms === "number"
+        ? ` · ${recall.latency_ms}ms`
+        : "");
     parts.push(dim(seg));
   }
 
@@ -212,9 +229,11 @@ async function main() {
       // mixing it with the recall side (which is a pure heuristic) under the
       // same label invites the wrong mental model. Pending/threshold ratio
       // is meaningful on its own.
-      parts.push(dim(
-        `✎ ${human(capture.pending_tokens)}/${human(capture.commit_threshold)}${archivedTail}`,
-      ));
+      parts.push(
+        dim(
+          `✎ ${human(capture.pending_tokens)}/${human(capture.commit_threshold)}${archivedTail}`,
+        ),
+      );
     } else if (archived > 0) {
       parts.push(dim(`✎ ${archived} arch`));
     }
@@ -247,4 +266,6 @@ async function main() {
   process.stdout.write(truncate(line));
 }
 
-main().catch(() => { /* statusline must never crash CC */ });
+main().catch(() => {
+  /* statusline must never crash CC */
+});

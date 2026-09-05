@@ -50,7 +50,9 @@ async function main() {
     const chunks = [];
     for await (const chunk of process.stdin) chunks.push(chunk);
     input = JSON.parse(Buffer.concat(chunks).toString() || "{}");
-  } catch { /* best effort */ }
+  } catch {
+    /* best effort */
+  }
 
   const sessionId = input.session_id;
   const subagentId = input.agent_id;
@@ -104,8 +106,16 @@ async function main() {
     logError("state_write", err);
   }
 
-  log("start", { subagentId, agentType, ovSessionId, peerSource: effectivePeer.source });
+  log("start", {
+    subagentId,
+    agentType,
+    ovSessionId,
+    peerSource: effectivePeer.source,
+  });
   approve();
 }
 
-main().catch((err) => { logError("uncaught", err); approve(); });
+main().catch((err) => {
+  logError("uncaught", err);
+  approve();
+});

@@ -66,7 +66,11 @@ function collectRegisteredToolNames(): string[] {
     registerTool: vi.fn((toolOrFactory: unknown) => {
       const tool =
         typeof toolOrFactory === "function"
-          ? (toolOrFactory as (ctx: Record<string, unknown>) => { name: string })({
+          ? (
+              toolOrFactory as (ctx: Record<string, unknown>) => {
+                name: string;
+              }
+            )({
               sessionId: "contract-test-session",
             })
           : (toolOrFactory as { name: string });
@@ -87,44 +91,57 @@ describe("OpenClaw 5.2 manifest contracts", () => {
     );
     expect(new URL(manifest.icon as string).protocol).toBe("https:");
 
-    const iconPath = resolve(pluginRoot, "../..", "docs/images/ov-logo-icon.png");
+    const iconPath = resolve(
+      pluginRoot,
+      "../..",
+      "docs/images/ov-logo-icon.png",
+    );
     expect(existsSync(iconPath)).toBe(true);
     expect(statSync(iconPath).size).toBeLessThan(100_000);
   });
 
   it("declares every registerable runtime tool in contracts.tools", () => {
-    expect(manifest.contracts?.tools?.toSorted()).toEqual(collectRegisteredToolNames());
+    expect(manifest.contracts?.tools?.toSorted()).toEqual(
+      collectRegisteredToolNames(),
+    );
   });
 
   it("opts into startup and capability-triggered hook/tool activation", () => {
     expect(manifest.activation?.onStartup).toBe(true);
-    expect(manifest.activation?.onCapabilities?.toSorted()).toEqual(["hook", "tool"]);
+    expect(manifest.activation?.onCapabilities?.toSorted()).toEqual([
+      "hook",
+      "tool",
+    ]);
   });
 
   it("declares provider auth environment variables only in current setup metadata", () => {
     expect(manifest).not.toHaveProperty("providerAuthEnvVars");
-    expect(manifest.setup?.providers).toContainEqual(expect.objectContaining({
-      id: "openviking",
-      envVars: ["OPENVIKING_API_KEY", "OPENVIKING_BASE_URL"],
-    }));
+    expect(manifest.setup?.providers).toContainEqual(
+      expect.objectContaining({
+        id: "openviking",
+        envVars: ["OPENVIKING_API_KEY", "OPENVIKING_BASE_URL"],
+      }),
+    );
   });
 
   it("declares recall trace configuration schema keys", () => {
-    expect(Object.keys(manifest.configSchema?.properties ?? {})).toEqual(expect.arrayContaining([
-      "traceRecall",
-      "traceRecallPersist",
-      "traceRecallDir",
-      "traceRecallRetentionDays",
-      "traceRecallLoadRecentDays",
-      "traceRecallMaxEntries",
-      "traceRecallMaxResultsPerSearch",
-      "traceRecallPreviewChars",
-      "traceRecallQueryMaxChars",
-      "traceRecallQueryMaxDays",
-      "traceRecallIncludeContentByDefault",
-      "traceRecallIncludeRawUserPreview",
-      "recallTargetTypes",
-    ]));
+    expect(Object.keys(manifest.configSchema?.properties ?? {})).toEqual(
+      expect.arrayContaining([
+        "traceRecall",
+        "traceRecallPersist",
+        "traceRecallDir",
+        "traceRecallRetentionDays",
+        "traceRecallLoadRecentDays",
+        "traceRecallMaxEntries",
+        "traceRecallMaxResultsPerSearch",
+        "traceRecallPreviewChars",
+        "traceRecallQueryMaxChars",
+        "traceRecallQueryMaxDays",
+        "traceRecallIncludeContentByDefault",
+        "traceRecallIncludeRawUserPreview",
+        "recallTargetTypes",
+      ]),
+    );
   });
 });
 
@@ -162,16 +179,18 @@ describe("OpenClaw 5.5 package runtime contract", () => {
       omitDev: true,
       pruneAfterBuild: true,
     });
-    expect(installManifest.files?.required).toEqual(expect.arrayContaining([
-      "index.ts",
-      "recall-trace.ts",
-      "commands/setup.ts",
-      "shared/",
-      "tsconfig.json",
-      "tsconfig.build.json",
-      "package.json",
-      "openclaw.plugin.json",
-    ]));
+    expect(installManifest.files?.required).toEqual(
+      expect.arrayContaining([
+        "index.ts",
+        "recall-trace.ts",
+        "commands/setup.ts",
+        "shared/",
+        "tsconfig.json",
+        "tsconfig.build.json",
+        "package.json",
+        "openclaw.plugin.json",
+      ]),
+    );
     expect(installManifest.compatibility?.minOpenclawVersion).toBe("2026.5.27");
   });
 

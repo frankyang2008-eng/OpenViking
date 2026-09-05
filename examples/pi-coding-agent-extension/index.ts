@@ -44,7 +44,10 @@ export default async function (pi: ExtensionAPI) {
     debugLogPath: config.debugLogPath,
   });
   const takeover = createTakeoverManager({
-    pi, client, sync, config,
+    pi,
+    client,
+    sync,
+    config,
     log: (message: string) => logger.log("takeover", message),
   });
 
@@ -101,15 +104,20 @@ export default async function (pi: ExtensionAPI) {
       // Profile injection
       profileBlock = await buildSessionProfileBlock(client, config);
 
-      const branch = typeof ctx.sessionManager.getBranch === "function"
-        ? ctx.sessionManager.getBranch()
-        : [];
+      const branch =
+        typeof ctx.sessionManager.getBranch === "function"
+          ? ctx.sessionManager.getBranch()
+          : [];
       if (config.takeoverEnabled) {
         takeover.restore(branch);
         sync.restoreWatermark(takeover.state.syncedEntryCount);
       } else if (sync.sessionId) {
         // Resume rehydration — fetch archive overview if session was previously committed.
-        archiveOverview = await fetchArchiveOverview(client, sync.sessionId, config);
+        archiveOverview = await fetchArchiveOverview(
+          client,
+          sync.sessionId,
+          config,
+        );
       }
 
       // Register tools (also needed for pi -c continuations).
@@ -121,7 +129,10 @@ export default async function (pi: ExtensionAPI) {
 
       started = true;
       if (config.logLevel === "info") {
-        ctx.ui.notify(`OpenViking connected (${piSessionId.slice(0, 8)}...)`, "info");
+        ctx.ui.notify(
+          `OpenViking connected (${piSessionId.slice(0, 8)}...)`,
+          "info",
+        );
       }
     })().finally(() => {
       startPromise = null;
@@ -156,10 +167,16 @@ export default async function (pi: ExtensionAPI) {
     // Compose system prompt additions
     const parts: string[] = [];
     if (profileBlock) parts.push(profileBlock);
-    if (!config.takeoverEnabled && archiveOverview && (compacted || archiveOverview.trim())) {
+    if (
+      !config.takeoverEnabled &&
+      archiveOverview &&
+      (compacted || archiveOverview.trim())
+    ) {
       parts.push(archiveOverview);
     }
-    parts.push("OpenViking tools: viking_search, viking_read, viking_browse, viking_remember, viking_forget, viking_add_resource, viking_archive_expand.");
+    parts.push(
+      "OpenViking tools: viking_search, viking_read, viking_browse, viking_remember, viking_forget, viking_add_resource, viking_archive_expand.",
+    );
 
     const additions = parts.join("\n\n");
     if (!additions) return;
@@ -182,8 +199,16 @@ export default async function (pi: ExtensionAPI) {
     // with stable ids before takeover may filter the array; retained messages
     // keep object identity through that transform.
     const sm = ctx.sessionManager as {
-      buildContextEntries?: () => Array<{ type: string; id: string; message?: { role: string } }>;
-      getBranch?: () => Array<{ type: string; id: string; message?: { role: string } }>;
+      buildContextEntries?: () => Array<{
+        type: string;
+        id: string;
+        message?: { role: string };
+      }>;
+      getBranch?: () => Array<{
+        type: string;
+        id: string;
+        message?: { role: string };
+      }>;
     };
     // pi exposes buildContextEntries; omp (fork) predates it — getBranch is the
     // compatible fallback (ledger keys carry a content hash, so a stale id only
@@ -195,9 +220,11 @@ export default async function (pi: ExtensionAPI) {
           ? sm.getBranch()
           : [];
     const userEntryIds = contextEntries
-      .filter(entry => entry?.type === "message" && entry.message?.role === "user")
+      .filter(
+        (entry) => entry?.type === "message" && entry.message?.role === "user",
+      )
       .map((entry): string | undefined =>
-        typeof entry.id === "string" ? entry.id : undefined
+        typeof entry.id === "string" ? entry.id : undefined,
       );
     const messageIds = new WeakMap<object, string>();
     let userIndex = 0;
@@ -234,7 +261,14 @@ export default async function (pi: ExtensionAPI) {
     const result = await sync.syncBranch(branch);
     logger.log("turn_end", { added: result.added, tokens: result.tokens });
     await takeover.onTurnSynced(result.tokens);
-    updateStatus(ctx, connected, result.added, sync.sessionId, config, takeover.state);
+    updateStatus(
+      ctx,
+      connected,
+      result.added,
+      sync.sessionId,
+      config,
+      takeover.state,
+    );
   });
 
   // --- session_before_compact ---
@@ -255,7 +289,9 @@ export default async function (pi: ExtensionAPI) {
     // Cache archive overview for rehydration after compaction
     if (archiveId && sync.sessionId) {
       archiveOverview = await fetchArchiveOverview(
-        client, sync.sessionId, config,
+        client,
+        sync.sessionId,
+        config,
       );
     }
     // Return nothing → pi proceeds with default compaction
@@ -283,7 +319,8 @@ export default async function (pi: ExtensionAPI) {
   // ================================================================
 
   pi.registerCommand("viking", {
-    description: "OpenViking status and manual operations. Use 'commit' to force a sync.",
+    description:
+      "OpenViking status and manual operations. Use 'commit' to force a sync.",
     handler: async (args, ctx) => {
       if (!connected) {
         ctx.ui.notify("OpenViking: not connected", "warning");
@@ -292,14 +329,18 @@ export default async function (pi: ExtensionAPI) {
 
       if (args?.trim() === "commit") {
         await sync.shutdown();
-        const commitResult = config.takeoverEnabled ? null : await sync.commit();
+        const commitResult = config.takeoverEnabled
+          ? null
+          : await sync.commit();
         const ok = config.takeoverEnabled
           ? await takeover.commitAndAdvance()
           : commitResult !== null;
         if (ok) {
           ctx.ui.notify(
             "OpenViking: committed successfully" +
-              (commitResult?.trace_id ? ` (trace_id=${commitResult.trace_id})` : ""),
+              (commitResult?.trace_id
+                ? ` (trace_id=${commitResult.trace_id})`
+                : ""),
             "info",
           );
         } else {
@@ -339,11 +380,13 @@ function matchBypass(cwd: string, pattern: string): boolean {
 
 /** Build the <openviking-context> profile block. */
 async function buildSessionProfileBlock(
-  client: OVClient, config: OVConfig,
+  client: OVClient,
+  config: OVConfig,
 ): Promise<string> {
   try {
     const profile = await buildProfileBlock(
-      (path: string, init?: any, options?: any) => client.fetchJSON(path, init, 10000),
+      (path: string, init?: any, options?: any) =>
+        client.fetchJSON(path, init, 10000),
       config.profileTokenBudget,
       config.peerId,
     );
@@ -360,10 +403,15 @@ async function buildSessionProfileBlock(
 
 /** Fetch archive overview for rehydration using the session context API. */
 async function fetchArchiveOverview(
-  client: OVClient, sessionId: string, config: OVConfig,
+  client: OVClient,
+  sessionId: string,
+  config: OVConfig,
 ): Promise<string> {
   try {
-    const ctx = await client.getSessionContext(sessionId, config.resumeContextBudget);
+    const ctx = await client.getSessionContext(
+      sessionId,
+      config.resumeContextBudget,
+    );
     if (!ctx || !ctx.latest_archive_overview) return "";
 
     return [
@@ -391,9 +439,10 @@ function updateStatus(
   const threshold = config.takeoverEnabled
     ? config.takeoverTokenThreshold
     : config.commitTokenThreshold;
-  const pending = config.takeoverEnabled && takeoverState
-    ? ` · ctx ${takeoverState.coveredUserTurns ?? 0} · ~${takeoverState.pendingTokens ?? 0}/${threshold}`
-    : ` · ✎ ${threshold}`;
+  const pending =
+    config.takeoverEnabled && takeoverState
+      ? ` · ctx ${takeoverState.coveredUserTurns ?? 0} · ~${takeoverState.pendingTokens ?? 0}/${threshold}`
+      : ` · ✎ ${threshold}`;
   const status = `${connected ? "OV ✓" : "OV ✗"} · ↩${added}${pending} · ${sessionId ? sessionId.slice(0, 12) : "none"}`;
   try {
     setter("openviking", status);

@@ -55,22 +55,20 @@ fn resolve_fields(fields: &[String], is_tree: bool) -> Vec<&'static FieldDef> {
         let t = n.trim();
         t == "name" || t == "uri" || t == "path"
     });
-    if !has_identifier {
-        if let Some(def) = ALL_FIELDS.iter().find(|f| f.name == id_field) {
+    if !has_identifier
+        && let Some(def) = ALL_FIELDS.iter().find(|f| f.name == id_field) {
             seen.insert(def.name);
             resolved.push(def);
         }
-    }
     for name in fields {
         let trimmed = name.trim();
         if trimmed.is_empty() {
             continue;
         }
-        if let Some(def) = ALL_FIELDS.iter().find(|f| f.name == trimmed) {
-            if seen.insert(def.name) {
+        if let Some(def) = ALL_FIELDS.iter().find(|f| f.name == trimmed)
+            && seen.insert(def.name) {
                 resolved.push(def);
             }
-        }
     }
     resolved
 }
@@ -241,11 +239,10 @@ fn extra_fields_from(fields: &Option<Vec<String>>) -> Vec<String> {
             "count" => Some("count"),
             _ => None,
         };
-        if let Some(k) = key {
-            if !extra.iter().any(|e: &String| e == k) {
+        if let Some(k) = key
+            && !extra.iter().any(|e: &String| e == k) {
                 extra.push(k.to_string());
             }
-        }
     }
     extra
 }
@@ -372,14 +369,13 @@ fn render_fields_table(result: &Value, fields: &[&FieldDef], is_tree: bool) {
                 v
             })
             .collect();
-        if is_tree {
-            if let Some(path_field_idx) = fields.iter().position(|f| f.name == "path") {
+        if is_tree
+            && let Some(path_field_idx) = fields.iter().position(|f| f.name == "path") {
                 let depth = tree_depth(entry);
                 let indent = TREE_INDENT.repeat(depth);
                 let val = &row[path_field_idx];
                 row[path_field_idx] = format!("{indent}{val}");
             }
-        }
         rows.push(row);
     }
 
@@ -437,28 +433,22 @@ fn extract_entries(value: &Value) -> Option<Vec<&Value>> {
     let obj = value.as_object()?;
     // glob shape: top-level {matches:[...], count:N} (unwrapped from the success envelope
     // as a result object, with no nested "result" key).
-    if let Some(matches) = obj.get("matches") {
-        if let Some(arr) = matches.as_array() {
-            if arr.iter().all(Value::is_object) {
+    if let Some(matches) = obj.get("matches")
+        && let Some(arr) = matches.as_array()
+            && arr.iter().all(Value::is_object) {
                 return Some(arr.iter().collect());
             }
-        }
-    }
     let result = obj.get("result")?;
-    if let Some(arr) = result.as_array() {
-        if arr.iter().all(Value::is_object) {
+    if let Some(arr) = result.as_array()
+        && arr.iter().all(Value::is_object) {
             return Some(arr.iter().collect());
         }
-    }
-    if let Some(obj_res) = result.as_object() {
-        if let Some(matches) = obj_res.get("matches") {
-            if let Some(arr) = matches.as_array() {
-                if arr.iter().all(Value::is_object) {
+    if let Some(obj_res) = result.as_object()
+        && let Some(matches) = obj_res.get("matches")
+            && let Some(arr) = matches.as_array()
+                && arr.iter().all(Value::is_object) {
                     return Some(arr.iter().collect());
                 }
-            }
-        }
-    }
     None
 }
 
@@ -534,28 +524,22 @@ fn filesystem_entries(value: &Value) -> Option<(Vec<&Value>, Option<&Value>)> {
     let object = value.as_object()?;
     let profile = object.get("profile").filter(|profile| !profile.is_null());
     // glob shape: top-level {matches:[...], count:N}
-    if let Some(matches) = object.get("matches") {
-        if let Some(arr) = matches.as_array() {
-            if arr.iter().all(Value::is_object) {
+    if let Some(matches) = object.get("matches")
+        && let Some(arr) = matches.as_array()
+            && arr.iter().all(Value::is_object) {
                 return Some((arr.iter().collect(), profile));
             }
-        }
-    }
     let result = object.get("result")?;
-    if let Some(arr) = result.as_array() {
-        if arr.iter().all(Value::is_object) {
+    if let Some(arr) = result.as_array()
+        && arr.iter().all(Value::is_object) {
             return Some((arr.iter().collect(), profile));
         }
-    }
-    if let Some(obj_res) = result.as_object() {
-        if let Some(matches) = obj_res.get("matches") {
-            if let Some(arr) = matches.as_array() {
-                if arr.iter().all(Value::is_object) {
+    if let Some(obj_res) = result.as_object()
+        && let Some(matches) = obj_res.get("matches")
+            && let Some(arr) = matches.as_array()
+                && arr.iter().all(Value::is_object) {
                     return Some((arr.iter().collect(), profile));
                 }
-            }
-        }
-    }
     None
 }
 

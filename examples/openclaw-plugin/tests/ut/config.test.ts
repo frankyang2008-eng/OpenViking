@@ -50,7 +50,9 @@ describe("memoryOpenVikingConfigSchema.parse()", () => {
   });
 
   it("tolerates the deprecated commitTokenThreshold key and ignores it", () => {
-    const cfg = memoryOpenVikingConfigSchema.parse({ commitTokenThreshold: 20000 });
+    const cfg = memoryOpenVikingConfigSchema.parse({
+      commitTokenThreshold: 20000,
+    });
     expect(cfg.commitTokenThresholdRatio).toBe(0.5);
   });
 
@@ -59,7 +61,9 @@ describe("memoryOpenVikingConfigSchema.parse()", () => {
     expect(disabled.enableAddResourceTool).toBe(false);
     expect(disabled.enabledTools).not.toContain("add_resource");
 
-    const enabled = memoryOpenVikingConfigSchema.parse({ enableAddResourceTool: true });
+    const enabled = memoryOpenVikingConfigSchema.parse({
+      enableAddResourceTool: true,
+    });
     expect(enabled.enableAddResourceTool).toBe(true);
     expect(enabled.enabledTools).toContain("add_resource");
     expect(enabled.disabledTools).not.toContain("add_resource");
@@ -82,7 +86,11 @@ describe("memoryOpenVikingConfigSchema.parse()", () => {
   });
 
   it("rejects unpublished experience tool selectors", () => {
-    for (const selector of ["experience", "search_experience", "read_experience"]) {
+    for (const selector of [
+      "experience",
+      "search_experience",
+      "read_experience",
+    ]) {
       expect(() =>
         memoryOpenVikingConfigSchema.parse({ enabledTools: [selector] }),
       ).toThrow("unknown tool selectors");
@@ -97,7 +105,9 @@ describe("memoryOpenVikingConfigSchema.parse()", () => {
 
   it("throws on unknown tool selectors", () => {
     expect(() =>
-      memoryOpenVikingConfigSchema.parse({ enabledTools: ["resource_query", "nope"] }),
+      memoryOpenVikingConfigSchema.parse({
+        enabledTools: ["resource_query", "nope"],
+      }),
     ).toThrow("unknown tool selectors");
     expect(() =>
       memoryOpenVikingConfigSchema.parse({ disabledTools: "nope" }),
@@ -142,8 +152,12 @@ describe("memoryOpenVikingConfigSchema.parse()", () => {
 
   it("honors explicit recallPreferAbstract=false without changing the default", () => {
     const cfgDefault = memoryOpenVikingConfigSchema.parse({});
-    const cfgFalse = memoryOpenVikingConfigSchema.parse({ recallPreferAbstract: false });
-    const cfgTrue = memoryOpenVikingConfigSchema.parse({ recallPreferAbstract: true });
+    const cfgFalse = memoryOpenVikingConfigSchema.parse({
+      recallPreferAbstract: false,
+    });
+    const cfgTrue = memoryOpenVikingConfigSchema.parse({
+      recallPreferAbstract: true,
+    });
     expect(cfgDefault.recallPreferAbstract).toBe(false);
     expect(cfgFalse.recallPreferAbstract).toBe(false);
     expect(cfgTrue.recallPreferAbstract).toBe(true);
@@ -184,9 +198,9 @@ describe("memoryOpenVikingConfigSchema.parse()", () => {
   });
 
   it("throws on unknown config keys", () => {
-    expect(() =>
-      memoryOpenVikingConfigSchema.parse({ foo: 1 }),
-    ).toThrow("unknown keys");
+    expect(() => memoryOpenVikingConfigSchema.parse({ foo: 1 })).toThrow(
+      "unknown keys",
+    );
   });
 
   it("parses string-valued configured headers", () => {
@@ -278,14 +292,20 @@ describe("memoryOpenVikingConfigSchema.parse()", () => {
   });
 
   it("uses autoRecallTimeoutMs as the outer auto-recall budget", () => {
-    const cfg = memoryOpenVikingConfigSchema.parse({ autoRecallTimeoutMs: 30000 });
+    const cfg = memoryOpenVikingConfigSchema.parse({
+      autoRecallTimeoutMs: 30000,
+    });
     expect(cfg.autoRecallTimeoutMs).toBe(30000);
   });
 
   it("clamps autoRecallTimeoutMs within bounds", () => {
-    const cfgLow = memoryOpenVikingConfigSchema.parse({ autoRecallTimeoutMs: 100 });
+    const cfgLow = memoryOpenVikingConfigSchema.parse({
+      autoRecallTimeoutMs: 100,
+    });
     expect(cfgLow.autoRecallTimeoutMs).toBe(1000);
-    const cfgHigh = memoryOpenVikingConfigSchema.parse({ autoRecallTimeoutMs: 999999 });
+    const cfgHigh = memoryOpenVikingConfigSchema.parse({
+      autoRecallTimeoutMs: 999999,
+    });
     expect(cfgHigh.autoRecallTimeoutMs).toBe(300000);
   });
 
@@ -297,34 +317,52 @@ describe("memoryOpenVikingConfigSchema.parse()", () => {
   });
 
   it("accepts valid captureMode values", () => {
-    const cfgSemantic = memoryOpenVikingConfigSchema.parse({ captureMode: "semantic" });
+    const cfgSemantic = memoryOpenVikingConfigSchema.parse({
+      captureMode: "semantic",
+    });
     expect(cfgSemantic.captureMode).toBe("semantic");
-    const cfgKeyword = memoryOpenVikingConfigSchema.parse({ captureMode: "keyword" });
+    const cfgKeyword = memoryOpenVikingConfigSchema.parse({
+      captureMode: "keyword",
+    });
     expect(cfgKeyword.captureMode).toBe("keyword");
   });
 
   it("clamps captureMaxLength within bounds", () => {
     const cfgLow = memoryOpenVikingConfigSchema.parse({ captureMaxLength: 10 });
     expect(cfgLow.captureMaxLength).toBe(200);
-    const cfgHigh = memoryOpenVikingConfigSchema.parse({ captureMaxLength: 999999 });
+    const cfgHigh = memoryOpenVikingConfigSchema.parse({
+      captureMaxLength: 999999,
+    });
     expect(cfgHigh.captureMaxLength).toBe(200000);
   });
 
   it("clamps recallMaxContentChars within bounds", () => {
-    const cfgLow = memoryOpenVikingConfigSchema.parse({ recallMaxContentChars: 1 });
+    const cfgLow = memoryOpenVikingConfigSchema.parse({
+      recallMaxContentChars: 1,
+    });
     expect(cfgLow.recallMaxContentChars).toBe(50);
-    const cfgHigh = memoryOpenVikingConfigSchema.parse({ recallMaxContentChars: 99999 });
+    const cfgHigh = memoryOpenVikingConfigSchema.parse({
+      recallMaxContentChars: 99999,
+    });
     expect(cfgHigh.recallMaxContentChars).toBe(10000);
   });
 
   it("accepts explicit peer_role values", () => {
-    expect(memoryOpenVikingConfigSchema.parse({ peer_role: "none" }).peer_role).toBe("none");
-    expect(memoryOpenVikingConfigSchema.parse({ peer_role: "assistant" }).peer_role).toBe("assistant");
-    expect(memoryOpenVikingConfigSchema.parse({ peer_role: "sender" }).peer_role).toBe("sender");
+    expect(
+      memoryOpenVikingConfigSchema.parse({ peer_role: "none" }).peer_role,
+    ).toBe("none");
+    expect(
+      memoryOpenVikingConfigSchema.parse({ peer_role: "assistant" }).peer_role,
+    ).toBe("assistant");
+    expect(
+      memoryOpenVikingConfigSchema.parse({ peer_role: "sender" }).peer_role,
+    ).toBe("sender");
   });
 
   it("normalizes the legacy person peer_role alias to sender", () => {
-    expect(memoryOpenVikingConfigSchema.parse({ peer_role: "person" }).peer_role).toBe("sender");
+    expect(
+      memoryOpenVikingConfigSchema.parse({ peer_role: "person" }).peer_role,
+    ).toBe("sender");
   });
 
   it("throws on invalid peer_role", () => {
@@ -334,7 +372,9 @@ describe("memoryOpenVikingConfigSchema.parse()", () => {
   });
 
   it("resolves peer_prefix from configured value", () => {
-    const cfg = memoryOpenVikingConfigSchema.parse({ peer_prefix: "  my-agent  " });
+    const cfg = memoryOpenVikingConfigSchema.parse({
+      peer_prefix: "  my-agent  ",
+    });
     expect(cfg.peer_role).toBe("none");
     expect(cfg.peer_prefix).toBe("my-agent");
   });
@@ -350,7 +390,9 @@ describe("memoryOpenVikingConfigSchema.parse()", () => {
   });
 
   it("parses accountId and trims whitespace", () => {
-    const cfg = memoryOpenVikingConfigSchema.parse({ accountId: "  acct-123  " });
+    const cfg = memoryOpenVikingConfigSchema.parse({
+      accountId: "  acct-123  ",
+    });
     expect(cfg.accountId).toBe("acct-123");
   });
 
@@ -386,7 +428,9 @@ describe("memoryOpenVikingConfigSchema.parse()", () => {
   });
 
   it("accepts deprecated serverAuthMode without exposing it in parsed config", () => {
-    const cfg = memoryOpenVikingConfigSchema.parse({ serverAuthMode: "trusted" });
+    const cfg = memoryOpenVikingConfigSchema.parse({
+      serverAuthMode: "trusted",
+    });
     expect("serverAuthMode" in cfg).toBe(false);
   });
 
@@ -401,7 +445,9 @@ describe("memoryOpenVikingConfigSchema.parse()", () => {
   });
 
   it("recallResources only accepts boolean true", () => {
-    const cfg1 = memoryOpenVikingConfigSchema.parse({ recallResources: "true" });
+    const cfg1 = memoryOpenVikingConfigSchema.parse({
+      recallResources: "true",
+    });
     expect(cfg1.recallResources).toBe(false);
     const cfg2 = memoryOpenVikingConfigSchema.parse({ recallResources: 1 });
     expect(cfg2.recallResources).toBe(false);
@@ -421,7 +467,9 @@ describe("memoryOpenVikingConfigSchema.parse()", () => {
 
   it("rejects unknown recallTargetTypes instead of falling back to defaults", () => {
     expect(() =>
-      memoryOpenVikingConfigSchema.parse({ recallTargetTypes: ["user", "project"] }),
+      memoryOpenVikingConfigSchema.parse({
+        recallTargetTypes: ["user", "project"],
+      }),
     ).toThrow("recallTargetTypes contains unknown resource types: project");
   });
 
@@ -489,7 +537,9 @@ describe("memoryOpenVikingConfigSchema.parse() — apiKey SecretRef (#3522)", ()
     const keyPath = path.join(tmpDir, "ov.key");
     await fs.writeFile(keyPath, "  the-file-secret\n\n");
 
-    const cfg = memoryOpenVikingConfigSchema.parse({ apiKey: { source: "file", id: keyPath } });
+    const cfg = memoryOpenVikingConfigSchema.parse({
+      apiKey: { source: "file", id: keyPath },
+    });
     expect(cfg.apiKey).toBe("the-file-secret");
   });
 
@@ -504,7 +554,11 @@ describe("memoryOpenVikingConfigSchema.parse() — apiKey SecretRef (#3522)", ()
   it("SecretRef exec source is rejected with a not-supported error", () => {
     expect(() =>
       memoryOpenVikingConfigSchema.parse({
-        apiKey: { source: "exec", provider: "my-vault", id: "secret/openviking/apiKey" },
+        apiKey: {
+          source: "exec",
+          provider: "my-vault",
+          id: "secret/openviking/apiKey",
+        },
       }),
     ).toThrow(/exec source is not supported in the packaged plugin/);
   });
@@ -512,12 +566,17 @@ describe("memoryOpenVikingConfigSchema.parse() — apiKey SecretRef (#3522)", ()
   it("SecretRef validates required fields (unknown source, missing id)", () => {
     expect(() =>
       memoryOpenVikingConfigSchema.parse({
-        apiKey: { source: "magic", id: "x" } as unknown as import("../../config.js").OpenVikingSecretRef,
+        apiKey: {
+          source: "magic",
+          id: "x",
+        } as unknown as import("../../config.js").OpenVikingSecretRef,
       }),
     ).toThrow(/unknown source.*magic/);
     expect(() =>
       memoryOpenVikingConfigSchema.parse({
-        apiKey: { source: "env" } as unknown as import("../../config.js").OpenVikingSecretRef,
+        apiKey: {
+          source: "env",
+        } as unknown as import("../../config.js").OpenVikingSecretRef,
       }),
     ).toThrow(/SecretRef requires a non-empty string "id"/);
   });

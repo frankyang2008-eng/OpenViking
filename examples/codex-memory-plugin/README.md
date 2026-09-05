@@ -121,7 +121,7 @@ By default the hooks derive the peer from git rather than from where the reposit
 `OPENVIKING_PEER_SOURCE` (or `plugin.peerSource` / `plugin.codex.peerSource` in `ovcli.conf`, or `peer.source` in a workspace config file) picks the rule:
 
 | Value | Meaning |
-|---|---|
+| --- | --- |
 | `git` | Default. Same as `["{git_remote}", "{git_root}"]`: normalized origin, else repository root. Outside a repository nothing is sent. No prefix is added. |
 | `cwd` | The previous behaviour, byte for byte — every non-letter-or-digit character becomes `-`, so `/Users/x/Dev/OpenViking` becomes `-Users-x-Dev-OpenViking`. |
 | `none` | Send no peer at all; `OPENVIKING_WORKSPACE_PEER=0` and `codex.workspacePeer=false` still mean this. |
@@ -263,7 +263,7 @@ The compressor profile is recreated on every `SessionStart` and cached under `OP
 Config knobs:
 
 | Env var | Default | Meaning |
-|---|---|---|
+| --- | --- | --- |
 | `OPENVIKING_RECALL_LIMIT` | `10` | Legacy quota-scaling input; explicit values are converted to six coding quotas, not enforced as a final result cap. |
 | `OPENVIKING_RECALL_COMPRESS` | `1` | Set `0` / `off` to disable `codex exec` compression. |
 | `OPENVIKING_RECALL_COMPRESS_MODEL` | unset | Custom first-choice compressor model. Set `off` to disable compression. |
@@ -326,12 +326,12 @@ The lock serializes the four writers that persist the whole state object — the
 Codex's hook output schema differs from Claude Code's. Notably:
 
 | Hook | Input field of interest | Output channel for context injection |
-|------|------------------------|--------------------------------------|
-| `SessionStart`   | `source` (`startup`/`resume`/`clear`), `session_id`, `cwd` | `hookSpecificOutput.additionalContext`; may also include `systemMessage` when an orphaned session was committed |
-| `UserPromptSubmit` | `prompt`, `session_id`                     | `hookSpecificOutput.additionalContext` |
-| `Stop`           | `last_assistant_message`, `transcript_path`, `session_id` | `systemMessage` (only) |
-| `PreCompact`     | `trigger` (`manual`/`auto`), `transcript_path`, `session_id` | `systemMessage` (only) |
-| `SessionEnd`     | `session_id`, `transcript_path`, `cwd`, `reason` (constant `other`) | none — Codex ignores the output; the script prints `{}` for symmetry |
+| ------ | ------------------------ | -------------------------------------- |
+| `SessionStart` | `source` (`startup`/`resume`/`clear`), `session_id`, `cwd` | `hookSpecificOutput.additionalContext`; may also include `systemMessage` when an orphaned session was committed |
+| `UserPromptSubmit` | `prompt`, `session_id` | `hookSpecificOutput.additionalContext` |
+| `Stop` | `last_assistant_message`, `transcript_path`, `session_id` | `systemMessage` (only) |
+| `PreCompact` | `trigger` (`manual`/`auto`), `transcript_path`, `session_id` | `systemMessage` (only) |
+| `SessionEnd` | `session_id`, `transcript_path`, `cwd`, `reason` (constant `other`) | none — Codex ignores the output; the script prints `{}` for symmetry |
 
 Unlike Claude Code, **Codex does not support `decision: "approve"`**; only `decision: "block"`. A no-op is `{}` (which is what these scripts emit when there's nothing to add).
 
@@ -391,7 +391,7 @@ The Codex marketplace catalog that exposes this plugin for `codex plugin marketp
 ## Differences from the Claude Code Plugin
 
 | Aspect | Claude Code Plugin | Codex Plugin |
-|--------|--------------------|--------------|
+| -------- | -------------------- | -------------- |
 | Plugin root env var | `CLAUDE_PLUGIN_ROOT` (expanded by CC) | `${PLUGIN_ROOT}` (injected into hook env + substituted inline by modern Codex; installer also renders it to absolute paths for older Codex) |
 | `UserPromptSubmit` injection | `decision: "approve"` + `hookSpecificOutput.additionalContext` | `hookSpecificOutput.additionalContext` only — `approve` is not a Codex output |
 | `Stop` decision | `decision: "approve"` no-op | `{}` no-op — only `block` is a valid Codex `decision` |

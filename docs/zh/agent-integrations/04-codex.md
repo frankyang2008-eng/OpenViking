@@ -68,7 +68,7 @@ TraeCode CLI 2.0 用户启动 `trae-cli`，并可用 `trae-cli plugin list` 确�
 凭据来源：默认环境变量优先——只要设置了任一 `OPENVIKING_*` 凭据环境变量（`OPENVIKING_URL`/`OPENVIKING_BASE_URL`、`OPENVIKING_BEARER_TOKEN`/`OPENVIKING_API_KEY`、`OPENVIKING_ACCOUNT`、`OPENVIKING_USER`、`OPENVIKING_PEER_ID`），其取值就会覆盖当前激活的 `ovcli.conf`。只有在这些环境变量都未设置时，才由激活的 `ovcli.conf`（`OPENVIKING_CLI_CONFIG_FILE` 或 `~/.openviking/ovcli.conf`）统一驱动 hook、MCP 代理和 Codex 内部运行的 `ov` 命令，此时 `ov config switch <name>` 会在下次启动时生效。若希望在设置了凭据环境变量的情况下仍强制使用 ovcli 配置，可设置 `OPENVIKING_CREDENTIAL_SOURCE=cli`。两者都未覆盖的字段依次回退到 `ovcli.conf`、`ov.conf` 和内置默认值。
 
 | 环境变量 | 默认值 | 说明 |
-|---------|--------|------|
+| --------- | -------- | ------ |
 | `OPENVIKING_URL` / `OPENVIKING_BASE_URL` | — | 完整的服务器 URL |
 | `OPENVIKING_API_KEY` | — | API 密钥（将通过 `Authorization: Bearer` 标头发送） |
 | `OPENVIKING_CLI_CONFIG_FILE` | `~/.openviking/ovcli.conf` | hook、MCP 和 Codex 内部 `ov` 命令共同使用的当前 CLI 配置 |
@@ -95,7 +95,7 @@ TraeCode CLI 2.0 用户启动 `trae-cli`，并可用 `trae-cli plugin list` 确�
 ## 故障排查
 
 | 现象 | 可能原因 | 修复方法 |
-|------|------|------|
+| ------ | ------ | ------ |
 | MCP 工具调用报认证错误 | 当前 ovcli 配置没有 authenticated server 所需的有效 `api_key` | 修正 `~/.openviking/ovcli.conf`（或运行 `node <插件目录>/scripts/setup.mjs`）后重启 Codex；stdio 代理会在启动时和认证失败后重新读取配置 |
 | MCP 工具调用报连接错误 | 服务器不可达或 URL 配置错误 | 执行 `curl "$(jq -r '.url' ~/.openviking/ovcli.conf)/health"` 检查服务器状态 |
 | `4 hooks need review` | 首次启动需要进行安全审批 | 在 Codex 终端内输入 `/hooks` 完成审批 |

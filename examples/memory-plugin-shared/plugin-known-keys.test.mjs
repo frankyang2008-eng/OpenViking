@@ -15,21 +15,41 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
  */
 async function knobsReadBy(file, receiver) {
   const source = await readFile(join(ROOT, file), "utf-8");
-  return new Set([...source.matchAll(new RegExp(`\\b${receiver}\\.([a-zA-Z_][a-zA-Z0-9_]*)`, "g"))].map((m) => m[1]));
+  return new Set(
+    [
+      ...source.matchAll(
+        new RegExp(`\\b${receiver}\\.([a-zA-Z_][a-zA-Z0-9_]*)`, "g"),
+      ),
+    ].map((m) => m[1]),
+  );
 }
 
 test("the doctor's known-knob list matches what the loaders actually read", async () => {
   const read = new Set([
-    ...(await knobsReadBy("examples/claude-code-memory-plugin/scripts/config.mjs", "cc")),
-    ...(await knobsReadBy("examples/codex-memory-plugin/scripts/config.mjs", "cx")),
+    ...(await knobsReadBy(
+      "examples/claude-code-memory-plugin/scripts/config.mjs",
+      "cc",
+    )),
+    ...(await knobsReadBy(
+      "examples/codex-memory-plugin/scripts/config.mjs",
+      "cx",
+    )),
   ]);
   assert.ok(read.size > 20, `expected to find the knobs, got ${read.size}`);
 
   const missing = [...read].filter((key) => !KNOWN_PLUGIN_KEYS.has(key)).sort();
-  assert.deepEqual(missing, [], "a knob a loader reads but doctor would flag as a typo");
+  assert.deepEqual(
+    missing,
+    [],
+    "a knob a loader reads but doctor would flag as a typo",
+  );
 
   const stale = [...KNOWN_PLUGIN_KEYS].filter((key) => !read.has(key)).sort();
-  assert.deepEqual(stale, [], "a knob doctor accepts that no loader reads any more");
+  assert.deepEqual(
+    stale,
+    [],
+    "a knob doctor accepts that no loader reads any more",
+  );
 });
 
 test("a misspelled knob is caught, with the key it was probably meant to be", () => {
@@ -46,13 +66,26 @@ test("a misspelled knob is caught, with the key it was probably meant to be", ()
     "plugin.claude_code.autoRecal",
     "plugin.peerSorce",
   ]);
-  assert.equal(found.find((f) => f.key === "plugin.peerSorce").suggestion, "peerSource");
-  assert.equal(found.find((f) => f.key === "plugin.RecallLimit").suggestion, "recallLimit");
-  assert.equal(found.find((f) => f.key === "plugin.claude_code.autoRecal").suggestion, "autoRecall");
+  assert.equal(
+    found.find((f) => f.key === "plugin.peerSorce").suggestion,
+    "peerSource",
+  );
+  assert.equal(
+    found.find((f) => f.key === "plugin.RecallLimit").suggestion,
+    "recallLimit",
+  );
+  assert.equal(
+    found.find((f) => f.key === "plugin.claude_code.autoRecal").suggestion,
+    "autoRecall",
+  );
 });
 
 test("an empty or absent plugin section reports nothing", () => {
   for (const value of [undefined, null, {}, [], "text", 3]) {
-    assert.deepEqual(unknownPluginKeys(value), [], `should be empty for ${JSON.stringify(value)}`);
+    assert.deepEqual(
+      unknownPluginKeys(value),
+      [],
+      `should be empty for ${JSON.stringify(value)}`,
+    );
   }
 });

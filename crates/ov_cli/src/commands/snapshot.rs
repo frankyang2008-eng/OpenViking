@@ -93,12 +93,12 @@ pub async fn dispatch(
         SnapshotCmd::IgnoreSet { content, file } => {
             let content = resolve_ignore_content(content.as_deref(), file.as_deref())?;
             client.snapshot_ignore_set(&content).await?;
-            output_success(&json!({ "result": "set" }), output_format, compact);
+            output_success(json!({ "result": "set" }), output_format, compact);
             Ok(())
         }
         SnapshotCmd::IgnoreDelete => {
             client.snapshot_ignore_delete().await?;
-            output_success(&json!({ "result": "deleted" }), output_format, compact);
+            output_success(json!({ "result": "deleted" }), output_format, compact);
             Ok(())
         }
     }
@@ -207,7 +207,7 @@ fn handle_show(
             if let Some(msg) = meta.get("message").and_then(|v| v.as_str()) {
                 display.insert("message".to_string(), Value::String(msg.to_string()));
             }
-            output_success(&Value::Object(display), OutputFormat::Table, compact);
+            output_success(Value::Object(display), OutputFormat::Table, compact);
             Ok(())
         }
         SnapshotShowResult::Blob { oid, bytes, size } => {

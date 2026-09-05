@@ -22,7 +22,7 @@ The agent runs install → setup → restart → verify automatically. See [INST
 ## How It Works
 
 | Stage | What happens |
-|-------|-------------|
+| ------- | ------------- |
 | **Every turn** (`afterTurn`) | New messages are appended to an OpenViking session; commit/extraction is threshold-triggered |
 | **Explicit remember** (`memory_store`) | Important long-term facts can be written and committed immediately |
 | **On `/compact`** (`compact`) | Pending session messages are committed and extracted into long-term memories |
@@ -33,7 +33,7 @@ The agent runs install → setup → restart → verify automatically. See [INST
 Once installed, the plugin provides these agent tools:
 
 | Tool | Purpose |
-|------|---------|
+| ------ | --------- |
 | `memory_recall` | Explicit long-term memory search |
 | `memory_store` | Persist explicit long-term facts immediately |
 | `memory_forget` | Delete memories by URI or query |
@@ -70,7 +70,7 @@ openclaw config get plugins.slots.contextEngine  # should output: openviking
 ## Documentation
 
 | Doc | Description |
-|-----|-------------|
+| ----- | ------------- |
 | [INSTALL.md](./INSTALL.md) | Full install, upgrade, and uninstall guide |
 | [INSTALL-ZH.md](./INSTALL-ZH.md) | Chinese install guide |
 | [INSTALL-AGENT.md](./INSTALL-AGENT.md) | Agent-oriented operator guide |

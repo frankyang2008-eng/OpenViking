@@ -5,12 +5,36 @@ import { dirname, join } from "node:path";
 
 import { compressRecallContext } from "./recall-compress-core.mjs";
 
-const PREFERENCE_QUERY_RE = /prefer|preference|favorite|favourite|like|偏好|喜欢|爱好|更倾向/i;
-const TEMPORAL_QUERY_RE = /when|what time|date|day|month|year|yesterday|today|tomorrow|last|next|什么时候|何时|哪天|几月|几年|昨天|今天|明天/i;
+const PREFERENCE_QUERY_RE =
+  /prefer|preference|favorite|favourite|like|偏好|喜欢|爱好|更倾向/i;
+const TEMPORAL_QUERY_RE =
+  /when|what time|date|day|month|year|yesterday|today|tomorrow|last|next|什么时候|何时|哪天|几月|几年|昨天|今天|明天/i;
 const QUERY_TOKEN_RE = /[a-z0-9一-龥]{2,}/gi;
 const STOPWORDS = new Set([
-  "what", "when", "where", "which", "who", "whom", "whose", "why", "how", "did", "does",
-  "is", "are", "was", "were", "the", "and", "for", "with", "from", "that", "this", "your", "you",
+  "what",
+  "when",
+  "where",
+  "which",
+  "who",
+  "whom",
+  "whose",
+  "why",
+  "how",
+  "did",
+  "does",
+  "is",
+  "are",
+  "was",
+  "were",
+  "the",
+  "and",
+  "for",
+  "with",
+  "from",
+  "that",
+  "this",
+  "your",
+  "you",
 ]);
 const USER_RESERVED_DIRS = new Set(["memories", "skills"]);
 const SOURCES = [
@@ -45,16 +69,19 @@ function scaleQuotas(limit, weights) {
   }
 
   for (const key of order) quotas[key] = 1;
-  const totalWeight = Object.values(weights).reduce((sum, weight) => sum + weight, 0);
+  const totalWeight = Object.values(weights).reduce(
+    (sum, weight) => sum + weight,
+    0,
+  );
   const ideals = Object.fromEntries(
-    order.map((key) => [key, slots * weights[key] / totalWeight]),
+    order.map((key) => [key, (slots * weights[key]) / totalWeight]),
   );
   while (order.reduce((sum, key) => sum + quotas[key], 0) < slots) {
-    const key = order.reduce((best, candidate) => (
+    const key = order.reduce((best, candidate) =>
       ideals[candidate] - quotas[candidate] > ideals[best] - quotas[best]
         ? candidate
-        : best
-    ));
+        : best,
+    );
     quotas[key] += 1;
   }
   return quotas;
@@ -77,7 +104,9 @@ export function buildRecallEndpointBody(cfg = {}) {
     query: "",
     quotas: legacyMemoryQuotas(limit),
     max_chars: Math.max(Number(cfg.recallMaxContentChars || 0) * limit, 1000),
-    min_score: Number.isFinite(Number(cfg.scoreThreshold)) ? Number(cfg.scoreThreshold) : 0.35,
+    min_score: Number.isFinite(Number(cfg.scoreThreshold))
+      ? Number(cfg.scoreThreshold)
+      : 0.35,
     render: true,
   };
   if (cfg.recallPeerScope === "actor") body.peer_scope = "actor";
@@ -91,7 +120,10 @@ export function buildRecallEndpointBody(cfg = {}) {
  */
 export function buildContextSearchBody(cfg = {}, options = {}) {
   const rewriteMode = String(cfg.recallRewrite || "off").toLowerCase();
-  const limit = Math.max(1, Math.floor(Number(cfg.recallLimit || DEFAULT_CONTEXT_LIMIT)));
+  const limit = Math.max(
+    1,
+    Math.floor(Number(cfg.recallLimit || DEFAULT_CONTEXT_LIMIT)),
+  );
   const maxTokens = Math.max(
     64,
     Math.floor(Number(cfg.recallMaxTokens || DEFAULT_CONTEXT_MAX_TOKENS)),
@@ -100,7 +132,9 @@ export function buildContextSearchBody(cfg = {}, options = {}) {
     query: "",
     mode: "context",
     purpose: "coding",
-    score_threshold: Number.isFinite(Number(cfg.scoreThreshold)) ? Number(cfg.scoreThreshold) : 0.35,
+    score_threshold: Number.isFinite(Number(cfg.scoreThreshold))
+      ? Number(cfg.scoreThreshold)
+      : 0.35,
   };
   const limitConfigured = cfg.recallLimitConfigured === true;
   const maxTokensConfigured = cfg.recallMaxTokensConfigured === true;
@@ -111,9 +145,11 @@ export function buildContextSearchBody(cfg = {}, options = {}) {
   const sessionId = String(options.sessionId || "").trim();
   if (sessionId) {
     body.session_id = sessionId;
-    const queryExpansionConfigured = cfg.recallQueryExpansionConfigured === true;
+    const queryExpansionConfigured =
+      cfg.recallQueryExpansionConfigured === true;
     if (queryExpansionConfigured) {
-      body.query_expansion = cfg.recallQueryExpansion === "off" ? "off" : "auto";
+      body.query_expansion =
+        cfg.recallQueryExpansion === "off" ? "off" : "auto";
     }
     const dedupTurns = Number(cfg.recallDedupTurns);
     const resolvedDedupTurns = Number.isFinite(dedupTurns)
@@ -122,16 +158,22 @@ export function buildContextSearchBody(cfg = {}, options = {}) {
     if (resolvedDedupTurns > 0) body.dedup_turns = resolvedDedupTurns;
   }
 
-  const excludeUris = Array.isArray(options.excludeUris) ? options.excludeUris.slice(0, 200) : [];
+  const excludeUris = Array.isArray(options.excludeUris)
+    ? options.excludeUris.slice(0, 200)
+    : [];
   if (excludeUris.length) body.exclude_uris = excludeUris;
 
   if (rewriteMode === "server") body.rewrite = true;
-  else if (rewriteMode === "auto" && !options.localCompressorAvailable) body.rewrite = "auto";
+  else if (rewriteMode === "auto" && !options.localCompressorAvailable)
+    body.rewrite = "auto";
   const rewriteMaxBullets = Math.max(
     1,
-    Math.floor(Number(cfg.recallCompressMaxBullets || DEFAULT_REWRITE_MAX_BULLETS)),
+    Math.floor(
+      Number(cfg.recallCompressMaxBullets || DEFAULT_REWRITE_MAX_BULLETS),
+    ),
   );
-  const rewriteMaxBulletsConfigured = cfg.recallCompressMaxBulletsConfigured === true;
+  const rewriteMaxBulletsConfigured =
+    cfg.recallCompressMaxBulletsConfigured === true;
   if (body.rewrite !== undefined && rewriteMaxBulletsConfigured) {
     body.rewrite_max_bullets = rewriteMaxBullets;
   }
@@ -163,11 +205,15 @@ export function contextRequestTimeoutMs(cfg = {}, body = {}) {
   const wantsRewrite = body.rewrite !== undefined;
   // `query_expansion` defaults to "auto" server-side, so only an explicit "off"
   // takes the expansion fuse back out of the budget.
-  const wantsExpansion = Boolean(body.session_id) && body.query_expansion !== "off";
+  const wantsExpansion =
+    Boolean(body.session_id) && body.query_expansion !== "off";
   const configured = Number(cfg.recallContextTimeoutMs);
-  if (Number.isFinite(configured) && configured > 0) return Math.max(1000, Math.floor(configured));
+  if (Number.isFinite(configured) && configured > 0)
+    return Math.max(1000, Math.floor(configured));
   if (!wantsRewrite && !wantsExpansion) return undefined;
-  const floor = wantsRewrite ? SERVER_REWRITE_REQUEST_TIMEOUT_MS : EXPANSION_REQUEST_TIMEOUT_MS;
+  const floor = wantsRewrite
+    ? SERVER_REWRITE_REQUEST_TIMEOUT_MS
+    : EXPANSION_REQUEST_TIMEOUT_MS;
   return Math.max(Number(cfg.timeoutMs) || 0, floor);
 }
 
@@ -178,7 +224,10 @@ export function contextRequestTimeoutMs(cfg = {}, body = {}) {
 export function downgradeToRecallBody(contextBody = {}, cfg = {}) {
   const body = buildRecallEndpointBody(cfg);
   body.query = contextBody.query || "";
-  body.max_chars = Math.max(1000, Math.floor(Number(contextBody.max_tokens || 1600) * 4));
+  body.max_chars = Math.max(
+    1000,
+    Math.floor(Number(contextBody.max_tokens || 1600) * 4),
+  );
   if (contextBody.peer_scope) body.peer_scope = contextBody.peer_scope;
   return body;
 }
@@ -213,17 +262,32 @@ function rankItem(item, profile) {
   const abstract = (item.abstract || item.overview || "").trim();
   const cat = (item.category || "").toLowerCase();
   const uri = (item.uri || "").toLowerCase();
-  const leafBoost = (item.level === 2 || uri.endsWith(".md")) ? 0.12 : 0;
-  const eventBoost = profile.wantsTemporal && (cat === "events" || uri.includes("/events/")) ? 0.1 : 0;
-  const prefBoost = profile.wantsPreference && (cat === "preferences" || uri.includes("/preferences/")) ? 0.08 : 0;
-  const overlapBoost = lexicalOverlapBoost(profile.tokens, `${item.uri} ${abstract}`);
+  const leafBoost = item.level === 2 || uri.endsWith(".md") ? 0.12 : 0;
+  const eventBoost =
+    profile.wantsTemporal && (cat === "events" || uri.includes("/events/"))
+      ? 0.1
+      : 0;
+  const prefBoost =
+    profile.wantsPreference &&
+    (cat === "preferences" || uri.includes("/preferences/"))
+      ? 0.08
+      : 0;
+  const overlapBoost = lexicalOverlapBoost(
+    profile.tokens,
+    `${item.uri} ${abstract}`,
+  );
   return base + leafBoost + eventBoost + prefBoost + overlapBoost;
 }
 
 function isEventOrCaseItem(item) {
   const cat = (item.category || "").toLowerCase();
   const uri = (item.uri || "").toLowerCase();
-  return cat === "events" || cat === "cases" || uri.includes("/events/") || uri.includes("/cases/");
+  return (
+    cat === "events" ||
+    cat === "cases" ||
+    uri.includes("/events/") ||
+    uri.includes("/cases/")
+  );
 }
 
 function dedupeItems(items) {
@@ -232,7 +296,8 @@ function dedupeItems(items) {
   for (const item of items) {
     const key = isEventOrCaseItem(item)
       ? `uri:${item.uri}`
-      : ((item.abstract || item.overview || "").trim().toLowerCase() || `uri:${item.uri}`);
+      : (item.abstract || item.overview || "").trim().toLowerCase() ||
+        `uri:${item.uri}`;
     if (seen.has(key)) continue;
     seen.add(key);
     out.push(item);
@@ -245,7 +310,11 @@ async function resolveUserSpace(fetchJSON, actorPeerId = "") {
 
   let fallbackSpace = "default";
   const status = await fetchJSON("/api/v1/system/status");
-  if (status.ok && typeof status.result?.user === "string" && status.result.user.trim()) {
+  if (
+    status.ok &&
+    typeof status.result?.user === "string" &&
+    status.result.user.trim()
+  ) {
     fallbackSpace = status.result.user.trim();
   }
 
@@ -260,9 +329,18 @@ async function resolveUserSpace(fetchJSON, actorPeerId = "") {
       .map((e) => (typeof e.name === "string" ? e.name.trim() : ""))
       .filter((n) => n && !n.startsWith(".") && !USER_RESERVED_DIRS.has(n));
     if (spaces.length > 0) {
-      if (spaces.includes(fallbackSpace)) { userSpaceCache = fallbackSpace; return fallbackSpace; }
-      if (spaces.includes("default")) { userSpaceCache = "default"; return "default"; }
-      if (spaces.length === 1) { userSpaceCache = spaces[0]; return spaces[0]; }
+      if (spaces.includes(fallbackSpace)) {
+        userSpaceCache = fallbackSpace;
+        return fallbackSpace;
+      }
+      if (spaces.includes("default")) {
+        userSpaceCache = "default";
+        return "default";
+      }
+      if (spaces.length === 1) {
+        userSpaceCache = spaces[0];
+        return spaces[0];
+      }
     }
   }
   userSpaceCache = fallbackSpace;
@@ -273,7 +351,8 @@ async function resolveTargetUri(fetchJSON, targetUri, actorPeerId = "") {
   const trimmed = targetUri.trim().replace(/\/+$/, "");
   // viking://~ is the home alias: the server expands it to the caller's own user
   // space, so it needs no client-side rewrite.
-  if (trimmed === "viking://~" || trimmed.startsWith("viking://~/")) return trimmed;
+  if (trimmed === "viking://~" || trimmed.startsWith("viking://~/"))
+    return trimmed;
   // Legacy compat: uid-less viking://user/<reserved> URIs may still sit in plugin
   // configs. Newer servers reject them, so rewrite to an explicit-uid URI here.
   const m = trimmed.match(/^viking:\/\/user(?:\/(.*))?$/);
@@ -287,25 +366,51 @@ async function resolveTargetUri(fetchJSON, targetUri, actorPeerId = "") {
   return `viking://user/${space}/${parts.join("/")}`;
 }
 
-async function searchOneSource(fetchJSON, query, source, limit, actorPeerId = "") {
-  const resolvedUri = await resolveTargetUri(fetchJSON, source.uri, actorPeerId);
+async function searchOneSource(
+  fetchJSON,
+  query,
+  source,
+  limit,
+  actorPeerId = "",
+) {
+  const resolvedUri = await resolveTargetUri(
+    fetchJSON,
+    source.uri,
+    actorPeerId,
+  );
   const body = { query, target_uri: resolvedUri, limit, score_threshold: 0 };
-  const res = await fetchJSON("/api/v1/search/find", {
-    method: "POST",
-    body: JSON.stringify(body),
-  }, { actorPeerId });
+  const res = await fetchJSON(
+    "/api/v1/search/find",
+    {
+      method: "POST",
+      body: JSON.stringify(body),
+    },
+    { actorPeerId },
+  );
   if (!res.ok) return [];
   const items = res.result?.[source.bucket] || [];
   return items.map((item) => ({ ...item, _sourceType: source.type }));
 }
 
-async function searchAllSources(fetchJSON, query, perSourceLimit, actorPeerId = "", log = () => {}) {
+async function searchAllSources(
+  fetchJSON,
+  query,
+  perSourceLimit,
+  actorPeerId = "",
+  log = () => {},
+) {
   const results = await Promise.all(
-    SOURCES.map((src) => searchOneSource(fetchJSON, query, src, perSourceLimit, actorPeerId)),
+    SOURCES.map((src) =>
+      searchOneSource(fetchJSON, query, src, perSourceLimit, actorPeerId),
+    ),
   );
   const all = results.flat();
   log("recall_search_summary", {
-    counts: SOURCES.map((src, i) => ({ type: src.type, uri: src.uri, count: results[i].length })),
+    counts: SOURCES.map((src, i) => ({
+      type: src.type,
+      uri: src.uri,
+      count: results[i].length,
+    })),
     total: all.length,
   });
   return all;
@@ -314,7 +419,10 @@ async function searchAllSources(fetchJSON, query, perSourceLimit, actorPeerId = 
 async function resolveItemContent(fetchJSON, item, cfg, actorPeerId = "") {
   let content;
 
-  if (cfg.recallPreferAbstract && (item.abstract || item.overview || "").trim()) {
+  if (
+    cfg.recallPreferAbstract &&
+    (item.abstract || item.overview || "").trim()
+  ) {
     content = (item.abstract || item.overview).trim();
   } else if (item.level === 2) {
     try {
@@ -323,8 +431,10 @@ async function resolveItemContent(fetchJSON, item, cfg, actorPeerId = "") {
         {},
         { actorPeerId },
       );
-      const body = res.ok && typeof res.result === "string" ? res.result.trim() : "";
-      content = body || (item.abstract || item.overview || "").trim() || item.uri;
+      const body =
+        res.ok && typeof res.result === "string" ? res.result.trim() : "";
+      content =
+        body || (item.abstract || item.overview || "").trim() || item.uri;
     } catch {
       content = (item.abstract || item.overview || "").trim() || item.uri;
     }
@@ -337,7 +447,13 @@ async function resolveItemContent(fetchJSON, item, cfg, actorPeerId = "") {
   return content;
 }
 
-async function buildFallbackInjectionBlock(fetchJSON, items, cfg, actorPeerId = "", log = () => {}) {
+async function buildFallbackInjectionBlock(
+  fetchJSON,
+  items,
+  cfg,
+  actorPeerId = "",
+  log = () => {},
+) {
   if (items.length === 0) return null;
 
   let budgetRemaining = Math.max(200, Number(cfg.recallTokenBudget || 2000));
@@ -353,7 +469,12 @@ async function buildFallbackInjectionBlock(fetchJSON, items, cfg, actorPeerId = 
     const uriLine = `- [${item._sourceType} ${score}%] ${item.uri}`;
 
     if (budgetRemaining > 0) {
-      const content = await resolveItemContent(fetchJSON, item, cfg, actorPeerId);
+      const content = await resolveItemContent(
+        fetchJSON,
+        item,
+        cfg,
+        actorPeerId,
+      );
       const contentLine = `- [${item._sourceType} ${score}%] ${content}`;
       const lineTokens = estimateTokens(contentLine);
 
@@ -373,7 +494,8 @@ async function buildFallbackInjectionBlock(fetchJSON, items, cfg, actorPeerId = 
 
   lines.push("</openviking-context>");
 
-  const budgetUsed = Math.max(200, Number(cfg.recallTokenBudget || 2000)) - budgetRemaining;
+  const budgetUsed =
+    Math.max(200, Number(cfg.recallTokenBudget || 2000)) - budgetRemaining;
   log("recall_injection_built", {
     contentItems: contentCount,
     hintItems: hintCount,
@@ -388,11 +510,17 @@ const LEGACY_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 
 function stateFile(name) {
   const override = String(process.env.OPENVIKING_STATE_DIR || "").trim();
-  return override ? join(override, name) : join(homedir(), ".openviking", "state", name);
+  return override
+    ? join(override, name)
+    : join(homedir(), ".openviking", "state", name);
 }
 
 async function readJsonFile(path) {
-  try { return JSON.parse(await readFile(path, "utf8")); } catch { return null; }
+  try {
+    return JSON.parse(await readFile(path, "utf8"));
+  } catch {
+    return null;
+  }
 }
 
 async function writeJsonFile(path, value) {
@@ -401,19 +529,27 @@ async function writeJsonFile(path, value) {
     const tmp = `${path}.tmp`;
     await writeFile(tmp, JSON.stringify(value));
     await rename(tmp, path);
-  } catch { /* best effort */ }
+  } catch {
+    /* best effort */
+  }
 }
 
 /**
  * Hooks are one-shot processes, so "this server has no context face" has to be
  * remembered on disk or every turn pays for a rejected request.
  */
-export async function isContextFaceLegacy(path = stateFile("context-face.json"), now = Date.now()) {
+export async function isContextFaceLegacy(
+  path = stateFile("context-face.json"),
+  now = Date.now(),
+) {
   const cached = await readJsonFile(path);
   return Boolean(cached?.legacyUntil && Number(cached.legacyUntil) > now);
 }
 
-export async function markContextFaceLegacy(path = stateFile("context-face.json"), now = Date.now()) {
+export async function markContextFaceLegacy(
+  path = stateFile("context-face.json"),
+  now = Date.now(),
+) {
   await writeJsonFile(path, { legacyUntil: now + LEGACY_CACHE_TTL_MS });
 }
 
@@ -427,13 +563,21 @@ export function peerScopeMemoPath() {
   return stateFile("peer-scope.json");
 }
 
-export async function readPeerScopeDowngrade(path = peerScopeMemoPath(), now = Date.now()) {
+export async function readPeerScopeDowngrade(
+  path = peerScopeMemoPath(),
+  now = Date.now(),
+) {
   const cached = await readJsonFile(path);
   if (!cached?.legacyUntil || Number(cached.legacyUntil) <= now) return null;
   return cached;
 }
 
-export async function markPeerScopeDowngrade(scope, status, path = peerScopeMemoPath(), now = Date.now()) {
+export async function markPeerScopeDowngrade(
+  scope,
+  status,
+  path = peerScopeMemoPath(),
+  now = Date.now(),
+) {
   await writeJsonFile(path, {
     legacyUntil: now + LEGACY_CACHE_TTL_MS,
     scope: String(scope || ""),
@@ -443,8 +587,14 @@ export async function markPeerScopeDowngrade(scope, status, path = peerScopeMemo
 }
 
 function looksLikeUnknownField(res) {
-  const text = JSON.stringify(res?.error ?? res?.result ?? res?.detail ?? "").toLowerCase();
-  return text.includes("extra") || text.includes("mode") || text.includes("unexpected");
+  const text = JSON.stringify(
+    res?.error ?? res?.result ?? res?.detail ?? "",
+  ).toLowerCase();
+  return (
+    text.includes("extra") ||
+    text.includes("mode") ||
+    text.includes("unexpected")
+  );
 }
 
 function wrapContext(body) {
@@ -461,11 +611,22 @@ function wrapContext(body) {
  * the deprecated /recall preset. Returns the injection block, "" when there was
  * nothing relevant, or null when no server-side path was usable at all.
  */
-export async function buildServerAssembledBlock(fetchJSON, cfg, query, options = {}) {
+export async function buildServerAssembledBlock(
+  fetchJSON,
+  cfg,
+  query,
+  options = {},
+) {
   const actorPeerId = options.actorPeerId ?? cfg.peerId ?? "";
   const log = options.log || (() => {});
 
-  const block = await recallViaContextFace(fetchJSON, cfg, query, { ...options, actorPeerId }, log);
+  const block = await recallViaContextFace(
+    fetchJSON,
+    cfg,
+    query,
+    { ...options, actorPeerId },
+    log,
+  );
   if (block !== null) return block;
   return recallViaEndpoint(fetchJSON, cfg, query, actorPeerId, log);
 }
@@ -476,17 +637,26 @@ export async function buildServerAssembledBlock(fetchJSON, cfg, query, options =
  * (their own compression, their own envelope) use this instead of the block
  * builders below.
  */
-export async function fetchAssembledContext(fetchJSON, cfg, query, options = {}) {
+export async function fetchAssembledContext(
+  fetchJSON,
+  cfg,
+  query,
+  options = {},
+) {
   const actorPeerId = options.actorPeerId || "";
   const log = options.log || (() => {});
   if (await isContextFaceLegacy(options.legacyCachePath)) return null;
 
   const body = buildContextSearchBody(cfg, options);
   body.query = query;
-  const res = await fetchJSON("/api/v1/search/search", {
-    method: "POST",
-    body: JSON.stringify(body),
-  }, { actorPeerId, timeoutMs: contextRequestTimeoutMs(cfg, body) });
+  const res = await fetchJSON(
+    "/api/v1/search/search",
+    {
+      method: "POST",
+      body: JSON.stringify(body),
+    },
+    { actorPeerId, timeoutMs: contextRequestTimeoutMs(cfg, body) },
+  );
 
   if (!res.ok) {
     const status = res.status || 0;
@@ -522,17 +692,26 @@ export async function fetchAssembledContext(fetchJSON, cfg, query, options = {})
 export function normalizeContextEntry(entry = {}) {
   return {
     uri: String(entry.uri || "").trim(),
-    category: String(entry.category || entry.type || "memory").trim() || "memory",
+    category:
+      String(entry.category || entry.type || "memory").trim() || "memory",
     detail: String(entry.detail || entry.mode || "").trim(),
     score: Number(entry.score) || 0,
     text: String(
-      entry.text || entry.content || entry.summary || entry.abstract || entry.uri || "",
+      entry.text ||
+        entry.content ||
+        entry.summary ||
+        entry.abstract ||
+        entry.uri ||
+        "",
     ).trim(),
   };
 }
 
 async function recallViaContextFace(fetchJSON, cfg, query, options, log) {
-  const assembled = await fetchAssembledContext(fetchJSON, cfg, query, { ...options, log });
+  const assembled = await fetchAssembledContext(fetchJSON, cfg, query, {
+    ...options,
+    log,
+  });
   if (assembled === null) return null;
 
   const { rendered, entries } = assembled;
@@ -558,7 +737,9 @@ async function recallViaContextFace(fetchJSON, cfg, query, options, log) {
       if (compression.status === "ok") digest = compression.context;
       if (compression.status === "empty") return "";
     } catch (err) {
-      log("recall_local_compression_failed", { error: String(err?.message || err) });
+      log("recall_local_compression_failed", {
+        error: String(err?.message || err),
+      });
     }
   }
 
@@ -567,7 +748,13 @@ async function recallViaContextFace(fetchJSON, cfg, query, options, log) {
   return wrapContext(injected);
 }
 
-async function recallViaEndpoint(fetchJSON, cfg, query, actorPeerId = "", log = () => {}) {
+async function recallViaEndpoint(
+  fetchJSON,
+  cfg,
+  query,
+  actorPeerId = "",
+  log = () => {},
+) {
   const body = buildRecallEndpointBody(cfg);
   body.query = query;
   const res = await postRecall(fetchJSON, body, { actorPeerId, log });
@@ -588,14 +775,18 @@ export async function postRecall(fetchJSON, body, opts = {}) {
 
   // A remembered downgrade is still a downgrade: recall runs wider than the
   // caller asked for, so the memo doubles as the doctor's evidence.
-  if (request.peer_scope && await readPeerScopeDowngrade(memoPath)) {
+  if (request.peer_scope && (await readPeerScopeDowngrade(memoPath))) {
     delete request.peer_scope;
   }
 
-  const res = await fetchJSON("/api/v1/search/recall", {
-    method: "POST",
-    body: JSON.stringify(request),
-  }, { actorPeerId });
+  const res = await fetchJSON(
+    "/api/v1/search/recall",
+    {
+      method: "POST",
+      body: JSON.stringify(request),
+    },
+    { actorPeerId },
+  );
   if (!request.peer_scope || (res.status !== 400 && res.status !== 422)) {
     return res;
   }
@@ -609,12 +800,20 @@ export async function postRecall(fetchJSON, body, opts = {}) {
 
   const downgraded = { ...request };
   delete downgraded.peer_scope;
-  await markPeerScopeDowngrade(String(request.peer_scope), res.status || 0, memoPath);
+  await markPeerScopeDowngrade(
+    String(request.peer_scope),
+    res.status || 0,
+    memoPath,
+  );
   log("recall_peer_scope_downgrade", { status: res.status || 0 });
-  return fetchJSON("/api/v1/search/recall", {
-    method: "POST",
-    body: JSON.stringify(downgraded),
-  }, { actorPeerId });
+  return fetchJSON(
+    "/api/v1/search/recall",
+    {
+      method: "POST",
+      body: JSON.stringify(downgraded),
+    },
+    { actorPeerId },
+  );
 }
 
 /**
@@ -632,10 +831,18 @@ export async function buildRecallBlock(fetchJSON, cfg, query, options = {}) {
 
   const legacyPeerId = String(options.legacyPeerId || "").trim();
   const actorPeerId = options.actorPeerId ?? cfg.peerId ?? "";
-  if (cfg.recallPeerScope !== "actor" || !legacyPeerId || legacyPeerId === actorPeerId) return primary;
+  if (
+    cfg.recallPeerScope !== "actor" ||
+    !legacyPeerId ||
+    legacyPeerId === actorPeerId
+  )
+    return primary;
 
   const log = options.log || (() => {});
-  const legacy = await recallForPeer(fetchJSON, cfg, query, { ...options, actorPeerId: legacyPeerId });
+  const legacy = await recallForPeer(fetchJSON, cfg, query, {
+    ...options,
+    actorPeerId: legacyPeerId,
+  });
   if (!legacy) return primary;
   log("recall_legacy_peer_hit", { legacyPeerId });
   return primary ? `${primary}\n${legacy}` : legacy;
@@ -656,13 +863,24 @@ async function recallForPeer(fetchJSON, cfg, query, options = {}) {
   });
   if (serverBlock !== null) return serverBlock || null;
 
-  const recallLimit = Math.max(1, Number(cfg.recallLimit || DEFAULT_CONTEXT_LIMIT));
+  const recallLimit = Math.max(
+    1,
+    Number(cfg.recallLimit || DEFAULT_CONTEXT_LIMIT),
+  );
   const perSourceLimit = Math.max(recallLimit * 2, 8);
-  const raw = await searchAllSources(fetchJSON, trimmed, perSourceLimit, actorPeerId, log);
+  const raw = await searchAllSources(
+    fetchJSON,
+    trimmed,
+    perSourceLimit,
+    actorPeerId,
+    log,
+  );
   if (raw.length === 0) return null;
 
   const profile = buildQueryProfile(trimmed);
-  const scoreThreshold = Number.isFinite(Number(cfg.scoreThreshold)) ? Number(cfg.scoreThreshold) : 0.35;
+  const scoreThreshold = Number.isFinite(Number(cfg.scoreThreshold))
+    ? Number(cfg.scoreThreshold)
+    : 0.35;
   const filtered = raw.filter((it) => clampScore(it.score) >= scoreThreshold);
   filtered.sort((a, b) => rankItem(b, profile) - rankItem(a, profile));
   const picked = dedupeItems(filtered).slice(0, recallLimit);
@@ -670,7 +888,11 @@ async function recallForPeer(fetchJSON, cfg, query, options = {}) {
     rawCount: raw.length,
     filteredCount: filtered.length,
     pickedCount: picked.length,
-    items: picked.map((it) => ({ type: it._sourceType, uri: it.uri, score: clampScore(it.score) })),
+    items: picked.map((it) => ({
+      type: it._sourceType,
+      uri: it.uri,
+      score: clampScore(it.score),
+    })),
   });
 
   if (picked.length === 0) return null;

@@ -374,6 +374,7 @@ async def add_skill(
             source_metadata["original_filename"] = resolved.original_filename
 
     source_path_hint = resolved.original_filename if resolved else None
+
     async def _add() -> dict[str, Any]:
         try:
             result = await service.resources.add_skill(

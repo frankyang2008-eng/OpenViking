@@ -87,7 +87,9 @@ recallDeadline = setTimeout(() => {
   logError("recall_timeout", `timed out after ${cfg.recallTimeoutMs}ms`);
   try {
     activeCompressor?.kill("SIGKILL");
-  } catch { /* best effort */ }
+  } catch {
+    /* best effort */
+  }
   output({}, true);
 }, cfg.recallTimeoutMs);
 recallDeadline.unref?.();
@@ -104,11 +106,18 @@ async function fetchJSON(path, init = {}, options = {}) {
       headers["Authorization"] = `Bearer ${cfg.apiKey}`;
       headers["X-API-Key"] = cfg.apiKey;
     }
-    if (cfg.sendIdentityHeaders && cfg.account) headers["X-OpenViking-Account"] = cfg.account;
-    if (cfg.sendIdentityHeaders && cfg.user) headers["X-OpenViking-User"] = cfg.user;
-    if (effectivePeer.peerId) headers["X-OpenViking-Actor-Peer"] = effectivePeer.peerId;
+    if (cfg.sendIdentityHeaders && cfg.account)
+      headers["X-OpenViking-Account"] = cfg.account;
+    if (cfg.sendIdentityHeaders && cfg.user)
+      headers["X-OpenViking-User"] = cfg.user;
+    if (effectivePeer.peerId)
+      headers["X-OpenViking-Actor-Peer"] = effectivePeer.peerId;
     if (cfg.userAgent) headers["User-Agent"] = cfg.userAgent;
-    const res = await fetch(`${cfg.baseUrl}${path}`, { ...init, headers, signal: controller.signal });
+    const res = await fetch(`${cfg.baseUrl}${path}`, {
+      ...init,
+      headers,
+      signal: controller.signal,
+    });
     const body = await res.json().catch(() => null);
     if (!body) return { ok: false, status: res.status };
     if (!res.ok || body.status === "error") {
@@ -131,12 +140,36 @@ function clampScore(v) {
   return Math.max(0, Math.min(1, v));
 }
 
-const PREFERENCE_QUERY_RE = /prefer|preference|favorite|favourite|like|偏好|喜欢|爱好|更倾向/i;
-const TEMPORAL_QUERY_RE = /when|what time|date|day|month|year|yesterday|today|tomorrow|last|next|什么时候|何时|哪天|几月|几年|昨天|今天|明天/i;
+const PREFERENCE_QUERY_RE =
+  /prefer|preference|favorite|favourite|like|偏好|喜欢|爱好|更倾向/i;
+const TEMPORAL_QUERY_RE =
+  /when|what time|date|day|month|year|yesterday|today|tomorrow|last|next|什么时候|何时|哪天|几月|几年|昨天|今天|明天/i;
 const QUERY_TOKEN_RE = /[a-z0-9一-龥]{2,}/gi;
 const STOPWORDS = new Set([
-  "what", "when", "where", "which", "who", "whom", "whose", "why", "how", "did", "does",
-  "is", "are", "was", "were", "the", "and", "for", "with", "from", "that", "this", "your", "you",
+  "what",
+  "when",
+  "where",
+  "which",
+  "who",
+  "whom",
+  "whose",
+  "why",
+  "how",
+  "did",
+  "does",
+  "is",
+  "are",
+  "was",
+  "were",
+  "the",
+  "and",
+  "for",
+  "with",
+  "from",
+  "that",
+  "this",
+  "your",
+  "you",
 ]);
 
 function buildQueryProfile(query) {
@@ -165,10 +198,20 @@ function getRankingBreakdown(item, profile) {
   const abstract = (item.abstract || item.overview || "").trim();
   const cat = (item.category || "").toLowerCase();
   const uri = item.uri.toLowerCase();
-  const leafBoost = (item.level === 2 || uri.endsWith(".md")) ? 0.12 : 0;
-  const eventBoost = profile.wantsTemporal && (cat === "events" || uri.includes("/events/")) ? 0.1 : 0;
-  const prefBoost = profile.wantsPreference && (cat === "preferences" || uri.includes("/preferences/")) ? 0.08 : 0;
-  const overlapBoost = lexicalOverlapBoost(profile.tokens, `${item.uri} ${abstract}`);
+  const leafBoost = item.level === 2 || uri.endsWith(".md") ? 0.12 : 0;
+  const eventBoost =
+    profile.wantsTemporal && (cat === "events" || uri.includes("/events/"))
+      ? 0.1
+      : 0;
+  const prefBoost =
+    profile.wantsPreference &&
+    (cat === "preferences" || uri.includes("/preferences/"))
+      ? 0.08
+      : 0;
+  const overlapBoost = lexicalOverlapBoost(
+    profile.tokens,
+    `${item.uri} ${abstract}`,
+  );
   return {
     baseScore: base,
     leafBoost,
@@ -186,7 +229,8 @@ function rankForInjection(item, profile) {
 function dedupeByAbstract(items) {
   const seen = new Set();
   return items.filter((item) => {
-    const key = (item.abstract || item.overview || "").trim().toLowerCase() || item.uri;
+    const key =
+      (item.abstract || item.overview || "").trim().toLowerCase() || item.uri;
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
@@ -196,7 +240,9 @@ function dedupeByAbstract(items) {
 function pickMemories(items, limit, queryText) {
   if (items.length === 0 || limit <= 0) return [];
   const profile = buildQueryProfile(queryText);
-  const sorted = [...items].sort((a, b) => rankForInjection(b, profile) - rankForInjection(a, profile));
+  const sorted = [...items].sort(
+    (a, b) => rankForInjection(b, profile) - rankForInjection(a, profile),
+  );
   const deduped = dedupeByAbstract(sorted);
   const leaves = deduped.filter((m) => m.level === 2 || m.uri.endsWith(".md"));
   if (leaves.length >= limit) return leaves.slice(0, limit);
@@ -212,7 +258,9 @@ function pickMemories(items, limit, queryText) {
 
 function postProcess(items, limit, threshold) {
   const seen = new Set();
-  const sorted = [...items].sort((a, b) => clampScore(b.score) - clampScore(a.score));
+  const sorted = [...items].sort(
+    (a, b) => clampScore(b.score) - clampScore(a.score),
+  );
   const result = [];
   for (const item of sorted) {
     if (item.level !== 2) continue;
@@ -228,14 +276,20 @@ function postProcess(items, limit, threshold) {
   return result;
 }
 
-async function searchScope(query, targetUri, limit, bucket = "memories", sessionId = null) {
+async function searchScope(
+  query,
+  targetUri,
+  limit,
+  bucket = "memories",
+  sessionId = null,
+) {
   const body = { query, target_uri: targetUri, limit, score_threshold: 0 };
   if (sessionId) body.session_id = sessionId;
   const result = await fetchJSON("/api/v1/search/search", {
     method: "POST",
     body: JSON.stringify(body),
   });
-  return result.ok ? (result.result?.[bucket] || []) : [];
+  return result.ok ? result.result?.[bucket] || [] : [];
 }
 
 // Candidate target URIs for a bucket, most-specific first. In trusted mode a
@@ -261,7 +315,13 @@ function userScopedTargets(kind) {
 // Each phase stops at the first non-empty target, so a warm user costs one
 // request and the worst case is bounded by (targets x 2) — instead of running
 // a per-target session+fallback for every target.
-async function searchBucket(query, targetUris, limit, bucket, sessionId = null) {
+async function searchBucket(
+  query,
+  targetUris,
+  limit,
+  bucket,
+  sessionId = null,
+) {
   for (const targetUri of targetUris) {
     const items = await searchScope(query, targetUri, limit, bucket, sessionId);
     if (items.length > 0) return items;
@@ -276,11 +336,31 @@ async function searchBucket(query, targetUris, limit, bucket, sessionId = null) 
 
 async function searchAll(query, limit, sessionId = null) {
   const [userMems, userSkills] = await Promise.all([
-    searchBucket(query, userScopedTargets("memories"), limit, "memories", sessionId),
-    searchBucket(query, userScopedTargets("skills"), limit, "skills", sessionId),
+    searchBucket(
+      query,
+      userScopedTargets("memories"),
+      limit,
+      "memories",
+      sessionId,
+    ),
+    searchBucket(
+      query,
+      userScopedTargets("skills"),
+      limit,
+      "skills",
+      sessionId,
+    ),
   ]);
-  log("search_complete", { scope: "user", rawCount: userMems.length, topScores: userMems.slice(0, 3).map((m) => m.score) });
-  log("search_complete", { scope: "skills", rawCount: userSkills.length, topScores: userSkills.slice(0, 3).map((m) => m.score) });
+  log("search_complete", {
+    scope: "user",
+    rawCount: userMems.length,
+    topScores: userMems.slice(0, 3).map((m) => m.score),
+  });
+  log("search_complete", {
+    scope: "skills",
+    rawCount: userSkills.length,
+    topScores: userSkills.slice(0, 3).map((m) => m.score),
+  });
   const all = [...userMems, ...userSkills];
   const seen = new Set();
   return all.filter((m) => {
@@ -301,9 +381,14 @@ function resolveRecallSessionId(codexSessionId) {
 
 async function readMemoryContent(uri) {
   try {
-    const result = await fetchJSON(`/api/v1/content/read?uri=${encodeURIComponent(uri)}`);
-    if (result.ok && typeof result.result === "string" && result.result.trim()) return result.result.trim();
-  } catch { /* fallback */ }
+    const result = await fetchJSON(
+      `/api/v1/content/read?uri=${encodeURIComponent(uri)}`,
+    );
+    if (result.ok && typeof result.result === "string" && result.result.trim())
+      return result.result.trim();
+  } catch {
+    /* fallback */
+  }
   return null;
 }
 
@@ -344,12 +429,21 @@ async function recallViaServerAssembly(query, ovSessionId = "") {
     // `peer_scope: "all"` already sweeps every peer under this user; only
     // under "actor" does the pre-git peer need asking separately.
     const legacyPeerId = effectivePeer.legacyPeerId;
-    if (cfg.recallPeerScope === "actor" && legacyPeerId && legacyPeerId !== effectivePeer.peerId) {
-      const legacy = await fetchAssembledContext(fetchJSON, assembleCfg, query, {
-        actorPeerId: legacyPeerId,
-        sessionId: ovSessionId,
-        log,
-      });
+    if (
+      cfg.recallPeerScope === "actor" &&
+      legacyPeerId &&
+      legacyPeerId !== effectivePeer.peerId
+    ) {
+      const legacy = await fetchAssembledContext(
+        fetchJSON,
+        assembleCfg,
+        query,
+        {
+          actorPeerId: legacyPeerId,
+          sessionId: ovSessionId,
+          log,
+        },
+      );
       if (legacy) {
         log("recall_legacy_peer_hit", { legacyPeerId });
         return assembledToRecallResult(
@@ -364,7 +458,10 @@ async function recallViaServerAssembly(query, ovSessionId = "") {
   const body = buildRecallEndpointBody(cfg);
   body.query = query;
   body.max_chars = maxInputChars;
-  const result = await postRecall(fetchJSON, body, { actorPeerId: effectivePeer.peerId, log });
+  const result = await postRecall(fetchJSON, body, {
+    actorPeerId: effectivePeer.peerId,
+    log,
+  });
   if (!result.ok) {
     log("recall_endpoint_fallback", { status: result.status || 0 });
     return null;
@@ -392,32 +489,47 @@ function isNoRelevantMemory(text) {
     .trim()
     .replace(/^openviking memory digest:\s*/i, "")
     .trim();
-  return !value || /^NO_RELEVANT_MEMORY\.?$/i.test(value) || /^no (?:directly )?relevant memor(?:y|ies)\.?$/i.test(value);
+  return (
+    !value ||
+    /^NO_RELEVANT_MEMORY\.?$/i.test(value) ||
+    /^no (?:directly )?relevant memor(?:y|ies)\.?$/i.test(value)
+  );
 }
 
 function hasDigestSignal(text) {
-  const body = String(text || "").replace(/^openviking memory digest:\s*/i, "").trim();
+  const body = String(text || "")
+    .replace(/^openviking memory digest:\s*/i, "")
+    .trim();
   return /(^|\n)\s*[-*]\s+\S/.test(body) || /\bviking:\/\//i.test(body);
 }
 
 function appendMcpRetrievalHint(text) {
   const value = String(text || "").trim();
-  if (!/\bviking:\/\//i.test(value) || /OpenViking MCP/i.test(value)) return value;
+  if (!/\bviking:\/\//i.test(value) || /OpenViking MCP/i.test(value))
+    return value;
   return `${value}\n\nMore detail: use the OpenViking MCP read/search tools with the cited viking:// URI if needed.`;
 }
 
 function fallbackDigest(items) {
   const lines = items.slice(0, cfg.recallCompressMaxBullets).map((item) => {
-    const text = sanitizeInjectedText(truncateText(item.text, 260)).replace(/\s+/g, " ");
+    const text = sanitizeInjectedText(truncateText(item.text, 260)).replace(
+      /\s+/g,
+      " ",
+    );
     return `- [${item.category || "memory"}] ${text} (${item.uri})`;
   });
-  return lines.length > 0 ? appendMcpRetrievalHint(`OpenViking memory digest:\n${lines.join("\n")}`) : "";
+  return lines.length > 0
+    ? appendMcpRetrievalHint(`OpenViking memory digest:\n${lines.join("\n")}`)
+    : "";
 }
 
 function normalizeCompressedContext(text) {
   let value = String(text || "").trim();
   if (!value) return "";
-  value = value.replace(/^```(?:text|markdown)?\s*/i, "").replace(/\s*```$/i, "").trim();
+  value = value
+    .replace(/^```(?:text|markdown)?\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
   value = sanitizeInjectedText(value);
   if (isNoRelevantMemory(value)) return "";
   if (!value.toLowerCase().startsWith("openviking memory digest:")) {
@@ -466,12 +578,16 @@ async function runCodexCompressor(prompt, profile) {
           // marker as a cache miss and re-resolves against the current
           // catalogue, so a transient failure self-recovers across codex
           // restarts. Best-effort write; failure is non-fatal.
-          markRecallCompressorRuntimeFailed(cfg, { failedModel: profile.model || "" })
-            .catch(() => {});
+          markRecallCompressorRuntimeFailed(cfg, {
+            failedModel: profile.model || "",
+          }).catch(() => {});
         }
         resolve(value);
       };
-      const launch = trySpawnCodex(args, { env, stdio: ["pipe", "ignore", "pipe"] });
+      const launch = trySpawnCodex(args, {
+        env,
+        stdio: ["pipe", "ignore", "pipe"],
+      });
       if (launch.error) {
         logError("compress_spawn", launch.error);
         finish(null, { runtimeFailed: true });
@@ -481,10 +597,15 @@ async function runCodexCompressor(prompt, profile) {
       activeCompressor = child;
       timer = setTimeout(() => {
         timedOut = true;
-        logError("compress_timeout", `timed out after ${cfg.recallCompressTimeoutMs}ms`);
+        logError(
+          "compress_timeout",
+          `timed out after ${cfg.recallCompressTimeoutMs}ms`,
+        );
         try {
           child.kill("SIGKILL");
-        } catch { /* best effort */ }
+        } catch {
+          /* best effort */
+        }
       }, cfg.recallCompressTimeoutMs);
 
       child.stderr.on("data", (chunk) => {
@@ -529,7 +650,10 @@ async function compressMemoryContext(userPrompt, items) {
     log("compress_skip", { reason: "profile disabled", profile });
     return null;
   }
-  const perItemChars = Math.max(500, Math.floor(cfg.recallCompressMaxInputChars / Math.max(1, items.length)));
+  const perItemChars = Math.max(
+    500,
+    Math.floor(cfg.recallCompressMaxInputChars / Math.max(1, items.length)),
+  );
   const payload = {
     user_prompt: userPrompt,
     max_bullets: cfg.recallCompressMaxBullets,
@@ -560,7 +684,11 @@ ${JSON.stringify(payload, null, 2)}
   const raw = await runCodexCompressor(prompt, profile);
   if (raw === null) return null;
   const compressed = normalizeCompressedContext(raw);
-  log("compressed", { inputCount: items.length, chars: compressed.length, profile });
+  log("compressed", {
+    inputCount: items.length,
+    chars: compressed.length,
+    profile,
+  });
   return compressed;
 }
 
@@ -578,7 +706,10 @@ async function main() {
 
   // The workspace layer belongs to the session's directory, which only the
   // payload knows; see loadConfig for why re-resolving this late is safe.
-  const cwd = typeof input.cwd === "string" && input.cwd.trim() ? input.cwd : process.cwd();
+  const cwd =
+    typeof input.cwd === "string" && input.cwd.trim()
+      ? input.cwd
+      : process.cwd();
   cfg = loadConfig(cwd);
   effectivePeer = resolveEffectivePeerId({ cfg, cwd });
 
@@ -589,7 +720,8 @@ async function main() {
   }
 
   const userPrompt = (input.prompt || "").trim();
-  const codexSessionId = typeof input.session_id === "string" ? input.session_id.trim() : "";
+  const codexSessionId =
+    typeof input.session_id === "string" ? input.session_id.trim() : "";
   const recallSessionId = resolveRecallSessionId(codexSessionId);
   log("start", {
     codexSessionId: codexSessionId || null,
@@ -617,24 +749,31 @@ async function main() {
     return;
   }
 
-  const endpointRecall = await recallViaServerAssembly(userPrompt, recallSessionId || "");
+  const endpointRecall = await recallViaServerAssembly(
+    userPrompt,
+    recallSessionId || "",
+  );
   if (endpointRecall !== null) {
     if (!endpointRecall.context && endpointRecall.items.length === 0) {
       log("skip", { stage: "recall_endpoint", reason: "no results" });
       emit();
       return;
     }
-    const compressedContext = endpointRecall.items.length > 0
-      ? await compressMemoryContext(userPrompt, endpointRecall.items)
-      : null;
-    const endpointFallback = cfg.recallCompress && endpointRecall.items.length > 0
-      ? fallbackDigest(endpointRecall.items)
-      : endpointRecall.context;
-    const memoryContext = compressedContext === null
-      ? endpointFallback
-      : compressedContext;
+    const compressedContext =
+      endpointRecall.items.length > 0
+        ? await compressMemoryContext(userPrompt, endpointRecall.items)
+        : null;
+    const endpointFallback =
+      cfg.recallCompress && endpointRecall.items.length > 0
+        ? fallbackDigest(endpointRecall.items)
+        : endpointRecall.context;
+    const memoryContext =
+      compressedContext === null ? endpointFallback : compressedContext;
     if (!memoryContext) {
-      log("skip", { stage: "recall_endpoint", reason: "compressor found no relevant memory" });
+      log("skip", {
+        stage: "recall_endpoint",
+        reason: "compressor found no relevant memory",
+      });
       emit();
       return;
     }
@@ -648,15 +787,26 @@ async function main() {
   }
 
   const candidateLimit = Math.max(cfg.recallLimit * 4, 20);
-  const allMemories = await searchAll(userPrompt, candidateLimit, recallSessionId);
+  const allMemories = await searchAll(
+    userPrompt,
+    candidateLimit,
+    recallSessionId,
+  );
   if (allMemories.length === 0) {
     log("skip", { stage: "search", reason: "no results" });
     emit();
     return;
   }
 
-  const processed = postProcess(allMemories, candidateLimit, cfg.scoreThreshold);
-  log("post_process", { beforeCount: allMemories.length, afterCount: processed.length });
+  const processed = postProcess(
+    allMemories,
+    candidateLimit,
+    cfg.scoreThreshold,
+  );
+  log("post_process", {
+    beforeCount: allMemories.length,
+    afterCount: processed.length,
+  });
 
   const profile = buildQueryProfile(userPrompt);
   const ranked = [...processed]
@@ -670,7 +820,12 @@ async function main() {
   } else {
     log("ranking_summary", {
       candidateCount: processed.length,
-      topCandidates: ranked.slice(0, 5).map((entry) => ({ uri: entry.item.uri, finalScore: entry.breakdown.finalScore })),
+      topCandidates: ranked
+        .slice(0, 5)
+        .map((entry) => ({
+          uri: entry.item.uri,
+          finalScore: entry.breakdown.finalScore,
+        })),
     });
   }
 
@@ -681,7 +836,10 @@ async function main() {
     return;
   }
 
-  log("picked", { pickedCount: memories.length, uris: memories.map((m) => m.uri) });
+  log("picked", {
+    pickedCount: memories.length,
+    uris: memories.map((m) => m.uri),
+  });
 
   const memoryItems = await Promise.all(
     memories.map(async (item) => {
@@ -699,10 +857,19 @@ async function main() {
     }),
   );
 
-  const compressedContext = await compressMemoryContext(userPrompt, memoryItems);
-  const memoryContext = compressedContext === null ? fallbackDigest(memoryItems) : compressedContext;
+  const compressedContext = await compressMemoryContext(
+    userPrompt,
+    memoryItems,
+  );
+  const memoryContext =
+    compressedContext === null
+      ? fallbackDigest(memoryItems)
+      : compressedContext;
 
   emit(memoryContext);
 }
 
-main().catch((err) => { logError("uncaught", err); emit(); });
+main().catch((err) => {
+  logError("uncaught", err);
+  emit();
+});

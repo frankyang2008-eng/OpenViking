@@ -18,9 +18,11 @@ import { basename, join } from "node:path";
 import { readWorkspaceFile } from "./workspace-config.mjs";
 
 export function registryDir(env = process.env) {
-  const home = String(env.OPENVIKING_HOME || "").trim();
-  const base = home ? home.replace(/^~(?=$|\/)/, homedir()) : join(homedir(), ".openviking");
-  return join(base, "workspaces");
+ const home = String(env.OPENVIKING_HOME || "").trim();
+ const base = home
+  ? home.replace(/^~(?=$|\/)/, homedir())
+  : join(homedir(), ".openviking");
+ return join(base, "workspaces");
 }
 
 /**
@@ -33,17 +35,22 @@ export function registryDir(env = process.env) {
  * identity but the path, so two `~/src/api` clones still get separate entries.
  */
 export function slotName(root, identity = null) {
-  const path = String(root || "");
-  const key = identity ? identityKey(identity) : "path";
-  const source = key === "path" ? path : key;
-  const label = key.startsWith("remote:") ? key.split("/").pop() : basename(path);
-  const readable = String(label || "").replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
-  const digest = createHash("sha256").update(source).digest("hex").slice(0, 12);
-  return `${readable ? `${readable}-` : ""}${digest}.json`;
+ const path = String(root || "");
+ const key = identity ? identityKey(identity) : "path";
+ const source = key === "path" ? path : key;
+ const label = key.startsWith("remote:")
+  ? key.split("/").pop()
+  : basename(path);
+ const readable = String(label || "")
+  .replace(/[^a-zA-Z0-9._-]+/g, "-")
+  .replace(/^-+|-+$/g, "")
+  .slice(0, 40);
+ const digest = createHash("sha256").update(source).digest("hex").slice(0, 12);
+ return `${readable ? `${readable}-` : ""}${digest}.json`;
 }
 
 export function entryPath(root, env = process.env, identity = null) {
-  return join(registryDir(env), slotName(root, identity));
+ return join(registryDir(env), slotName(root, identity));
 }
 
 /**
@@ -52,12 +59,12 @@ export function entryPath(root, env = process.env, identity = null) {
  * and inheriting the old entry's peer would silently cross two projects.
  */
 export function identityKey(identity) {
-  // The normalized remote, so re-spelling origin (ssh ↔ https, or rotating an
-  // embedded token) is not mistaken for a different repository.
-  const remote = String(identity?.remote || "").trim();
-  if (remote) return `remote:${remote}`;
-  if (identity?.isGit) return `git:${identity.gitCommonDir || ""}`;
-  return "path";
+ // The normalized remote, so re-spelling origin (ssh ↔ https, or rotating an
+ // embedded token) is not mistaken for a different repository.
+ const remote = String(identity?.remote || "").trim();
+ if (remote) return `remote:${remote}`;
+ if (identity?.isGit) return `git:${identity.gitCommonDir || ""}`;
+ return "path";
 }
 
 /**
@@ -67,21 +74,22 @@ export function identityKey(identity) {
  * miss — negative evidence. Nothing is inherited from it.
  */
 export function readEntry(root, { identity = null, env = process.env } = {}) {
-  const path = entryPath(root, env, identity);
-  const file = readWorkspaceFile(path, { layer: "registry" });
-  if (!file.data) return { path, entry: null, warnings: file.warnings, conflict: false };
+ const path = entryPath(root, env, identity);
+ const file = readWorkspaceFile(path, { layer: "registry" });
+ if (!file.data)
+  return { path, entry: null, warnings: file.warnings, conflict: false };
 
-  const entry = file.data;
-  const warnings = [...file.warnings];
-  if (identity) {
-    const expected = identityKey(identity);
-    const stored = String(entry.identity || "");
-    if (stored && stored !== expected) {
-      warnings.push(
-        `${path} was recorded for a different repository (${stored}); starting a fresh entry for ${expected}`,
-      );
-      return { path, entry: null, warnings, conflict: true };
-    }
+ const entry = file.data;
+ const warnings = [...file.warnings];
+ if (identity) {
+  const expected = identityKey(identity);
+  const stored = String(entry.identity || "");
+  if (stored && stored !== expected) {
+   warnings.push(
+    `${path} was recorded for a different repository (${stored}); starting a fresh entry for ${expected}`,
+   );
+   return { path, entry: null, warnings, conflict: true };
   }
-  return { path, entry, warnings, conflict: false };
+ }
+ return { path, entry, warnings, conflict: false };
 }

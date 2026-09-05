@@ -104,6 +104,7 @@ Send this message:
 > (CN) 好，我来帮你接入 OpenViking 长期记忆。装好之后，我会自动记住对话里的重要信息，下次聊也能回忆起来。
 >
 > 我需要 3 条信息，不知道的可以问你的管理员：
+>
 > 1. **OpenViking 服务地址** —— 例如 `https://ov.example.com` 或 `http://192.168.1.100:1933`，本机服务可以直接说"本机"
 > 2. **API Key** —— 用来鉴权；服务没开认证可以说"没有"
 > 3. **记忆归属**（可选） —— 所有对话共用 user 记忆（默认），还是在 `peers/<assistant_id>` 或 `peers/<sender_id>` 下分开存放
@@ -113,6 +114,7 @@ Send this message:
 > (EN) I'll set up OpenViking long-term memory for you. Once configured, I'll automatically remember important info from our chats and recall it later.
 >
 > I need 3 things (ask your admin if unsure):
+>
 > 1. **OpenViking server URL** — e.g. `https://ov.example.com` or `http://192.168.1.100:1933`. For a local server, just say "local".
 > 2. **API Key** — for auth. Say "none" if the server has no auth.
 > 3. **Memory scope** (optional) — shared user memory (default), or peer memory under `peers/<assistant_id>` / `peers/<sender_id>`.
@@ -149,7 +151,7 @@ Collect 3 values through natural conversation. Be flexible: if the user gives se
 Default to `none`. **Never silently pick another value** — the three options mean different storage layouts and are awkward to change later:
 
 | Value | Concrete layout | Choose it when |
-|---|---|---|
+| --- | --- | --- |
 | `none` (default) | Shared memory under `viking://user/<user_id>/memories/...`; no concrete `peers/<peer_id>/memories` subtree is used. | General case. All conversations for this OpenViking user share user-level memory. |
 | `assistant` | Assistant-attributed peer memory under `viking://user/<user_id>/peers/<assistant_id>/memories/...`, keyed by the resolved OpenClaw agent id (fallback `main`; optional prefix supported). | **Human as OpenViking user**: one human uses multiple assistants and wants their peer memories separated. Example: Alice's `main` and `research` assistants use `.../peers/main/...` and `.../peers/research/...`. |
 | `sender` | Sender-attributed peer memory under `viking://user/<user_id>/peers/<sender_id>/memories/...`, keyed by the sender identity supplied by OpenClaw. | **Agent as OpenViking user**: one agent talks to multiple humans and wants their peer memories separated. Example: `support-agent` stores `customer-42` and `customer-99` under different peer subtrees. |
@@ -205,7 +207,7 @@ curl -sS -o /dev/null -w "%{http_code}" --connect-timeout 10 "BASE_URL/health"
 Replace `BASE_URL` with the actual value.
 
 | Status | Meaning | Action |
-|---|---|---|
+| --- | --- | --- |
 | `200` | Server reachable, no auth on `/health` | Proceed to STEP 6. |
 | `401` / `403` | Server reachable but `/health` requires auth | Proceed to STEP 6 — the wizard's key probe will sort it out. |
 | `000` / timeout / connection refused | Server unreachable | **Server-not-ready handling** below. |
@@ -216,6 +218,7 @@ Replace `BASE_URL` with the actual value.
 This skill **does not install or operate the OpenViking server**. If the user's server is unreachable, present the situation honestly and offer two paths:
 
 > (CN) ❌ 我连不上 `BASE_URL`。可能是：
+>
 > 1) 服务还没启动 —— 请联系你的 OpenViking 服务管理员把它起起来；如果是你自己负责，请参考 OpenViking 官方文档（`https://github.com/volcengine/OpenViking`）的 server 启动指引。
 > 2) 地址不对 —— 你可以重新告诉我正确的地址。
 > 3) 网络不通（防火墙 / VPN / 内网）—— 你确认一下网络。
@@ -223,6 +226,7 @@ This skill **does not install or operate the OpenViking server**. If the user's 
 > 也可以选择"先把配置写下来"，等服务起来就自动生效，要这么办吗？
 
 > (EN) ❌ Cannot reach `BASE_URL`. Likely cause:
+>
 > 1) **Server isn't running** — please ask your OpenViking admin to start it. If you own the server, follow the OpenViking official docs (`https://github.com/volcengine/OpenViking`) to start it. **This skill does not install or run the server.**
 > 2) **Wrong URL** — give me the correct URL.
 > 3) **Network blocked** (firewall / VPN / private network) — please verify connectivity.
@@ -292,6 +296,7 @@ Build the flag list according to what the user gave you:
 - `--account-id` / `--user-id` only if the root-key path requires them.
 
 `ov-install` will, in one shot:
+
 1. Download the `@openviking/openclaw-plugin` package from npm into a temporary staging dir.
 2. Copy the package into the OpenClaw `extensions/` dir and install plugin dependencies.
 3. Register the plugin in `openclaw.json` (via `openclaw plugins enable` or direct write).
@@ -341,7 +346,7 @@ The wizard prints a single JSON object:
 ### Decision matrix
 
 | Condition | Action |
-|---|---|
+| --- | --- |
 | `success: true` and `action: "configured"` or `"existing"` | Done. Proceed to STEP 9. |
 | `success: false` and `action: "slot_blocked"` | **Slot conflict — see below.** |
 | `success: false` and `error` contains `"Server unreachable"` | Connectivity broke between STEP 5 and STEP 7. Offer `--allow-offline`; if accepted, retry. Otherwise back to STEP 4a. |
@@ -433,22 +438,24 @@ Expected output:
 > (CN) 🎉 全部搞定！OpenViking 长期记忆已经接好了。
 >
 > 工作方式：
+>
 > - **每一轮**：你的对话会被自动追加到 OpenViking session 里；自动抽取依赖阈值 commit 或 `/compact`
 > - **明确要记住时**：如果你说“记住/保存/存一下”某个长期事实，我会用 `memory_store` 立即提交到记忆管线
 > - **`/compact` 时**：待提交的 session 消息会在 OpenViking 服务端被抽取成长期记忆
 > - **后续会话**：每次回复前我都会自动搜一下相关记忆并带进上下文
 >
-> 想验证一下吗？可以直接说“记住我的邮箱是 test@example.com”，让我通过 `memory_store` 立即提交；或者先聊几句包含可记忆事实的话，再调一下 `/compact`。之后开新对话问“我的邮箱是？”，应该就能召回了。
+> 想验证一下吗？可以直接说“记住我的邮箱是 <test@example.com>”，让我通过 `memory_store` 立即提交；或者先聊几句包含可记忆事实的话，再调一下 `/compact`。之后开新对话问“我的邮箱是？”，应该就能召回了。
 
 > (EN) 🎉 All set! OpenViking long-term memory is connected.
 >
 > How it works:
+>
 > - **Every turn**: our messages are appended to an OpenViking session; automatic extraction depends on a threshold commit or `/compact`
 > - **Explicit remember requests**: if you ask me to remember/save/store a long-term fact, I can use `memory_store` to commit it immediately
 > - **On `/compact`**: pending session messages are extracted into long-term memories on the OpenViking server
 > - **Future sessions**: relevant memories are auto-retrieved and injected before my replies
 >
-> Want to verify? Say "remember my email is test@example.com" so I can commit it via `memory_store`, or tell me a few memory-worthy facts and run `/compact`. Then start a new chat and ask "what's my email?" — it should recall.
+> Want to verify? Say "remember my email is <test@example.com>" so I can commit it via `memory_store`, or tell me a few memory-worthy facts and run `/compact`. Then start a new chat and ask "what's my email?" — it should recall.
 
 ---
 
@@ -483,7 +490,7 @@ These are the plugin tools the agent can call once installed.
 ### `memory_recall` — Search Memories
 
 | Parameter | Required | Description |
-|---|---|---|
+| --- | --- | --- |
 | `query` | Yes | Search query text |
 | `limit` | No | Maximum number of results (defaults to plugin config) |
 | `scoreThreshold` | No | Minimum relevance score 0–1 (defaults to plugin config) |
@@ -495,19 +502,19 @@ Example: user asks "What programming language did I say I like?"
 ### `memory_store` — Manual Store
 
 | Parameter | Required | Description |
-|---|---|---|
+| --- | --- | --- |
 | `text` | Yes | Information text to store |
 | `role` | No | Session role (default `user`) |
 | `sessionId` | No | Existing OpenViking session ID |
 
 Use this when the user explicitly asks to remember/save/store a long-term fact, preference, project, or decision.
 
-Example: user says "Remember my email is xxx@example.com".
+Example: user says "Remember my email is <xxx@example.com>".
 
 ### `memory_forget` — Delete Memories
 
 | Parameter | Required | Description |
-|---|---|---|
+| --- | --- | --- |
 | `uri` | No | Exact memory URI (direct delete) |
 | `query` | No | Search query (find then delete) |
 | `targetUri` | No | Search scope URI |
@@ -519,7 +526,7 @@ Example: user says "Forget my phone number".
 ### `ov_archive_search` — Search Archived Original Messages
 
 | Parameter | Required | Description |
-|---|---|---|
+| --- | --- | --- |
 | `query` | Yes | A single keyword or short phrase. Prefer concrete names, dates, commands, paths, or distinctive nouns. |
 | `archiveId` | No | Optional archive ID such as `archive_002`. |
 
@@ -536,7 +543,7 @@ Use when `[Session History Summary]` is too coarse. Try at least two keyword var
 The agent-visible `add_resource` tool is disabled by default (`enableAddResourceTool=false`). Use manual `/add-resource` for resource ingestion unless you explicitly opt in. Even when enabled, never use `add_resource` during search, retrieval, URI reading, or search-result optimization; use `ov_search` and `ov_read` for those flows.
 
 | Parameter | Required | Description |
-|---|---|---|
+| --- | --- | --- |
 | `source` | Yes | Local path, OpenClaw media attachment path, directory path, public URL, or Git URL. |
 | `to` | No | Exact target URI under `viking://resources`; mutually exclusive with `parent`. |
 | `parent` | No | Parent URI under `viking://resources`; mutually exclusive with `to`. |
@@ -548,7 +555,7 @@ The agent-visible `add_resource` tool is disabled by default (`enableAddResource
 ### `add_skill` — Import Agent Skill
 
 | Parameter | Required | Description |
-|---|---|---|
+| --- | --- | --- |
 | `source` | No | Local `SKILL.md` path or skill directory. Exactly one of `source` or `data` is required. |
 | `data` | No | Raw `SKILL.md` content or MCP tool dict. Exactly one of `source` or `data` is required. |
 | `wait` | No | Wait for processing completion. |
@@ -559,7 +566,7 @@ Agent Skill best practice: verify frontmatter has a precise `name`, a trigger-or
 ### `ov_search` — Search Resources and Skills
 
 | Parameter | Required | Description |
-|---|---|---|
+| --- | --- | --- |
 | `query` | Yes | Search query. |
 | `uri` | No | Optional search URI. Defaults to resources plus agent skills. |
 | `limit` | No | Max results per search scope. Default: 10. |
@@ -575,7 +582,7 @@ Important: `ov_search` result URIs are OpenViking virtual URIs, not local file p
 ### `ov_recall_trace` — Query Recall Trace
 
 | Parameter | Required | Description |
-|---|---|---|
+| --- | --- | --- |
 | `turn` | No | `latest` or `all`; default `latest`. |
 | `traceId` | No | Exact trace ID. |
 | `sessionId` / `sessionKey` / `ovSessionId` | No | Session filters. |
@@ -592,7 +599,7 @@ Requires `traceRecall=true`; persisted lookup also requires `traceRecallPersist=
 Use these when a preview contains a `viking://session/<session_id>/tool-results/<tool_result_id>` ref.
 
 | Tool | Parameters |
-|---|---|
+| --- | --- |
 | `openviking_tool_result_list` | `tool_name?`, `limit?` (default 50) |
 | `openviking_tool_result_search` | `tool_output_ref`, `query`, `limit?` (default 20), `context_chars?` (default 300) |
 | `openviking_tool_result_read` | `tool_output_ref`, `offset?` (default 0), `limit?` (default 20000) |
@@ -602,7 +609,7 @@ Use these when a preview contains a `viking://session/<session_id>/tool-results/
 These are the keys under `plugins.entries.openviking.config` in `openclaw.json`. The setup wizard / `ov-install` sets the first few; the rest are tunables.
 
 | Field | Default | Description |
-|---|---|---|
+| --- | --- | --- |
 | `mode` | `"remote"` (forced by plugin) | Always remote in this skill. Don't set manually. |
 | `baseUrl` | `http://127.0.0.1:1933` | OpenViking server URL. |
 | `apiKey` | — | API key. Optional if server has no auth. |
@@ -677,12 +684,14 @@ npx -y openclaw-openviking-setup-helper@latest --workdir ~/.openclaw-second --ba
 Source it before running `openclaw` commands so they hit the correct state:
 
 **Unix:**
+
 ```bash
 source ~/.openclaw/openviking.env
 openclaw status
 ```
 
 **Windows (PowerShell):**
+
 ```powershell
 . "$HOME/.openclaw/openviking.env.ps1"
 openclaw status
@@ -755,7 +764,7 @@ openclaw gateway restart
 Match against actual stderr / JSON `error` strings.
 
 | Symptom (exact string) | Likely cause | Fix |
-|---|---|---|
+| --- | --- | --- |
 | `command not found: openclaw` | OpenClaw not installed | Stop. Ask user to install OpenClaw >= 2026.5.27. |
 | `command not found: node` / `'node' is not recognized` | Node missing | Stop. Ask user to install Node.js >= 22. |
 | `429` / `rate limit` / `Too Many Requests` from `plugins install` | ClawHub throttle | Switch to backup Path B (`ov-install`). |

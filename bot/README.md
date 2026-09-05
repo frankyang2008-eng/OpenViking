@@ -47,7 +47,7 @@ On Windows, activate the virtual environment with:
 VikingBot supports three primary usage scenarios. They are different entry points for different needs rather than mutually exclusive modes.
 
 | Scenario | Best for | Start command | OpenViking |
-|----------|----------|---------------|------------|
+| ---------- | ---------- | --------------- | ------------ |
 | **A. OpenViking + Bot together** | A complete local experience with resources, memory, and the Agent | `openviking-server --with-bot` | The Bot uses the OpenViking Server started by this command |
 | **B. Debug the Agent locally** | Quickly testing the Bot or developing Tools and Skills | `vikingbot chat` | Optional; without it, the Bot cannot use OpenViking features |
 | **C. Unified Gateway entry point** | Starting the Bot separately and connecting it to an existing OpenViking Server | `vikingbot gateway` | May be configured explicitly or omitted |
@@ -148,7 +148,7 @@ ov ls/find/session/...   → Gateway /api/v1/* → OpenViking Server
 The Gateway has three OpenViking connection states:
 
 | State | Condition | Behavior |
-|-------|-----------|----------|
+| ------- | ----------- | ---------- |
 | **Explicit** | `bot.ov_server.server_url` is configured | Connects to the specified OpenViking service; startup fails if it is unreachable |
 | **Inherited** | No explicit URL, but the same `ov.conf` contains `server` | Connects to that OpenViking service; falls back to standalone if it is unreachable |
 | **Standalone** | No OpenViking service is available | Chat works; OpenViking tools are disabled and `/api/v1/*` returns 503 |
@@ -278,7 +278,7 @@ VikingBot and OpenViking share `~/.openviking/ov.conf`. Connections are resolved
 Authentication requirements:
 
 | OpenViking `auth_mode` | Bot credential | Gateway request |
-|------------------------|----------------|-----------------|
+| ------------------------ | ---------------- | ----------------- |
 | `dev` | Local use | The Gateway must listen on localhost |
 | `api_key` | `bot.ov_server.api_key` must be a User/Admin Key | The Chat caller must also provide a valid User/Admin Key; Root Keys cannot access data APIs |
 | `trusted` | Explicit connections use a Root Key; inherited connections may read `server.root_api_key` | Non-local entry points must also pass the Gateway Token first |
@@ -308,7 +308,7 @@ Restart `vikingbot gateway` after changing the configuration.
 ### Common Settings
 
 | Setting | Default | Description |
-|---------|---------|-------------|
+| --------- | --------- | ------------- |
 | `bot.agents.temperature` | `0.7` | Model sampling temperature |
 | `bot.agents.thinking` | `true` | Enable reasoning/thinking when supported by the Provider |
 | `bot.agents.timeout` | Inherits `vlm.timeout` | Timeout for one model request |
@@ -328,7 +328,7 @@ Restart `vikingbot gateway` after changing the configuration.
 ### OpenViking Recall Settings
 
 | Setting | Default | Description |
-|---------|---------|-------------|
+| --------- | --------- | ------------- |
 | `bot.ov_server.memory_recall_events_limit` | `10` | Event memories recalled per turn |
 | `bot.ov_server.memory_recall_entities_limit` | `10` | Entity memories recalled per turn |
 | `bot.ov_server.memory_recall_preferences_limit` | `3` | Preference memories recalled per turn |
@@ -358,7 +358,7 @@ vikingbot status
 The active directory used by the Agent also depends on `bot.sandbox.mode`:
 
 | Mode | Active Workspace |
-|------|------------------|
+| ------ | ------------------ |
 | `shared` (default) | `<workspace>/shared` |
 | `per-session` | `<workspace>/<session-key>` |
 | `per-channel` | `<workspace>/<channel-key>` |
@@ -370,7 +370,7 @@ For example, with the default configuration, edit `~/.openviking/data/bot/worksp
 When an active Workspace is first used, VikingBot copies initial files from the built-in `bot/workspace` template. The main customization points are:
 
 | File or directory | Purpose | How it is loaded |
-|-------------------|---------|------------------|
+| ------------------- | --------- | ------------------ |
 | `SOUL.md` | Personality, values, and communication style | Added to the system prompt on every turn |
 | `AGENTS.md` | Global working rules and task constraints; create it when needed | Added to the system prompt on every turn |
 | `IDENTITY.md` | Agent name, role, and identity background; create it when needed | Added to the system prompt on every turn |
@@ -403,7 +403,7 @@ For the complete loading order, file responsibilities, and customization boundar
 ### Built-in Tools
 
 | Category | Tools |
-|----------|-------|
+| ---------- | ------- |
 | Files and commands | `read_file`, `write_file`, `edit_file`, `list_dir`, `exec` |
 | Web | `web_search`, `web_fetch` |
 | OpenViking | `openviking_list`, `openviking_search`, `openviking_grep`, `openviking_glob`, `openviking_multi_read`, `openviking_add_resource`, `openviking_memory_commit` |
@@ -444,7 +444,7 @@ Supported transports are `stdio`, `sse`, and `streamableHttp`. Tool names use th
 ## Sandbox
 
 | Backend | Description |
-|---------|-------------|
+| --------- | ------------- |
 | `direct` | Default; executes directly on the Bot host and is not a strong isolation boundary |
 | `srt` | Supports file and network allow/deny policies |
 | `opensandbox` | Connects to OpenSandbox Server |
@@ -474,7 +474,7 @@ DirectBackend defaults to `restrict_to_workspace: false`. For a Gateway exposed 
 The Gateway Bot API uses the `/bot/v1` prefix:
 
 | Method | Path | Purpose |
-|--------|------|---------|
+| -------- | ------ | --------- |
 | POST | `/bot/v1/chat` | Synchronous chat |
 | POST | `/bot/v1/chat/stream` | SSE streaming chat |
 | POST | `/bot/v1/feedback` | Submit response feedback |
@@ -486,7 +486,7 @@ When an OpenViking upstream is configured, `/api/v1/*` is proxied to OpenViking 
 ## Operations Commands
 
 | Command | Purpose |
-|---------|---------|
+| --------- | --------- |
 | `vikingbot status` | Show model and configuration status |
 | `vikingbot channels status` | Show configured channels |
 | `vikingbot channels login` | Log in to the WhatsApp bridge |

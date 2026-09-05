@@ -739,6 +739,7 @@ async def update_skill(
             source_metadata["original_filename"] = resolved.original_filename
 
     source_path_hint = resolved.original_filename if resolved else None
+
     async def _update() -> Dict[str, Any]:
         # Derive backup root from the actual skill root URI to keep backup in the same scope.
         skill_root_parent = root_uri.rsplit("/", 1)[0]

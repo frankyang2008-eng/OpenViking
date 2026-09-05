@@ -69,10 +69,15 @@ export function createOpenVikingSessionRoutingRuntime(options: {
     return result.resolved;
   };
 
-  const resolvePluginSessionRouting = (ctx?: SessionAgentLookup): PluginSessionRouting => {
-    const sessionId = typeof ctx?.sessionId === "string" ? ctx.sessionId.trim() : "";
-    const sessionKey = typeof ctx?.sessionKey === "string" ? ctx.sessionKey.trim() : "";
-    let ovSessionId = typeof ctx?.ovSessionId === "string" ? ctx.ovSessionId.trim() : "";
+  const resolvePluginSessionRouting = (
+    ctx?: SessionAgentLookup,
+  ): PluginSessionRouting => {
+    const sessionId =
+      typeof ctx?.sessionId === "string" ? ctx.sessionId.trim() : "";
+    const sessionKey =
+      typeof ctx?.sessionKey === "string" ? ctx.sessionKey.trim() : "";
+    let ovSessionId =
+      typeof ctx?.ovSessionId === "string" ? ctx.ovSessionId.trim() : "";
 
     if (!ovSessionId && (sessionId || sessionKey)) {
       ovSessionId = openClawSessionToOvStorageId(
@@ -89,7 +94,11 @@ export function createOpenVikingSessionRoutingRuntime(options: {
     };
     rememberSessionAgentId(session);
 
-    const agentId = resolveAgentId(session.sessionId, session.sessionKey, session.ovSessionId);
+    const agentId = resolveAgentId(
+      session.sessionId,
+      session.sessionKey,
+      session.ovSessionId,
+    );
     return {
       sessionId: session.sessionId,
       sessionKey: session.sessionKey,
@@ -97,13 +106,17 @@ export function createOpenVikingSessionRoutingRuntime(options: {
       agentId,
       actorPeerId: resolveOpenVikingActorPeerId({
         peerRole,
-        senderPeerId: sanitizeOpenVikingPeerId(ctx?.requesterSenderId ?? ctx?.senderId),
+        senderPeerId: sanitizeOpenVikingPeerId(
+          ctx?.requesterSenderId ?? ctx?.senderId,
+        ),
         assistantPeerId: agentId,
       }),
     };
   };
 
-  const toQueryConfigContext = (session: PluginSessionRouting): QueryConfigContext => ({
+  const toQueryConfigContext = (
+    session: PluginSessionRouting,
+  ): QueryConfigContext => ({
     peerId: session.agentId,
     sessionId: session.sessionId,
     sessionKey: session.sessionKey,

@@ -609,11 +609,7 @@ class TextEmbeddingHandler(DequeueHandlerBase):
             inserted_data = embedding_msg.context_data
             account_id = inserted_data.get("account_id", "default")
             context_user = inserted_data.get("user") or {}
-            user_id = (
-                context_user.get("user_id")
-                or inserted_data.get("owner_user_id")
-                or "default"
-            )
+            user_id = context_user.get("user_id") or inserted_data.get("owner_user_id") or "default"
             user = UserIdentifier(account_id=account_id, user_id=user_id)
             ctx = RequestContext(user=user, role=Role.USER, bypass_acl=True)
             collector = resolve_telemetry(embedding_msg.telemetry_id)

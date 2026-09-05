@@ -71,7 +71,9 @@ function formatArchiveSection(sessionCtx) {
   if (!overview) return null;
 
   const abstracts = Array.isArray(sessionCtx.pre_archive_abstracts)
-    ? sessionCtx.pre_archive_abstracts.filter((a) => typeof a === "string" && a.trim())
+    ? sessionCtx.pre_archive_abstracts.filter(
+        (a) => typeof a === "string" && a.trim(),
+      )
     : [];
 
   const lines = [
@@ -101,7 +103,9 @@ async function main() {
     const chunks = [];
     for await (const chunk of process.stdin) chunks.push(chunk);
     input = JSON.parse(Buffer.concat(chunks).toString() || "{}");
-  } catch { /* best effort */ }
+  } catch {
+    /* best effort */
+  }
 
   const source = input.source || "startup";
   const sessionId = input.session_id;
@@ -119,7 +123,8 @@ async function main() {
   }
 
   const willInjectProfile = !cfg.noAutoInject;
-  const willInjectArchive = (source === "resume" || source === "compact") && !!sessionId;
+  const willInjectArchive =
+    (source === "resume" || source === "compact") && !!sessionId;
 
   const health = await fetchJSON("/health");
   if (!health.ok) {
@@ -133,7 +138,11 @@ async function main() {
   // coding sessions to be recovered when OpenViking is healthy again.
   try {
     const replayResult = await replayPending(fetchJSON, log);
-    if (replayResult.replayed > 0 || replayResult.failed > 0 || replayResult.deferred > 0) {
+    if (
+      replayResult.replayed > 0 ||
+      replayResult.failed > 0 ||
+      replayResult.deferred > 0
+    ) {
       log("pending-replay", replayResult);
     }
   } catch (err) {
@@ -141,7 +150,11 @@ async function main() {
   }
 
   if (!willInjectProfile && !willInjectArchive) {
-    log("skip", { reason: "no_injection_planned", source, noAutoInject: cfg.noAutoInject });
+    log("skip", {
+      reason: "no_injection_planned",
+      source,
+      noAutoInject: cfg.noAutoInject,
+    });
     approve();
     return;
   }
@@ -150,7 +163,11 @@ async function main() {
   let profile = null;
   if (!cfg.noAutoInject) {
     try {
-      profile = await buildProfileBlock(fetchJSON, cfg.profileTokenBudget, effectivePeer.peerId);
+      profile = await buildProfileBlock(
+        fetchJSON,
+        cfg.profileTokenBudget,
+        effectivePeer.peerId,
+      );
     } catch (err) {
       logError("profile_inject", err);
     }
@@ -161,7 +178,11 @@ async function main() {
   let ovSessionId = null;
   if ((source === "resume" || source === "compact") && sessionId) {
     ovSessionId = deriveOvSessionId(sessionId);
-    const sessionCtx = await getSessionContext(fetchJSON, ovSessionId, cfg.resumeContextBudget);
+    const sessionCtx = await getSessionContext(
+      fetchJSON,
+      ovSessionId,
+      cfg.resumeContextBudget,
+    );
     archiveSection = formatArchiveSection(sessionCtx);
   }
 
@@ -194,9 +215,11 @@ async function main() {
   if (cfg.debug) {
     process.stderr.write(
       `[ov] session-start injected ~${composed.length} chars / ~${estimateTokens(composed)} tokens` +
-      (profile ? ` (profile=${profile.profileChars} chars, prefs=${profile.prefCount}${profile.droppedPref ? `(+${profile.droppedPref} dropped)` : ""}, entities=${profile.entCount}${profile.droppedEnt ? `(+${profile.droppedEnt} dropped)` : ""})` : "") +
-      (archiveSection ? " +archive" : "") +
-      "\n",
+        (profile
+          ? ` (profile=${profile.profileChars} chars, prefs=${profile.prefCount}${profile.droppedPref ? `(+${profile.droppedPref} dropped)` : ""}, entities=${profile.entCount}${profile.droppedEnt ? `(+${profile.droppedEnt} dropped)` : ""})`
+          : "") +
+        (archiveSection ? " +archive" : "") +
+        "\n",
     );
   }
 
@@ -217,4 +240,7 @@ async function main() {
   approve(composed);
 }
 
-main().catch((err) => { logError("uncaught", err); approve(); });
+main().catch((err) => {
+  logError("uncaught", err);
+  approve();
+});

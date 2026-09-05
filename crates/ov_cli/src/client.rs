@@ -26,11 +26,10 @@ fn compact_request_body(body: &mut Value) {
         }
         // `args` is always attached by the CLI but absent from pre-#2549 models;
         // only forward it when the caller actually provided arguments.
-        if key == "args" {
-            if let Some(map) = value.as_object() {
+        if key == "args"
+            && let Some(map) = value.as_object() {
                 return !map.is_empty();
             }
-        }
         if key == "processing_mode" {
             return value != "semantic_and_vectors";
         }
@@ -792,7 +791,7 @@ impl HttpClient {
             "case_insensitive": ignore_case,
             "node_limit": node_limit,
             "level_limit": level_limit,
-            "tags": (!tags.is_empty()).then(|| tags),
+            "tags": (!tags.is_empty()).then_some(tags),
             "include_tags": include_tags.then_some(true),
         });
         compact_request_body(&mut body);
@@ -812,7 +811,7 @@ impl HttpClient {
             "pattern": pattern,
             "uri": uri,
             "node_limit": node_limit,
-            "tags": (!tags.is_empty()).then(|| tags),
+            "tags": (!tags.is_empty()).then_some(tags),
             "include_tags": include_tags.then_some(true),
         });
         if let Some(fields) = extra_fields {
@@ -1407,7 +1406,7 @@ impl HttpClient {
         let base_name = uri
             .trim_end_matches('/')
             .split('/')
-            .last()
+            .next_back()
             .unwrap_or("export");
         self.download_pack("/api/v1/pack/export", body, to, base_name)
             .await
@@ -2009,11 +2008,10 @@ impl HttpClient {
             }
         };
 
-        if let Some(error) = json.get("error") {
-            if !error.is_null() {
+        if let Some(error) = json.get("error")
+            && !error.is_null() {
                 return Err(crate::base_client::api_error_from_envelope(&json, status));
             }
-        }
 
         let result = json.get("result").cloned().unwrap_or(Value::Null);
         Ok(SnapshotShowResult::Metadata(result))

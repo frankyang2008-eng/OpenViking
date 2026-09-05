@@ -107,11 +107,10 @@ pub(crate) fn save_language_to_path(path: &Path, language: Language) -> Result<(
 #[cfg(not(test))]
 pub(crate) fn detect_language_from_env() -> Language {
     for key in ["OPENVIKING_LANG", "LC_ALL", "LC_MESSAGES", "LANG"] {
-        if let Ok(value) = std::env::var(key) {
-            if let Some(language) = language_from_locale(&value) {
+        if let Ok(value) = std::env::var(key)
+            && let Some(language) = language_from_locale(&value) {
                 return language;
             }
-        }
     }
     Language::En
 }

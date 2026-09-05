@@ -15,16 +15,16 @@ export const DEFAULT_PROXY_TIMEOUT_MS = 15000;
 const MIN_PROXY_TIMEOUT_MS = 1000;
 
 export function trimSlash(value) {
-  return String(value || "").replace(/\/+$/, "");
+ return String(value || "").replace(/\/+$/, "");
 }
 
 /** Expand a leading `~` and resolve to an absolute path; "" stays "". */
 export function normalizeConfigPath(value) {
-  const raw = String(value || "").trim();
-  if (!raw) return "";
-  if (raw === "~") return homedir();
-  if (raw.startsWith("~/")) return resolvePath(join(homedir(), raw.slice(2)));
-  return resolvePath(raw);
+ const raw = String(value || "").trim();
+ if (!raw) return "";
+ if (raw === "~") return homedir();
+ if (raw.startsWith("~/")) return resolvePath(join(homedir(), raw.slice(2)));
+ return resolvePath(raw);
 }
 
 /**
@@ -32,12 +32,12 @@ export function normalizeConfigPath(value) {
  * overrides and the two default locations under `~/.openviking`.
  */
 export function defaultCredentialPaths(env = process.env) {
-  return [
-    normalizeConfigPath(env.OPENVIKING_CLI_CONFIG_FILE),
-    normalizeConfigPath(env.OPENVIKING_CONFIG_FILE),
-    join(homedir(), ".openviking", "ovcli.conf"),
-    join(homedir(), ".openviking", "ov.conf"),
-  ].filter(Boolean);
+ return [
+  normalizeConfigPath(env.OPENVIKING_CLI_CONFIG_FILE),
+  normalizeConfigPath(env.OPENVIKING_CONFIG_FILE),
+  join(homedir(), ".openviking", "ovcli.conf"),
+  join(homedir(), ".openviking", "ov.conf"),
+ ].filter(Boolean);
 }
 
 /**
@@ -57,25 +57,26 @@ export function defaultCredentialPaths(env = process.env) {
  * (dsh, `mcp.mjs:27`) can satisfy this without the user setting it.
  */
 export function resolveMcpActorPeerId({
-  peerId = "",
-  recallPeerScope = "all",
-  onWarn = null,
+ peerId = "",
+ recallPeerScope = "all",
+ onWarn = null,
 } = {}) {
-  if (recallPeerScope !== "actor") return "";
+ if (recallPeerScope !== "actor") return "";
 
-  const explicitPeerId = String(peerId || "").trim();
-  if (explicitPeerId) return explicitPeerId;
+ const explicitPeerId = String(peerId || "").trim();
+ if (explicitPeerId) return explicitPeerId;
 
-  const message = "OpenViking MCP: actor-scoped recall needs an explicit peer id, which an MCP proxy cannot "
-    + "derive from its launch directory. Falling back to broad recall across every peer under this user. "
-    + "Set actor_peer_id in ovcli.conf, or OPENVIKING_PEER_ID in the MCP server environment, to scope it.";
-  if (typeof onWarn === "function") onWarn(message);
-  else process.stderr.write(`${message}\n`);
-  return "";
+ const message =
+  "OpenViking MCP: actor-scoped recall needs an explicit peer id, which an MCP proxy cannot " +
+  "derive from its launch directory. Falling back to broad recall across every peer under this user. " +
+  "Set actor_peer_id in ovcli.conf, or OPENVIKING_PEER_ID in the MCP server environment, to scope it.";
+ if (typeof onWarn === "function") onWarn(message);
+ else process.stderr.write(`${message}\n`);
+ return "";
 }
 
 function uniq(values) {
-  return [...new Set(values.filter(Boolean))];
+ return [...new Set(values.filter(Boolean))];
 }
 
 /**
@@ -88,36 +89,36 @@ function uniq(values) {
  * deduplicated.
  */
 export function buildMcpProxyConfig({
-  baseUrl = "",
-  mcpUrl = "",
-  apiKey = "",
-  account = "",
-  user = "",
-  peerId = "",
-  userAgent = "",
-  timeoutMs,
-  debug = false,
-  debugLogPath = "",
-  credentialSource = "auto",
-  credentialPath = "",
-  watchedPaths = [],
-  env = process.env,
+ baseUrl = "",
+ mcpUrl = "",
+ apiKey = "",
+ account = "",
+ user = "",
+ peerId = "",
+ userAgent = "",
+ timeoutMs,
+ debug = false,
+ debugLogPath = "",
+ credentialSource = "auto",
+ credentialPath = "",
+ watchedPaths = [],
+ env = process.env,
 } = {}) {
-  return {
-    mcpUrl: mcpUrl || `${trimSlash(baseUrl)}/mcp`,
-    apiKey: apiKey || "",
-    account: account || "",
-    user: user || "",
-    peerId: peerId || "",
-    userAgent: userAgent || "",
-    timeoutMs: Math.max(
-      MIN_PROXY_TIMEOUT_MS,
-      Number(timeoutMs) || DEFAULT_PROXY_TIMEOUT_MS,
-    ),
-    debug: debug === true,
-    debugLogPath,
-    credentialSource: credentialSource || "auto",
-    credentialPath: credentialPath || "",
-    watchedPaths: uniq([...watchedPaths, ...defaultCredentialPaths(env)]),
-  };
+ return {
+  mcpUrl: mcpUrl || `${trimSlash(baseUrl)}/mcp`,
+  apiKey: apiKey || "",
+  account: account || "",
+  user: user || "",
+  peerId: peerId || "",
+  userAgent: userAgent || "",
+  timeoutMs: Math.max(
+   MIN_PROXY_TIMEOUT_MS,
+   Number(timeoutMs) || DEFAULT_PROXY_TIMEOUT_MS,
+  ),
+  debug: debug === true,
+  debugLogPath,
+  credentialSource: credentialSource || "auto",
+  credentialPath: credentialPath || "",
+  watchedPaths: uniq([...watchedPaths, ...defaultCredentialPaths(env)]),
+ };
 }

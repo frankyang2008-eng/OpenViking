@@ -4,7 +4,10 @@ import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
-import { buildUserAgent, resolveOpenVikingCredentials } from "./credentials.mjs";
+import {
+  buildUserAgent,
+  resolveOpenVikingCredentials,
+} from "./credentials.mjs";
 import { createLogger } from "./debug-log.mjs";
 import { sendSessionMessages } from "./batch-send.mjs";
 import { enqueue, replayPending } from "./pending-queue.mjs";
@@ -34,7 +37,12 @@ function safePart(value) {
 }
 
 function responseTraceId(body) {
-  return body?.result?.trace_id || body?.error?.trace_id || body?.trace_id || undefined;
+  return (
+    body?.result?.trace_id ||
+    body?.error?.trace_id ||
+    body?.trace_id ||
+    undefined
+  );
 }
 
 export function stableHash(...values) {
@@ -45,26 +53,39 @@ export function stableHash(...values) {
 
 export function loadAgentHookConfig(clientId) {
   const credentials = resolveOpenVikingCredentials();
-  const debugLogPath = process.env.OPENVIKING_DEBUG_LOG
-    || join(homedir(), ".openviking", "logs", `${clientId}-hooks.log`);
+  const debugLogPath =
+    process.env.OPENVIKING_DEBUG_LOG ||
+    join(homedir(), ".openviking", "logs", `${clientId}-hooks.log`);
   return {
     ...credentials,
     clientId,
-    userAgent: buildUserAgent(clientId, process.env.OPENVIKING_INTEGRATION_VERSION),
+    userAgent: buildUserAgent(
+      clientId,
+      process.env.OPENVIKING_INTEGRATION_VERSION,
+    ),
     enabled: envBool("OPENVIKING_MEMORY_ENABLED", true),
     autoRecall: envBool("OPENVIKING_AUTO_RECALL", true),
     autoCapture: envBool("OPENVIKING_AUTO_CAPTURE", true),
     workspacePeer: envBool("OPENVIKING_WORKSPACE_PEER", true),
     bypassSession: envBool("OPENVIKING_BYPASS_SESSION", false),
-    bypassSessionPatterns: String(process.env.OPENVIKING_BYPASS_SESSION_PATTERNS || "")
-      .split(",").map((item) => item.trim()).filter(Boolean),
+    bypassSessionPatterns: String(
+      process.env.OPENVIKING_BYPASS_SESSION_PATTERNS || "",
+    )
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean),
     recallLimit: envNumber("OPENVIKING_RECALL_LIMIT", 10, 1),
     recallLimitConfigured: Boolean(process.env.OPENVIKING_RECALL_LIMIT),
     recallTokenBudget: envNumber("OPENVIKING_RECALL_TOKEN_BUDGET", 2000, 200),
-    recallMaxContentChars: envNumber("OPENVIKING_RECALL_MAX_CONTENT_CHARS", 500, 50),
+    recallMaxContentChars: envNumber(
+      "OPENVIKING_RECALL_MAX_CONTENT_CHARS",
+      500,
+      50,
+    ),
     scoreThreshold: envNumber("OPENVIKING_SCORE_THRESHOLD", 0.35, 0),
     recallPreferAbstract: envBool("OPENVIKING_RECALL_PREFER_ABSTRACT", true),
-    recallPeerScope: process.env.OPENVIKING_RECALL_PEER_SCOPE === "actor" ? "actor" : "all",
+    recallPeerScope:
+      process.env.OPENVIKING_RECALL_PEER_SCOPE === "actor" ? "actor" : "all",
     timeoutMs: envNumber("OPENVIKING_TIMEOUT_MS", 15000, 1000),
     profileTokenBudget: envNumber("OPENVIKING_PROFILE_TOKEN_BUDGET", 6000, 500),
     commitTurnThreshold: envNumber("OPENVIKING_COMMIT_TURN_THRESHOLD", 8, 1),
@@ -83,23 +104,35 @@ export async function readHookInput() {
   for await (const chunk of process.stdin) chunks.push(chunk);
   const raw = Buffer.concat(chunks).toString();
   if (!raw.trim()) return {};
-  try { return JSON.parse(raw); } catch { return {}; }
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return {};
+  }
 }
 
 export function resolveAgentCwd(input = {}) {
   const workspaceRoots = Array.isArray(input.workspace_roots)
     ? input.workspace_roots
-    : Array.isArray(input.workspaceRoots) ? input.workspaceRoots : [];
+    : Array.isArray(input.workspaceRoots)
+      ? input.workspaceRoots
+      : [];
   return String(
-    input.cwd
-      || workspaceRoots.find((value) => typeof value === "string" && value.trim())
-      || process.env.CURSOR_PROJECT_DIR
-      || process.cwd(),
+    input.cwd ||
+      workspaceRoots.find(
+        (value) => typeof value === "string" && value.trim(),
+      ) ||
+      process.env.CURSOR_PROJECT_DIR ||
+      process.cwd(),
   );
 }
 
 export function resolveNativeSessionId(input = {}) {
-  const direct = input.conversation_id || input.session_id || input.sessionId || input.generation_id;
+  const direct =
+    input.conversation_id ||
+    input.session_id ||
+    input.sessionId ||
+    input.generation_id;
   if (direct) return safePart(direct);
   const transcript = input.transcript_path || input.transcriptPath;
   if (transcript) {
@@ -115,8 +148,9 @@ export function deriveAgentSessionId(prefix, input = {}) {
 }
 
 function statePath(clientId, nativeSessionId) {
-  const root = process.env.OPENVIKING_HOOK_STATE_DIR
-    || join(homedir(), ".openviking", "hook-state");
+  const root =
+    process.env.OPENVIKING_HOOK_STATE_DIR ||
+    join(homedir(), ".openviking", "hook-state");
   return join(root, safePart(clientId), `${safePart(nativeSessionId)}.json`);
 }
 
@@ -154,7 +188,9 @@ export async function withAgentHookLock(clientId, nativeSessionId, callback) {
 
 export async function readHookState(clientId, nativeSessionId) {
   try {
-    const parsed = JSON.parse(await readFile(statePath(clientId, nativeSessionId), "utf8"));
+    const parsed = JSON.parse(
+      await readFile(statePath(clientId, nativeSessionId), "utf8"),
+    );
     return parsed && typeof parsed === "object" ? parsed : {};
   } catch {
     return {};
@@ -165,10 +201,14 @@ export async function writeHookState(clientId, nativeSessionId, value) {
   const file = statePath(clientId, nativeSessionId);
   await mkdir(dirname(file), { recursive: true, mode: STATE_DIR_MODE });
   const tmp = `${file}.${process.pid}.tmp`;
-  await writeFile(tmp, `${JSON.stringify({ version: STATE_VERSION, ...value }, null, 2)}\n`, {
-    encoding: "utf8",
-    mode: STATE_FILE_MODE,
-  });
+  await writeFile(
+    tmp,
+    `${JSON.stringify({ version: STATE_VERSION, ...value }, null, 2)}\n`,
+    {
+      encoding: "utf8",
+      mode: STATE_FILE_MODE,
+    },
+  );
   await rename(tmp, file);
 }
 
@@ -176,25 +216,44 @@ export function makeAgentFetchJSON(cfg, cwd = process.cwd()) {
   const effectivePeer = resolveEffectivePeerId({ cfg, cwd });
   const fetchJSON = async (path, init = {}, options = {}) => {
     const controller = new AbortController();
-    const timeoutMs = Math.max(1000, Number(options.timeoutMs) || cfg.timeoutMs);
+    const timeoutMs = Math.max(
+      1000,
+      Number(options.timeoutMs) || cfg.timeoutMs,
+    );
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      const headers = { "Content-Type": "application/json", ...(init.headers || {}) };
+      const headers = {
+        "Content-Type": "application/json",
+        ...(init.headers || {}),
+      };
       if (cfg.apiKey) headers.Authorization = `Bearer ${cfg.apiKey}`;
       if (cfg.account) headers["X-OpenViking-Account"] = cfg.account;
       if (cfg.user) headers["X-OpenViking-User"] = cfg.user;
       const peerId = options.actorPeerId ?? effectivePeer.peerId;
       if (peerId) headers["X-OpenViking-Actor-Peer"] = peerId;
       if (cfg.userAgent) headers["User-Agent"] = cfg.userAgent;
-      const response = await fetch(`${cfg.baseUrl}${path}`, { ...init, headers, signal: controller.signal });
+      const response = await fetch(`${cfg.baseUrl}${path}`, {
+        ...init,
+        headers,
+        signal: controller.signal,
+      });
       const body = await response.json().catch(() => ({}));
       const traceId = responseTraceId(body);
       if (!response.ok || body.status === "error") {
-        return { ok: false, status: response.status, error: body.error || body, traceId };
+        return {
+          ok: false,
+          status: response.status,
+          error: body.error || body,
+          traceId,
+        };
       }
       return { ok: true, result: body.result ?? body, traceId };
     } catch (error) {
-      return { ok: false, status: 0, error: { message: error?.message || String(error) } };
+      return {
+        ok: false,
+        status: 0,
+        error: { message: error?.message || String(error) },
+      };
     } finally {
       clearTimeout(timer);
     }
@@ -203,23 +262,32 @@ export function makeAgentFetchJSON(cfg, cwd = process.cwd()) {
 }
 
 export async function addAgentMessage(fetchJSON, sessionId, payload) {
-  const result = await fetchJSON(`/api/v1/sessions/${encodeURIComponent(sessionId)}/messages`, {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
-  if (!result.ok && isRetryableFailure(result)) await enqueue("addMessage", sessionId, payload);
+  const result = await fetchJSON(
+    `/api/v1/sessions/${encodeURIComponent(sessionId)}/messages`,
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    },
+  );
+  if (!result.ok && isRetryableFailure(result))
+    await enqueue("addMessage", sessionId, payload);
   return result;
 }
 
 export async function addAgentMessages(fetchJSON, sessionId, payloads) {
-  return sendSessionMessages(fetchJSON, sessionId, payloads, { enqueueOnRetryable: true });
+  return sendSessionMessages(fetchJSON, sessionId, payloads, {
+    enqueueOnRetryable: true,
+  });
 }
 
 export async function commitAgentSession(fetchJSON, sessionId, log = () => {}) {
-  const result = await fetchJSON(`/api/v1/sessions/${encodeURIComponent(sessionId)}/commit`, {
-    method: "POST",
-    body: "{}",
-  });
+  const result = await fetchJSON(
+    `/api/v1/sessions/${encodeURIComponent(sessionId)}/commit`,
+    {
+      method: "POST",
+      body: "{}",
+    },
+  );
   let queued = false;
   if (!result.ok && isRetryableFailure(result)) {
     const pending = await enqueue("commitSession", sessionId, {});
@@ -240,7 +308,14 @@ export async function replayAgentPending(fetchJSON, log = () => {}) {
   return replayPending(fetchJSON, log);
 }
 
-export async function recallForPrompt(fetchJSON, cfg, prompt, cwd, log = () => {}, options = {}) {
+export async function recallForPrompt(
+  fetchJSON,
+  cfg,
+  prompt,
+  cwd,
+  log = () => {},
+  options = {},
+) {
   if (!cfg.autoRecall || !String(prompt || "").trim()) return null;
   const peer = resolveEffectivePeerId({ cfg, cwd });
   return buildRecallBlock(fetchJSON, cfg, prompt, {
@@ -255,10 +330,17 @@ export async function recallForPrompt(fetchJSON, cfg, prompt, cwd, log = () => {
 
 export async function buildAgentProfile(fetchJSON, cfg, cwd) {
   const peer = resolveEffectivePeerId({ cfg, cwd });
-  const profile = await buildProfileBlock(fetchJSON, cfg.profileTokenBudget, peer.peerId);
+  const profile = await buildProfileBlock(
+    fetchJSON,
+    cfg.profileTokenBudget,
+    peer.peerId,
+  );
   return profile?.block || null;
 }
 
 export function shouldBypassAgent(cfg, input = {}) {
-  return isBypassed(cfg, { sessionId: resolveNativeSessionId(input), cwd: resolveAgentCwd(input) });
+  return isBypassed(cfg, {
+    sessionId: resolveNativeSessionId(input),
+    cwd: resolveAgentCwd(input),
+  });
 }

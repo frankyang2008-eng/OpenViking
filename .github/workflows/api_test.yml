@@ -3,22 +3,22 @@ name: 06. API & CLI Integration Tests
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 1,4,7,10,13 * * *'
+    - cron: "0 1,4,7,10,13 * * *"
   pull_request:
     branches:
-      - 'main'
+      - "main"
     paths-ignore:
-      - 'docs/**'
-      - '**.md'
-      - 'LICENSE'
-      - 'CONTRIBUTING.md'
-      - '**.png'
-      - '**.jpg'
-      - '**.jpeg'
-      - '**.gif'
-      - '**.svg'
-      - '.gitignore'
-      - '.editorconfig'
+      - "docs/**"
+      - "**.md"
+      - "LICENSE"
+      - "CONTRIBUTING.md"
+      - "**.png"
+      - "**.jpg"
+      - "**.jpeg"
+      - "**.gif"
+      - "**.svg"
+      - ".gitignore"
+      - ".editorconfig"
   release:
     types: [published, prereleased]
 
@@ -41,7 +41,7 @@ jobs:
       max-parallel: 1
       matrix:
         os: ${{ ((github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event_name == 'release') && fromJSON('["ubuntu-24.04", "macos-14", "windows-latest"]') || fromJSON('["ubuntu-24.04"]') }}
-    
+
     steps:
       - uses: actions/checkout@v6
         with:
@@ -51,7 +51,7 @@ jobs:
       - name: Set up Python 3.10
         uses: actions/setup-python@v6
         with:
-          python-version: '3.10'
+          python-version: "3.10"
 
       - name: Cache Python dependencies (Unix)
         if: runner.os != 'Windows'
@@ -121,13 +121,13 @@ jobs:
           touch openviking/bin/ov
           chmod +x openviking/bin/ov
           echo "OV_SKIP_OV_BUILD=1 set, skipping ov CLI Rust build (ragfs build still needed for server)"
-          
+
           if [ -z "$SETUPTOOLS_SCM_PRETEND_VERSION_FOR_OPENVIKING" ]; then
             PRETEND_VERSION=$(git describe --tags --always 2>/dev/null | sed -E 's/^v?([0-9]+\.[0-9]+\.[0-9]+).*/\1.dev0/' || echo "0.0.0.dev0")
             echo "SETUPTOOLS_SCM_PRETEND_VERSION_FOR_OPENVIKING=$PRETEND_VERSION" >> $GITHUB_ENV
             echo "Using pretend version: $PRETEND_VERSION"
           fi
-          
+
           uv run python setup.py build_ext --inplace
 
       - name: Build ragfs-python native extension
@@ -135,26 +135,26 @@ jobs:
         run: |
           RAGFS_LIB_DIR="openviking/lib"
           RAGFS_SO_COUNT=$(ls -1 "$RAGFS_LIB_DIR"/ragfs_python*.so "$RAGFS_LIB_DIR"/ragfs_python*.pyd "$RAGFS_LIB_DIR"/ragfs_python*.dylib 2>/dev/null | wc -l | tr -d '[:space:]' || echo "0")
-          
+
           if [ "$RAGFS_SO_COUNT" -gt 0 ]; then
             echo "✅ ragfs_python native extension already exists:"
             ls -la "$RAGFS_LIB_DIR"/ragfs_python*
             exit 0
           fi
-          
+
           echo "ragfs_python native lib not found after build_ext, building via maturin..."
           TMPDIR_RAGFS=$(mktemp -d)
           cd crates/ragfs-python
           uv run --no-project maturin build --release --features s3 --out "$TMPDIR_RAGFS"
           cd ../..
-          
+
           WHL_FILE=$(ls -1 "$TMPDIR_RAGFS"/ragfs_python-*.whl 2>/dev/null | head -1)
           if [ -z "$WHL_FILE" ]; then
             echo "❌ ERROR: maturin build produced no wheel"
             ls -la "$TMPDIR_RAGFS"/
             exit 1
           fi
-          
+
           echo "Extracting ragfs_python from wheel: $WHL_FILE"
           mkdir -p "$RAGFS_LIB_DIR"
           WHL_FILE_PY=$(echo "$WHL_FILE" | sed 's/\\/\\\\/g')
@@ -175,7 +175,7 @@ jobs:
           sys.exit(1)
           "
           rm -rf "$TMPDIR_RAGFS"
-          
+
           echo "Verifying ragfs_python native extension:"
           ls -la "$RAGFS_LIB_DIR"/ragfs_python*
 
@@ -192,7 +192,7 @@ jobs:
           EMBEDDING_API_KEY: ${{ secrets.EMBEDDING_API_KEY }}
         run: |
           mkdir -p $HOME/.openviking
-          
+
           HAS_SECRETS=false
           if [ -n "$VLM_API_KEY" ] && [ -n "$EMBEDDING_API_KEY" ]; then
             HAS_SECRETS=true
@@ -200,9 +200,9 @@ jobs:
           else
             echo "Using minimal configuration (no VLM/Embedding)"
           fi
-          
+
           echo "HAS_SECRETS=$HAS_SECRETS" >> $GITHUB_ENV
-          
+
           if [ "$HAS_SECRETS" = "true" ]; then
             cat > $HOME/.openviking/ov.conf << EOF
           {
@@ -256,7 +256,7 @@ jobs:
           }
           EOF
           fi
-          
+
           echo "Config file created at $HOME/.openviking/ov.conf"
 
       - name: Create OpenViking config file (Windows)
@@ -269,7 +269,7 @@ jobs:
         run: |
           $configDir = "$env:USERPROFILE\.openviking"
           New-Item -ItemType Directory -Force -Path $configDir | Out-Null
-          
+
           $hasSecrets = "false"
           if ($env:VLM_API_KEY -and $env:EMBEDDING_API_KEY) {
             $hasSecrets = "true"
@@ -277,9 +277,9 @@ jobs:
           } else {
             Write-Host "Using minimal configuration (no VLM/Embedding)"
           }
-          
+
           echo "HAS_SECRETS=$hasSecrets" >> $env:GITHUB_ENV
-          
+
           if ($hasSecrets -eq "true") {
             $config = @"
           {
@@ -333,7 +333,7 @@ jobs:
           }
           "@
           }
-          
+
           $config | Out-File -FilePath "$configDir\ov.conf" -Encoding utf8
           Write-Host "Config file created at $configDir\ov.conf"
 
@@ -351,18 +351,18 @@ jobs:
               port=$((port + 1))
             done
           }
-          
+
           SERVER_PORT=$(find_available_port)
           echo "Using port: $SERVER_PORT"
           echo "SERVER_PORT=$SERVER_PORT" >> $GITHUB_ENV
-          
+
           echo "Starting OpenViking Server on port $SERVER_PORT..."
           export ROOT_API_KEY=test-root-api-key
           export SERVER_PORT=$SERVER_PORT
           nohup uv run python -m openviking.server.bootstrap > openviking-server.log 2>&1 &
           echo $! > openviking-server.pid
           echo "SERVER_PID=$(cat openviking-server.pid)" >> $GITHUB_ENV
-          
+
           echo "Waiting for server to start..."
           for i in {1..30}; do
             if curl -s http://127.0.0.1:$SERVER_PORT/health | grep -q '"healthy":true'; then
@@ -372,7 +372,7 @@ jobs:
             echo "Waiting... ($i/30)"
             sleep 2
           done
-          
+
           if ! curl -s http://127.0.0.1:$SERVER_PORT/health | grep -q '"healthy":true'; then
             echo "Server failed to start!"
             echo "Server logs:"
@@ -388,32 +388,32 @@ jobs:
           $port = 1933
           Write-Host "Using port: $port"
           echo "SERVER_PORT=$port" >> $env:GITHUB_ENV
-          
+
           Write-Host "Starting OpenViking Server on port $port..."
-          
+
           $logFile = Join-Path $PWD "openviking-server.log"
           $errFile = Join-Path $PWD "openviking-server-error.log"
           $batchFile = Join-Path $PWD "start-server.bat"
-          
+
           $batchContent = "@echo off`r`nset ROOT_API_KEY=test-root-api-key`r`nset SERVER_PORT=$port`r`nuv run python -m openviking.server.bootstrap`r`n"
           Set-Content -Path $batchFile -Value $batchContent -Encoding ASCII
-          
+
           Write-Host "Batch file created at: $batchFile"
           Write-Host "Batch file content:"
           Get-Content $batchFile
-          
+
           $psi = New-Object System.Diagnostics.ProcessStartInfo
           $psi.FileName = "cmd.exe"
           $psi.Arguments = "/C `"$batchFile`""
           $psi.UseShellExecute = $true
           $psi.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Hidden
           $psi.WorkingDirectory = $PWD.Path
-          
+
           $process = [System.Diagnostics.Process]::Start($psi)
-          
+
           Write-Host "Server process started with PID: $($process.Id)"
           echo "SERVER_PID=$($process.Id)" >> $env:GITHUB_ENV
-          
+
           Write-Host "Waiting for server to start..."
           $ready = $false
           for ($i = 1; $i -le 30; $i++) {
@@ -429,7 +429,7 @@ jobs:
               Write-Host "Waiting... ($i/30)"
             }
           }
-          
+
           if (-not $ready) {
             Write-Host "Server failed to start!"
             Write-Host "Checking if process is still running..."
@@ -450,7 +450,7 @@ jobs:
           export OPENVIKING_API_KEY=test-root-api-key
           export OPENVIKING_ROOT_API_KEY=test-root-api-key
           export SERVER_URL=http://127.0.0.1:${{ env.SERVER_PORT }}
-          
+
           if [ "${{ env.HAS_SECRETS }}" = "true" ]; then
             echo "Running serial tests (filesystem + resource operations)..."
             uv run python -m pytest filesystem/ scenarios/resources_retrieval/ -v --tb=short \
@@ -485,7 +485,7 @@ jobs:
           $env:OPENVIKING_API_KEY = "test-root-api-key"
           $env:OPENVIKING_ROOT_API_KEY = "test-root-api-key"
           $env:SERVER_URL = "http://127.0.0.1:${{ env.SERVER_PORT }}"
-          
+
           if ($env:HAS_SECRETS -eq "true") {
             Write-Host "Running full test suite with VLM/Embedding (Windows: skipping filesystem and slow tests)"
             uv run python -m pytest . -v -n 4 --html=api-test-report.html --self-contained-html --ignore=filesystem/ --ignore=scenarios/resources_retrieval_slow/ --ignore=scenarios/resources_retrieval/ --ignore=common/slow/ --ignore=content/slow/ --ignore=resources/slow/ --ignore=retrieval/slow/ --ignore=sessions/slow/ --ignore=tasks/slow/ --ignore=skills/slow/ --ignore=scenarios/slow/ --ignore=scenarios/stability_error/slow/

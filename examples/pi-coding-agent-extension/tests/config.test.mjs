@@ -42,7 +42,11 @@ async function withConfigFile(body, fn, env = {}, cliConfig = null) {
   try {
     await writeFile(join(dir, "config.json"), JSON.stringify(body), "utf8");
     if (cliConfig !== null) {
-      await writeFile(join(dir, "ovcli.conf"), JSON.stringify(cliConfig), "utf8");
+      await writeFile(
+        join(dir, "ovcli.conf"),
+        JSON.stringify(cliConfig),
+        "utf8",
+      );
     }
     return await fn(loadConfig(dir), dir);
   } finally {
@@ -66,72 +70,86 @@ test("loadConfig defaults takeover on", async () => {
 });
 
 test("loadConfig maps nested takeover block", async () => {
-  await withConfigFile({
-    takeover: {
-      enabled: false,
-      tokenThreshold: 600,
-      keepRecentTurns: 1,
-      overviewBudget: 1200,
-      overviewPollMs: 10,
-      overviewPollMax: 2,
+  await withConfigFile(
+    {
+      takeover: {
+        enabled: false,
+        tokenThreshold: 600,
+        keepRecentTurns: 1,
+        overviewBudget: 1200,
+        overviewPollMs: 10,
+        overviewPollMax: 2,
+      },
     },
-  }, (cfg) => {
-    assert.equal(cfg.takeoverEnabled, false);
-    assert.equal(cfg.takeoverTokenThreshold, 600);
-    assert.equal(cfg.takeoverKeepRecentTurns, 1);
-    assert.equal(cfg.takeoverOverviewBudget, 1200);
-    assert.equal(cfg.takeoverOverviewPollMs, 10);
-    assert.equal(cfg.takeoverOverviewPollMax, 2);
-  });
+    (cfg) => {
+      assert.equal(cfg.takeoverEnabled, false);
+      assert.equal(cfg.takeoverTokenThreshold, 600);
+      assert.equal(cfg.takeoverKeepRecentTurns, 1);
+      assert.equal(cfg.takeoverOverviewBudget, 1200);
+      assert.equal(cfg.takeoverOverviewPollMs, 10);
+      assert.equal(cfg.takeoverOverviewPollMax, 2);
+    },
+  );
 });
 
 test("loadConfigFromModuleUrl decodes Unicode paths", async () => {
-  await withConfigFile({
-    takeover: {
-      tokenThreshold: 2000,
+  await withConfigFile(
+    {
+      takeover: {
+        tokenThreshold: 2000,
+      },
     },
-  }, (_cfg, dir) => {
-    const moduleUrl = pathToFileURL(join(dir, "index.ts")).href;
-    const cfg = loadConfigFromModuleUrl(moduleUrl);
-    assert.equal(cfg.takeoverTokenThreshold, 2000);
-  });
+    (_cfg, dir) => {
+      const moduleUrl = pathToFileURL(join(dir, "index.ts")).href;
+      const cfg = loadConfigFromModuleUrl(moduleUrl);
+      assert.equal(cfg.takeoverTokenThreshold, 2000);
+    },
+  );
 });
 
 test("loadConfig keeps top-level takeover aliases for compatibility", async () => {
-  await withConfigFile({
-    takeoverTokenThreshold: 42,
-    takeoverKeepRecentTurns: 4,
-  }, (cfg) => {
-    assert.equal(cfg.takeoverTokenThreshold, 42);
-    assert.equal(cfg.takeoverKeepRecentTurns, 4);
-  });
+  await withConfigFile(
+    {
+      takeoverTokenThreshold: 42,
+      takeoverKeepRecentTurns: 4,
+    },
+    (cfg) => {
+      assert.equal(cfg.takeoverTokenThreshold, 42);
+      assert.equal(cfg.takeoverKeepRecentTurns, 4);
+    },
+  );
 });
 
 test("loadConfig clamps invalid takeover values", async () => {
-  await withConfigFile({
-    takeover: {
-      enabled: "no",
-      tokenThreshold: -1,
-      keepRecentTurns: -5,
-      overviewBudget: 1,
-      overviewPollMs: -2,
-      overviewPollMax: 0,
+  await withConfigFile(
+    {
+      takeover: {
+        enabled: "no",
+        tokenThreshold: -1,
+        keepRecentTurns: -5,
+        overviewBudget: 1,
+        overviewPollMs: -2,
+        overviewPollMax: 0,
+      },
     },
-  }, (cfg) => {
-    assert.equal(cfg.takeoverEnabled, true);
-    assert.equal(cfg.takeoverTokenThreshold, 1);
-    assert.equal(cfg.takeoverKeepRecentTurns, 0);
-    assert.equal(cfg.takeoverOverviewBudget, 100);
-    assert.equal(cfg.takeoverOverviewPollMs, 0);
-    assert.equal(cfg.takeoverOverviewPollMax, 1);
-  });
+    (cfg) => {
+      assert.equal(cfg.takeoverEnabled, true);
+      assert.equal(cfg.takeoverTokenThreshold, 1);
+      assert.equal(cfg.takeoverKeepRecentTurns, 0);
+      assert.equal(cfg.takeoverOverviewBudget, 100);
+      assert.equal(cfg.takeoverOverviewPollMs, 0);
+      assert.equal(cfg.takeoverOverviewPollMax, 1);
+    },
+  );
 });
 
 test("loadConfig derives workspace peer by default", async () => {
   // The default is now the repository, so the expectation follows whichever
   // template resolves where the suite runs — inside a checkout that is the
   // remote, and outside one it is still the old working-directory id.
-  const { resolveEffectivePeerId } = await import("../shared/workspace-peer.mjs");
+  const { resolveEffectivePeerId } = await import(
+    "../shared/workspace-peer.mjs"
+  );
   const expected = resolveEffectivePeerId({ cfg: {}, cwd: process.cwd() });
   await withConfigFile({}, (cfg) => {
     assert.equal(cfg.peerId, expected.peerId);
@@ -141,34 +159,44 @@ test("loadConfig derives workspace peer by default", async () => {
 });
 
 test("loadConfig prefers config peer over workspace derivation", async () => {
-  await withConfigFile({
-    peerId: " pi ",
-    workspacePeer: true,
-  }, (cfg) => {
-    assert.equal(cfg.peerId, "pi");
-  });
+  await withConfigFile(
+    {
+      peerId: " pi ",
+      workspacePeer: true,
+    },
+    (cfg) => {
+      assert.equal(cfg.peerId, "pi");
+    },
+  );
 });
 
 test("loadConfig keeps config peer when workspace derivation is disabled", async () => {
-  await withConfigFile({
-    peerId: "pi",
-    workspacePeer: false,
-  }, (cfg) => {
-    assert.equal(cfg.peerId, "pi");
-    assert.equal(cfg.workspacePeer, false);
-  });
+  await withConfigFile(
+    {
+      peerId: "pi",
+      workspacePeer: false,
+    },
+    (cfg) => {
+      assert.equal(cfg.peerId, "pi");
+      assert.equal(cfg.workspacePeer, false);
+    },
+  );
 });
 
 test("loadConfig gives environment peer precedence over config peer", async () => {
-  await withConfigFile({
-    peerId: "config-peer",
-    recallPeerScope: "actor",
-    workspacePeer: false,
-  }, (cfg) => {
-    assert.equal(cfg.peerId, "explicit-peer");
-    assert.equal(cfg.workspacePeer, false);
-    assert.equal(cfg.recallPeerScope, "actor");
-  }, { OPENVIKING_PEER_ID: "explicit-peer" });
+  await withConfigFile(
+    {
+      peerId: "config-peer",
+      recallPeerScope: "actor",
+      workspacePeer: false,
+    },
+    (cfg) => {
+      assert.equal(cfg.peerId, "explicit-peer");
+      assert.equal(cfg.workspacePeer, false);
+      assert.equal(cfg.recallPeerScope, "actor");
+    },
+    { OPENVIKING_PEER_ID: "explicit-peer" },
+  );
 });
 
 test("loadConfig leaves the debug log off when nothing asks for it", async () => {
@@ -178,24 +206,36 @@ test("loadConfig leaves the debug log off when nothing asks for it", async () =>
 });
 
 test("loadConfig reads the debug log path from OPENVIKING_DEBUG_LOG", async () => {
-  await withConfigFile({}, (cfg) => {
-    assert.equal(cfg.debugLogPath, "/tmp/ov-pi-shared.log");
-  }, { OPENVIKING_DEBUG_LOG: "/tmp/ov-pi-shared.log" });
+  await withConfigFile(
+    {},
+    (cfg) => {
+      assert.equal(cfg.debugLogPath, "/tmp/ov-pi-shared.log");
+    },
+    { OPENVIKING_DEBUG_LOG: "/tmp/ov-pi-shared.log" },
+  );
 });
 
 test("loadConfig still honours the deprecated OV_DEBUG_LOG", async () => {
-  await withConfigFile({}, (cfg) => {
-    assert.equal(cfg.debugLogPath, "/tmp/ov-pi-legacy.log");
-  }, { OV_DEBUG_LOG: "/tmp/ov-pi-legacy.log" });
+  await withConfigFile(
+    {},
+    (cfg) => {
+      assert.equal(cfg.debugLogPath, "/tmp/ov-pi-legacy.log");
+    },
+    { OV_DEBUG_LOG: "/tmp/ov-pi-legacy.log" },
+  );
 });
 
 test("loadConfig prefers OPENVIKING_DEBUG_LOG over the deprecated alias", async () => {
-  await withConfigFile({ debugLogPath: "/tmp/ov-pi-file.log" }, (cfg) => {
-    assert.equal(cfg.debugLogPath, "/tmp/ov-pi-shared.log");
-  }, {
-    OPENVIKING_DEBUG_LOG: "/tmp/ov-pi-shared.log",
-    OV_DEBUG_LOG: "/tmp/ov-pi-legacy.log",
-  });
+  await withConfigFile(
+    { debugLogPath: "/tmp/ov-pi-file.log" },
+    (cfg) => {
+      assert.equal(cfg.debugLogPath, "/tmp/ov-pi-shared.log");
+    },
+    {
+      OPENVIKING_DEBUG_LOG: "/tmp/ov-pi-shared.log",
+      OV_DEBUG_LOG: "/tmp/ov-pi-legacy.log",
+    },
+  );
 });
 
 test("loadConfig falls back to the config file debug log path", async () => {
@@ -205,15 +245,20 @@ test("loadConfig falls back to the config file debug log path", async () => {
 });
 
 test("loadConfig gives ovcli peer precedence over config peer", async () => {
-  await withConfigFile({
-    peerId: "config-peer",
-  }, (cfg) => {
-    assert.equal(cfg.peerId, "ovcli-peer");
-  }, {
-    OPENVIKING_CREDENTIAL_SOURCE: "cli",
-    OPENVIKING_URL: undefined,
-  }, {
-    url: "http://127.0.0.1:1933",
-    actor_peer_id: "ovcli-peer",
-  });
+  await withConfigFile(
+    {
+      peerId: "config-peer",
+    },
+    (cfg) => {
+      assert.equal(cfg.peerId, "ovcli-peer");
+    },
+    {
+      OPENVIKING_CREDENTIAL_SOURCE: "cli",
+      OPENVIKING_URL: undefined,
+    },
+    {
+      url: "http://127.0.0.1:1933",
+      actor_peer_id: "ovcli-peer",
+    },
+  );
 });

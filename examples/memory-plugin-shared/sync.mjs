@@ -35,7 +35,11 @@ const BATCH_SHARED_FILES = ["batch-send.mjs"];
 /** The detached write path, for the plugins whose hooks are short-lived subprocesses. */
 const ASYNC_WRITE_SHARED_FILES = ["async-writer.mjs"];
 /** The layered workspace config, its per-machine registry, and the loader over both. */
-const WORKSPACE_CONFIG_SHARED_FILES = ["plugin-config.mjs", "workspace-config.mjs", "workspace-registry.mjs"];
+const WORKSPACE_CONFIG_SHARED_FILES = [
+  "plugin-config.mjs",
+  "workspace-config.mjs",
+  "workspace-registry.mjs",
+];
 
 const DOCTOR_SHARED_FILES = [
   ...HOOK_SHARED_FILES,
@@ -48,28 +52,82 @@ const DOCTOR_SHARED_FILES = [
 ];
 // opencode is imported in-process by its host, so it has no hook subprocess to
 // detach from: it takes the batch sender without the async write path.
-const OPENCODE_SHARED_FILES = [...HOOK_SHARED_FILES, ...SETUP_WIZARD_SHARED_FILES, ...MCP_PROXY_SHARED_FILES, ...BATCH_SHARED_FILES];
+const OPENCODE_SHARED_FILES = [
+  ...HOOK_SHARED_FILES,
+  ...SETUP_WIZARD_SHARED_FILES,
+  ...MCP_PROXY_SHARED_FILES,
+  ...BATCH_SHARED_FILES,
+];
 // dsh and zcode ship no setup entry point, so nothing there calls the wizard.
-const ZCODE_SHARED_FILES = [...HOOK_SHARED_FILES, ...MCP_PROXY_SHARED_FILES, ...BATCH_SHARED_FILES, ...ASYNC_WRITE_SHARED_FILES, "agent-hook-runtime.mjs", "agent-uri-guard.mjs"];
+const ZCODE_SHARED_FILES = [
+  ...HOOK_SHARED_FILES,
+  ...MCP_PROXY_SHARED_FILES,
+  ...BATCH_SHARED_FILES,
+  ...ASYNC_WRITE_SHARED_FILES,
+  "agent-hook-runtime.mjs",
+  "agent-uri-guard.mjs",
+];
 const DSH_SHARED_FILES = [...HOOK_SHARED_FILES, ...MCP_PROXY_SHARED_FILES];
-const PI_SHARED_FILES = [...HOOK_SHARED_FILES, ...SETUP_WIZARD_SHARED_FILES, ...BATCH_SHARED_FILES];
+const PI_SHARED_FILES = [
+  ...HOOK_SHARED_FILES,
+  ...SETUP_WIZARD_SHARED_FILES,
+  ...BATCH_SHARED_FILES,
+];
 // Agent Plugins 1.0 has no hooks: it is the proxy and nothing else.
-const AGENT_PLUGINS_SHARED_FILES = ["credentials.mjs", "debug-log.mjs", ...MCP_PROXY_SHARED_FILES];
+const AGENT_PLUGINS_SHARED_FILES = [
+  "credentials.mjs",
+  "debug-log.mjs",
+  ...MCP_PROXY_SHARED_FILES,
+];
 // openclaw assembles recall server-side, so it takes the recall pair alone.
 const OPENCLAW_SHARED_FILES = ["recall-compress-core.mjs", "recall-core.mjs"];
 export const TARGETS = [
-  { dir: join(ROOT, "examples", "claude-code-memory-plugin", "scripts", "shared"), files: DOCTOR_SHARED_FILES },
-  { dir: join(ROOT, "examples", "codex-memory-plugin", "scripts", "shared"), files: DOCTOR_SHARED_FILES },
-  { dir: join(ROOT, "examples", "opencode-plugin", "lib", "shared"), files: OPENCODE_SHARED_FILES },
-  { dir: join(ROOT, "examples", "dsh-memory-plugin", "shared"), files: DSH_SHARED_FILES },
-  { dir: join(ROOT, "examples", "pi-coding-agent-extension", "shared"), files: PI_SHARED_FILES },
-  { dir: join(ROOT, "examples", "omp-openviking-extension", "shared"), files: PI_SHARED_FILES },
-  { dir: join(ROOT, "examples", "zcode-memory-plugin", "scripts", "shared") , files: ZCODE_SHARED_FILES },
-  { dir: join(ROOT, "agent-plugins", "servers", "shared"), files: AGENT_PLUGINS_SHARED_FILES },
-  { dir: join(ROOT, "examples", "openclaw-plugin", "shared"), files: OPENCLAW_SHARED_FILES },
+  {
+    dir: join(
+      ROOT,
+      "examples",
+      "claude-code-memory-plugin",
+      "scripts",
+      "shared",
+    ),
+    files: DOCTOR_SHARED_FILES,
+  },
+  {
+    dir: join(ROOT, "examples", "codex-memory-plugin", "scripts", "shared"),
+    files: DOCTOR_SHARED_FILES,
+  },
+  {
+    dir: join(ROOT, "examples", "opencode-plugin", "lib", "shared"),
+    files: OPENCODE_SHARED_FILES,
+  },
+  {
+    dir: join(ROOT, "examples", "dsh-memory-plugin", "shared"),
+    files: DSH_SHARED_FILES,
+  },
+  {
+    dir: join(ROOT, "examples", "pi-coding-agent-extension", "shared"),
+    files: PI_SHARED_FILES,
+  },
+  {
+    dir: join(ROOT, "examples", "omp-openviking-extension", "shared"),
+    files: PI_SHARED_FILES,
+  },
+  {
+    dir: join(ROOT, "examples", "zcode-memory-plugin", "scripts", "shared"),
+    files: ZCODE_SHARED_FILES,
+  },
+  {
+    dir: join(ROOT, "agent-plugins", "servers", "shared"),
+    files: AGENT_PLUGINS_SHARED_FILES,
+  },
+  {
+    dir: join(ROOT, "examples", "openclaw-plugin", "shared"),
+    files: OPENCLAW_SHARED_FILES,
+  },
 ];
 
-export const GENERATED_HEADER = "// GENERATED FROM examples/memory-plugin-shared/lib. DO NOT EDIT.\n";
+export const GENERATED_HEADER =
+  "// GENERATED FROM examples/memory-plugin-shared/lib. DO NOT EDIT.\n";
 
 // Skills are copied verbatim — a generated-from banner ahead of the `---`
 // frontmatter would break every skill loader.
@@ -114,7 +172,11 @@ async function copySkill(skill, targetDir) {
   for (const file of (await readdir(sourceDir)).sort()) {
     const target = join(targetDir, skill);
     await mkdir(target, { recursive: true });
-    await writeFile(join(target, file), await readFile(join(sourceDir, file), "utf-8"), "utf-8");
+    await writeFile(
+      join(target, file),
+      await readFile(join(sourceDir, file), "utf-8"),
+      "utf-8",
+    );
   }
 }
 
@@ -141,7 +203,10 @@ async function main() {
 // Guard the sync behind the entrypoint check so sync.test.mjs can import the
 // target lists as the single source of truth instead of keeping its own copy —
 // the duplicated lists had drifted, and a drifted vendored file passed CI.
-if (process.argv[1] && fileURLToPath(import.meta.url) === resolvePath(process.argv[1])) {
+if (
+  process.argv[1] &&
+  fileURLToPath(import.meta.url) === resolvePath(process.argv[1])
+) {
   main().catch((err) => {
     process.stderr.write(`${err?.stack || err}\n`);
     process.exit(1);

@@ -127,20 +127,19 @@ async fn run_loop(client: HttpClient, uri: &str) -> Result<()> {
             }
 
             // Update image display based on current file
-            if let Some(image_path) = &app.current_preview_image {
-                if let Err(e) = image_previewer.display_image(image_path) {
+            if let Some(image_path) = &app.current_preview_image
+                && let Err(e) = image_previewer.display_image(image_path) {
                     // Show error in status bar
                     if !app.status_message_locked {
                         app.status_message = format!("Image preview error: {}", e);
                         app.status_message_time = Some(std::time::Instant::now());
                     }
                 }
-            }
         }
 
-        if ct_event::poll(std::time::Duration::from_millis(100))? {
-            if let Event::Key(key) = ct_event::read()? {
-                if key.kind == crossterm::event::KeyEventKind::Press {
+        if ct_event::poll(std::time::Duration::from_millis(100))?
+            && let Event::Key(key) = ct_event::read()?
+                && key.kind == crossterm::event::KeyEventKind::Press {
                     match key.code {
                         KeyCode::Char('L') | KeyCode::Char('l') => {
                             show_debug_logs = !show_debug_logs;
@@ -155,8 +154,6 @@ async fn run_loop(client: HttpClient, uri: &str) -> Result<()> {
                         }
                     }
                 }
-            }
-        }
 
         if app.should_quit {
             break;

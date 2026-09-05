@@ -11,7 +11,7 @@ OpenViking supports various resource types, categorized by functionality:
 **Documents**
 
 | Type | Extensions | Description |
-|------|------------|-------------|
+| ------ | ------------ | ------------- |
 | PDF | `.pdf` | Supports local parsing and MinerU API conversion |
 | Markdown | `.md`, `.markdown`, `.mdown`, `.mkd` | Native support, extracts structure and stores in segments |
 | HTML | `.html`, `.htm` | Cleans navigation/ads and extracts content, converts to Markdown |
@@ -29,7 +29,7 @@ OpenViking supports various resource types, categorized by functionality:
 **Code**
 
 | Type | Resource Name | Description |
-|------|---------------|-------------|
+| ------ | --------------- | ------------- |
 | Code Files | `*.py`, `*.js`, ... | Supports common programming languages (Python, JavaScript, Go, Rust, Java, etc.) |
 | Git Protocol Repository | `git://...` | Git URL, local directory, `.zip` package, respects `.gitignore` and automatically filters `.git`, `node_modules` and other directories |
 | Git Code Hosting Platform | `https://github.com/{org}/{repo}` | URLs from GitHub, GitLab, Bitbucket and other code hosting platforms |
@@ -38,7 +38,7 @@ OpenViking supports various resource types, categorized by functionality:
 **Media**
 
 | Type | Resource Name | Description |
-|------|---------------|-------------|
+| ------ | --------------- | ------------- |
 | Images | `*.jpg`, `*.jpeg`, `*.png`, `*.gif` ... | Various image formats, descriptions generated via VLM (Experimental) |
 | Video | `*.mp4`, `*.avi`, `*.mov` ... | Extracts keyframes and analyzes with VLM (Planning) |
 | Audio | `*.mp3`, `*.wav`, `*.m4a` ... | Performs speech transcription (Planning) |
@@ -60,7 +60,7 @@ OpenViking supports various resource types, categorized by functionality:
 **Whole Website (sitemap / RSS / Atom)**
 
 | Type | Resource Name | Description |
-|------|---------------|-------------|
+| ------ | --------------- | ------------- |
 | Sitemap | `https://host/sitemap.xml`, `https://host/sitemap-index.xml` | Parses the sitemap and ingests every listed page as a single resource tree (one child node per page). Nested `<sitemapindex>` is followed recursively. The whole site becomes one resource under `viking://resources/<host>`. |
 | RSS / Atom feed | `https://host/rss.xml`, `https://host/atom.xml`, `https://host/feed` | Parses RSS 2.0 / Atom and ingests each entry as a tree node; the article body is fetched from its link (or taken inline when the feed carries full content). |
 | Whole-site auto-discovery | `https://host` + `args.site=true` | Forces whole-site ingestion for a bare domain or ordinary page: discovers the site's sitemap/RSS via robots.txt, HTML `<link rel="alternate">` autodiscovery, and conventional paths, then ingests it. |
@@ -78,17 +78,20 @@ Source Input -> Parse -> Resource Tree Build -> Persistence -> Semantic Processi
 ```
 
 #### Stage 1: Parse
+
 - Uses `UnifiedResourceProcessor` to parse content based on resource type
 - Supports multiple formats: documents (PDF/Markdown/Word), spreadsheets (Excel/PPT), code, media files, etc.
 - Parsed results are written to a temporary VikingFS directory
 - Media files have descriptions generated via VLM (Vision Language Model)
 
 #### Stage 2: Resource Tree Build (TreeBuilder)
+
 - `TreeBuilder.finalize_from_temp()` scans the temporary directory structure
 - Builds resource tree nodes, handles URI conflicts (auto-renames)
 - Establishes relationships between directories and resources
 
 #### Stage 3: Persistence
+
 - Checks if target URI already exists
 - New resources: moves temporary files to permanent AGFS location
 - Existing resources: retains temporary tree for subsequent diff comparison
@@ -96,11 +99,13 @@ Source Input -> Parse -> Resource Tree Build -> Persistence -> Semantic Processi
 - Cleans up temporary directory
 
 #### Stage 4: Semantic Processing
+
 - **Summary Generation**: `Summarizer` generates L0 (abstract) and L1 (overview)
 - **Vector Index**: Vectorizes content for semantic search
 - Processed asynchronously via `SemanticQueue`, can wait for completion with `wait=True`
 
 #### Non-Wait Git Repository Imports
+
 - For Git repository sources with `wait=false`, OpenViking validates the repository, resolves the target URI, reserves the final `root_uri`, and returns before clone/parse/finalize completes.
 - The immediate response contains `status`, `root_uri`, and `task_id`; fetching, parsing, finalizing, and queue waiting continue in a persistent background task.
 - Poll `GET /api/v1/tasks/{task_id}` to inspect task state. Git resource import tasks use stages such as `queued`, `fetching`, `parsing`, `finalizing`, and `processing_queue`.
@@ -111,6 +116,7 @@ Source Input -> Parse -> Resource Tree Build -> Persistence -> Semantic Processi
 Resource incremental updates are implemented via the **Watch Task** mechanism:
 
 #### Watch Task Creation
+
 - Set `watch_interval > 0` (in minutes) when calling `add_resource` with a re-readable source, such as a URL, sitemap, or RSS feed, to create a watch task
 - Uploaded content referenced by `temp_file_id` is a static snapshot and cannot be watched; re-add it when the local source changes
 - You may specify `to` to define the target URI; if omitted, the task binds to the `root_uri` returned by this import
@@ -119,12 +125,14 @@ Resource incremental updates are implemented via the **Watch Task** mechanism:
 - Supports multi-tenant permission control (ROOT/ADMIN/USER permission levels)
 
 #### Task Scheduling & Execution
+
 - `WatchScheduler` checks for expired tasks every 60 seconds
 - Default concurrency control prevents duplicate execution
 - Expired tasks automatically re-invoke `add_resource`
 - Updates task's last execution time and next execution time
 
 #### Task Management Operations
+
 - **Create**: Creates new task or reactivates disabled task when `watch_interval > 0`
 - **Update**: Re-sets parameters for the same target URI
 - **Cancel**: Disables task when `watch_interval <= 0` for the same target URI
@@ -141,6 +149,7 @@ Add a resource to the knowledge base. The SDK supports local files/directories, 
 This endpoint is the core entry point for resource management, supporting adding resources from various sources with optional waiting for semantic processing and vectorization completion.
 
 **Processing Flow**:
+
 1. Identify and validate the resource source (URL or uploaded temporary file)
 2. Resolve the target URI
 3. Call the corresponding format Parser; `args.parse_mode` controls whether the converted Markdown body may be split
@@ -151,6 +160,7 @@ This endpoint is the core entry point for resource management, supporting adding
 8. Set up scheduled update task if `watch_interval` is specified
 
 **Code Entry Points**:
+
 - `sdk/python/openviking_sdk/client.py:AsyncHTTPClient.add_resource` - Python SDK entry
 - `openviking/server/routers/resources.py:add_resource` - HTTP router
 - `openviking/service/resource_service.py` - Core service implementation
@@ -161,7 +171,7 @@ This endpoint is the core entry point for resource management, supporting adding
 **Parameters**
 
 | Parameter | Type | Required | Default | Description |
-|-----------|------|----------|---------|-------------|
+| ----------- | ------ | ---------- | --------- | ------------- |
 | path | string | No | - | Remote resource URL (HTTP/HTTPS/Git). Mutually exclusive with `temp_file_id` |
 | temp_file_id | string | No | - | Temporary upload file ID. Mutually exclusive with `path` |
 | to | string | No | - | Final location for this import. If the target already exists, it is refreshed. Mutually exclusive with `parent` |
@@ -184,6 +194,7 @@ This endpoint is the core entry point for resource management, supporting adding
 | telemetry | TelemetryRequest | No | False | Whether to return telemetry data |
 
 **Additional Notes**:
+
 - `to` and `parent` cannot be specified together. `to` is the final save location: a missing target is created, and an existing target is refreshed. If the target is a directory, old files or subdirectories that are not produced by the current import may be removed. `parent` is the destination directory, and is the right option for adding a new resource under an existing directory; use `create_parent=true` or CLI `--parent-auto-create` when that directory should be created automatically. When the imported `root_uri` is the same as `to`, semantic and vector processing reuse unchanged content and process only the changed parts.
 - Creating a resource requires write access to its target parent; updating an existing explicit `to` requires write access to that target. These checks run before the task is queued. Automatic naming uses actual URI occupancy, so an unreadable collision selects `_1`, `_2`, and so on instead of attempting an overwrite.
 - With `wait=false`, `status=accepted` means that preflight passed and the task was queued; it does not mean resource processing has completed. Use the returned `task_id` for the final status.
@@ -580,7 +591,7 @@ task_id      uuid-xxx
 **Field Description**
 
 | Field | Type | Description |
-|-------|------|-------------|
+| ------- | ------ | ------------- |
 | `status` | string | Processing status: `accepted` means queued, `success` means completed successfully, and `error` means failed. |
 | `root_uri` | string | Final URI of the resource in OpenViking |
 | `task_id` | string | (Optional, only when `wait=false`) Task ID for polling `/api/v1/tasks/{task_id}`. Non-Git imports use it for queue tracking; Git repository imports use it for full background import tracking. |
@@ -635,12 +646,14 @@ Upload a temporary file for subsequent importing of local files via [add_resourc
 This endpoint uploads a local file into temporary server-managed storage and returns a `temp_file_id` for subsequent API calls. This is a helper endpoint typically not called directly but used automatically via the SDK or CLI.
 
 **Processing Flow**:
+
 1. Receive uploaded file
 2. Choose temporary upload backend based on `upload_mode`
 3. Save the file and record original filename
 4. Return temporary file ID
 
 **Code Entry Points**:
+
 - `openviking/server/routers/resources.py:temp_upload` - HTTP router
 - `openviking/service/resource_service.py` - Service implementation
 
@@ -649,7 +662,7 @@ This endpoint uploads a local file into temporary server-managed storage and ret
 **Parameters**
 
 | Parameter | Type | Required | Default | Description |
-|-----------|------|----------|---------|-------------|
+| ----------- | ------ | ---------- | --------- | ------------- |
 | file | UploadFile | Yes | - | Uploaded file (multipart/form-data) |
 | telemetry | bool | No | False | Whether to return telemetry data |
 | upload_mode | string | No | `"local"` | Temporary upload mode. `local` keeps the existing single-node behavior. `shared` uploads to shared temporary storage for distributed deployments. |

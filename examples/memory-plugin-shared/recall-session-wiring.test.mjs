@@ -15,13 +15,20 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const CALL_SITES = [
   {
     name: "ZCode hook forwards its derived session id",
-    file: join(ROOT, "examples", "zcode-memory-plugin", "scripts", "zcode-hook.mjs"),
+    file: join(
+      ROOT,
+      "examples",
+      "zcode-memory-plugin",
+      "scripts",
+      "zcode-hook.mjs",
+    ),
     pattern: /recallForPrompt\([^)]*\{[^}]*\bsessionId\b/s,
   },
   {
     name: "OpenCode recall forwards the mapped OV session id",
     file: join(ROOT, "examples", "opencode-plugin", "lib", "memory-recall.mjs"),
-    pattern: /sessionId:\s*sessionID\s*\?\s*sessionManager\.getMappedSessionId\(sessionID\)/,
+    pattern:
+      /sessionId:\s*sessionID\s*\?\s*sessionManager\.getMappedSessionId\(sessionID\)/,
   },
   {
     name: "pi recall forwards the sync manager's session id",
@@ -38,10 +45,16 @@ for (const { name, file, pattern } of CALL_SITES) {
 }
 
 test("pi wires the sync manager into the recall manager", async () => {
-  const source = await readFile(join(ROOT, "examples", "pi-coding-agent-extension", "index.ts"), "utf-8");
+  const source = await readFile(
+    join(ROOT, "examples", "pi-coding-agent-extension", "index.ts"),
+    "utf-8",
+  );
   // Only the session-id getter is asserted; later arguments (the recall
   // ledger) come and go without changing what this test is about.
-  assert.match(source, /new RecallManager\(\s*client,\s*config,\s*\(\)\s*=>\s*sync\.sessionId,/);
+  assert.match(
+    source,
+    /new RecallManager\(\s*client,\s*config,\s*\(\)\s*=>\s*sync\.sessionId,/,
+  );
   // The getter exists because SyncManager has to be constructed first.
   assert.ok(
     source.indexOf("new SyncManager(") < source.indexOf("new RecallManager("),
@@ -50,8 +63,14 @@ test("pi wires the sync manager into the recall manager", async () => {
 });
 
 test("OpenCode passes the session manager into the recall component", async () => {
-  const source = await readFile(join(ROOT, "examples", "opencode-plugin", "index.mjs"), "utf-8");
-  assert.match(source, /createMemoryRecall\(\{\s*config,\s*sessionManager\s*\}\)/);
+  const source = await readFile(
+    join(ROOT, "examples", "opencode-plugin", "index.mjs"),
+    "utf-8",
+  );
+  assert.match(
+    source,
+    /createMemoryRecall\(\{\s*config,\s*sessionManager\s*\}\)/,
+  );
 });
 
 // Forwarding a session id makes the server spend the query-expansion fuse, so

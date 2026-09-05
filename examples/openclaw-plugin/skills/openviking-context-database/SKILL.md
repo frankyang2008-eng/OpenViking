@@ -40,7 +40,7 @@ Use this skill after `@openviking/openclaw-plugin` is installed and configured. 
 OpenClaw owns agent execution, prompts, and tool invocation. OpenViking owns long-lived context:
 
 | Layer | Current behavior |
-|---|---|
+| --- | --- |
 | `assemble` | Rebuilds compressed session history from OpenViking and injects relevant recall into the latest user message. |
 | `afterTurn` | Appends only the new turn to the OpenViking session; may trigger async commit when `pending_tokens >= tokenBudget * commitTokenThresholdRatio`. |
 | `compact` | Runs `commit(wait=true)`, waits for archive/extraction completion, and reads back latest archive overview. |
@@ -61,7 +61,7 @@ openclaw config get plugins.slots.contextEngine
 Core config lives under `plugins.entries.openviking.config`:
 
 | Field | Default | Purpose |
-|---|---:|---|
+| --- | ---: | --- |
 | `baseUrl` | `http://127.0.0.1:1933` | OpenViking HTTP endpoint. Can also come from `OPENVIKING_BASE_URL` / `OPENVIKING_URL`. |
 | `apiKey` | empty | Optional API key. Can also come from `OPENVIKING_API_KEY`. |
 | `peer_role` | `none` | Memory scope: `none` (shared `viking://user/<user_id>/memories`), `assistant` (assistant-attributed memory under `.../peers/<assistant_id>/memories`), or `sender` (sender-attributed memory under `.../peers/<sender_id>/memories`). Legacy `person` is accepted as `sender`. |
@@ -105,7 +105,7 @@ openclaw openviking setup --base-url <URL> --api-key <KEY> --force-slot --json
 ## Tool Selection Guide
 
 | User intent | Use |
-|---|---|
+| --- | --- |
 | “What did I say before?”, preferences, decisions, known facts | `memory_recall` |
 | “Remember this now” | `memory_store` |
 | “Forget X” | `memory_forget` |
@@ -124,7 +124,7 @@ openclaw openviking setup --base-url <URL> --api-key <KEY> --force-slot --json
 Semantic search over memories/resources. Use archive tools for session history.
 
 | Parameter | Required | Description |
-|---|---|---|
+| --- | --- | --- |
 | `query` | Yes | Search query. |
 | `limit` | No | Max selected results. Defaults to `recallLimit`. |
 | `scoreThreshold` | No | Score threshold `0..1`. Defaults to `recallScoreThreshold`. |
@@ -138,7 +138,7 @@ Notes: when `targetUri` is omitted, the plugin resolves a search plan from `reso
 Persist text immediately by writing a session and committing with `wait=true`.
 
 | Parameter | Required | Description |
-|---|---|---|
+| --- | --- | --- |
 | `text` | Yes | Information source text. |
 | `role` | No | Session role, default `user`. |
 | `sessionId` | No | Existing OpenViking/OpenClaw session reference. If omitted, a temporary `memory-store-*` session is created. |
@@ -148,7 +148,7 @@ Persist text immediately by writing a session and committing with `wait=true`.
 Delete a memory.
 
 | Parameter | Required | Description |
-|---|---|---|
+| --- | --- | --- |
 | `uri` | No | Exact `viking://user/.../memories/...` memory URI. Non-memory URIs are refused. |
 | `query` | No | Search query when `uri` is unknown. |
 | `targetUri` | No | Search scope URI, default `targetUri`. |
@@ -162,7 +162,7 @@ If query mode finds multiple candidates, report candidates and ask the user to c
 Keyword grep across archived original conversation messages of the current session.
 
 | Parameter | Required | Description |
-|---|---|---|
+| --- | --- | --- |
 | `query` | Yes | Single keyword or short phrase; prefer names, dates, file paths, commands, or distinctive nouns. |
 | `archiveId` | No | Restrict to one archive, e.g. `archive_002`. |
 
@@ -183,7 +183,7 @@ Import resources into `viking://resources/...`.
 This agent tool is disabled by default. Prefer manual `/add-resource` for resource ingestion. If `enableAddResourceTool=true` exposes the tool, use it only for explicit import/index requests and never as part of search/retrieval optimization.
 
 | Parameter | Required | Description |
-|---|---|---|
+| --- | --- | --- |
 | `source` | Yes | Local path, OpenClaw media attachment path, directory path, public URL, or Git URL. |
 | `to` | No | Exact target URI, e.g. `viking://resources/project-docs`. Mutually exclusive with `parent`. |
 | `parent` | No | Parent URI under `viking://resources`. Mutually exclusive with `to`. |
@@ -199,7 +199,7 @@ The current OpenClaw tool exposes the parameters above. The underlying client al
 Import Agent Skills into `viking://~/skills/...`.
 
 | Parameter | Required | Description |
-|---|---|---|
+| --- | --- | --- |
 | `source` | No | Local `SKILL.md` path or skill directory. Exactly one of `source` or `data` is required. |
 | `data` | No | Raw `SKILL.md` content or an MCP tool dict. Exactly one of `source` or `data` is required. |
 | `wait` | No | Wait for processing completion. |
@@ -210,7 +210,7 @@ Agent Skill best practice: a skill should have precise frontmatter (`name`, trig
 ### `ov_search`
 
 | Parameter | Required | Description |
-|---|---|---|
+| --- | --- | --- |
 | `query` | Yes | Search query. |
 | `uri` | No | Search URI. Defaults to resources plus agent skills. |
 | `limit` | No | Max results per scope, default `10`. |
@@ -230,7 +230,7 @@ Read full content for one exact OpenViking virtual URI through `/api/v1/content/
 ### `ov_recall_trace`
 
 | Parameter | Required | Description |
-|---|---|---|
+| --- | --- | --- |
 | `turn` | No | `latest` or `all`, default `latest`. |
 | `traceId` | No | Exact trace ID. |
 | `sessionId` / `sessionKey` / `ovSessionId` | No | Filter by OpenClaw/OpenViking session. |
@@ -247,7 +247,7 @@ Trace records exist only when `traceRecall=true`; persisted lookup requires `tra
 Use when a preview contains `viking://session/<session_id>/tool-results/<tool_result_id>`.
 
 | Tool | Parameters |
-|---|---|
+| --- | --- |
 | `openviking_tool_result_list` | `tool_name?`, `limit?` (default `50`) |
 | `openviking_tool_result_search` | `tool_output_ref`, `query`, `limit?` (default `20`), `context_chars?` (default `300`) |
 | `openviking_tool_result_read` | `tool_output_ref`, `offset?` (default `0`), `limit?` (default `20000`, `-1` accepted by server path for all remaining content) |
@@ -268,7 +268,7 @@ Command parsers support quoted args and flags. Resource-only flags are rejected 
 ## Troubleshooting
 
 | Symptom | Likely cause | First action |
-|---|---|---|
+| --- | --- | --- |
 | `configured=false` | Setup did not persist config | Re-run `openclaw openviking setup ... --json`; branch on JSON `error`. |
 | `slotActive=false` | Another context engine owns the slot or gateway has stale state | Inspect `plugins.slots.contextEngine`; use `--force-slot` only after user confirms. |
 | `health.ok=false` | Server unreachable or wrong `baseUrl` / key | Check `baseUrl`, network, `/health`, and auth. |

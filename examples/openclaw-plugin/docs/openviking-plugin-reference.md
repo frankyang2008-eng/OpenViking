@@ -407,7 +407,7 @@ Manifest 中声明了 runtime slash alias：
 
 | 参数 | 说明 |
 | --- | --- |
-| `--turn latest|all` | 查询最近一轮或全部，默认通常为 latest。 |
+| `--turn latest | all` | 查询最近一轮或全部，默认通常为 latest。 |
 | `--trace-id ID` | 精确 trace id。 |
 | `--session-id ID` | OpenClaw session id。 |
 | `--session-key KEY` | OpenClaw session key。 |

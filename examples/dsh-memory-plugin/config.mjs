@@ -1,4 +1,7 @@
-import { buildUserAgent, resolveOpenVikingCredentials } from "./shared/credentials.mjs";
+import {
+  buildUserAgent,
+  resolveOpenVikingCredentials,
+} from "./shared/credentials.mjs";
 import { resolveEffectivePeerId } from "./shared/workspace-peer.mjs";
 
 export const PLUGIN_VERSION = "0.3.0";
@@ -43,7 +46,11 @@ const DEFAULT_CONFIG = Object.freeze({
   mcpToolCallTimeoutMs: 60000,
 });
 
-export function resolveConfig(input = {}, env = process.env, cwd = process.cwd()) {
+export function resolveConfig(
+  input = {},
+  env = process.env,
+  cwd = process.cwd(),
+) {
   const credentials = resolveOpenVikingCredentials(env);
   const explicitPeerId = input.peerId || credentials.peerId;
   const config = {
@@ -57,8 +64,11 @@ export function resolveConfig(input = {}, env = process.env, cwd = process.cwd()
     explicitPeerId,
     userAgent: buildUserAgent("dsh", PLUGIN_VERSION),
     harness: "dsh",
-    recallLimitConfigured: Object.prototype.hasOwnProperty.call(input, "recallLimit"),
-    recallQueryExpansionConfigured: Object.prototype.hasOwnProperty.call(input, "recallQueryExpansion"),
+    recallLimitConfigured: Object.hasOwn(input, "recallLimit"),
+    recallQueryExpansionConfigured: Object.hasOwn(
+      input,
+      "recallQueryExpansion",
+    ),
   };
 
   if (env.OPENVIKING_WORKSPACE_PEER !== undefined) {
@@ -79,14 +89,23 @@ export function resolveConfig(input = {}, env = process.env, cwd = process.cwd()
     config.recallLimitConfigured = true;
   }
 
-  config.endpoint = String(config.endpoint || DEFAULT_CONFIG.endpoint).replace(/\/+$/, "");
+  config.endpoint = String(config.endpoint || DEFAULT_CONFIG.endpoint).replace(
+    /\/+$/,
+    "",
+  );
   config.workspacePeer = config.workspacePeer !== false;
   const effectivePeer = resolveEffectivePeerId({ cfg: config, cwd });
   config.peerId = effectivePeer.peerId;
   config.legacyPeerId = effectivePeer.legacyPeerId;
   config.recallPeerScope = config.recallPeerScope === "actor" ? "actor" : "all";
-  config.recallQueryExpansion = config.recallQueryExpansion === "off" ? "off" : "auto";
-  config.recallLimit = clampInteger(config.recallLimit, 1, 50, DEFAULT_CONFIG.recallLimit);
+  config.recallQueryExpansion =
+    config.recallQueryExpansion === "off" ? "off" : "auto";
+  config.recallLimit = clampInteger(
+    config.recallLimit,
+    1,
+    50,
+    DEFAULT_CONFIG.recallLimit,
+  );
   config.recallMaxContentChars = clampInteger(
     config.recallMaxContentChars,
     100,
@@ -153,7 +172,8 @@ export function resolveConfig(input = {}, env = process.env, cwd = process.cwd()
     600000,
     DEFAULT_CONFIG.mcpToolCallTimeoutMs,
   );
-  config.captureMode = config.captureMode === "keyword" ? "keyword" : "semantic";
+  config.captureMode =
+    config.captureMode === "keyword" ? "keyword" : "semantic";
   config.syncTurns = config.syncTurns !== false;
   config.captureAssistantTurns = config.captureAssistantTurns !== false;
   config.captureToolResults = config.captureToolResults === true;
@@ -162,7 +182,9 @@ export function resolveConfig(input = {}, env = process.env, cwd = process.cwd()
 }
 
 function environmentBoolean(value, fallback) {
-  const normalized = String(value || "").trim().toLowerCase();
+  const normalized = String(value || "")
+    .trim()
+    .toLowerCase();
   if (["0", "false", "no", "off"].includes(normalized)) return false;
   if (["1", "true", "yes", "on"].includes(normalized)) return true;
   return fallback;

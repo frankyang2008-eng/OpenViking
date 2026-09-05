@@ -6,9 +6,9 @@ import asyncio
 import pytest
 
 from openviking.core.namespace import canonical_user_root
+from openviking.privacy.service import UserPrivacyConfigService
 from openviking.privacy.skill_extractor import extract_skill_privacy_values
 from openviking.privacy.skill_placeholder import placeholderize_skill_content_with_blocks
-from openviking.privacy.service import UserPrivacyConfigService
 from openviking.server.identity import RequestContext, Role
 from openviking.storage.viking_fs import VikingFS
 from openviking_cli.exceptions import NotFoundError

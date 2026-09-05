@@ -1,16 +1,17 @@
 import type { OpenVikingClient } from "./client.js";
 import type { ParsedMemoryOpenVikingConfig } from "./config.js";
 import type { RuntimeQueryConfigStore } from "./query-config.js";
-import {
-  AUTO_RECALL_SOURCE_MARKER,
-} from "./auto-recall.js";
+import { AUTO_RECALL_SOURCE_MARKER } from "./auto-recall.js";
 import {
   compileSessionPatterns,
   getCaptureDecision,
   shouldBypassSession,
 } from "./text-utils.js";
 import type { RecallTraceEntry } from "./recall-trace.js";
-import { estimateAgentMessageTokens, estimateAgentMessagesTokens } from "./token-estimator.js";
+import {
+  estimateAgentMessageTokens,
+  estimateAgentMessagesTokens,
+} from "./token-estimator.js";
 import { openClawSessionToOvStorageId } from "./routing/identity-routing.js";
 import type { AgentMessage } from "./services/context-message-adapter.js";
 import {
@@ -61,7 +62,11 @@ type CompactResult = {
 
 type ContextEngine = {
   info: ContextEngineInfo;
-  ingest: (params: { sessionId: string; message: AgentMessage; isHeartbeat?: boolean }) => Promise<IngestResult>;
+  ingest: (params: {
+    sessionId: string;
+    message: AgentMessage;
+    isHeartbeat?: boolean;
+  }) => Promise<IngestResult>;
   ingestBatch?: (params: {
     sessionId: string;
     messages: AgentMessage[];
@@ -130,7 +135,15 @@ function msgTokenEstimate(msg: AgentMessage): number {
   return estimateAgentMessageTokens(msg);
 }
 
-function messageDigest(messages: AgentMessage[], maxCharsPerMsg = 2000): Array<{role: string; content: string; tokens: number; truncated: boolean}> {
+function messageDigest(
+  messages: AgentMessage[],
+  maxCharsPerMsg = 2000,
+): Array<{
+  role: string;
+  content: string;
+  tokens: number;
+  truncated: boolean;
+}> {
   return messages.map((msg) => {
     const m = msg as Record<string, unknown>;
     const role = String(m.role ?? "unknown");
@@ -142,8 +155,10 @@ function messageDigest(messages: AgentMessage[], maxCharsPerMsg = 2000): Array<{
       text = (raw as Record<string, unknown>[])
         .map((b) => {
           if (b.type === "text") return String(b.text ?? "");
-          if (b.type === "toolCall") return `[toolCall: ${String(b.name)}(${JSON.stringify(b.arguments ?? {}).slice(0, 200)})]`;
-          if (b.type === "toolResult") return `[toolResult: ${JSON.stringify(b.content ?? "").slice(0, 200)}]`;
+          if (b.type === "toolCall")
+            return `[toolCall: ${String(b.name)}(${JSON.stringify(b.arguments ?? {}).slice(0, 200)})]`;
+          if (b.type === "toolResult")
+            return `[toolResult: ${JSON.stringify(b.content ?? "").slice(0, 200)}]`;
           return `[${String(b.type)}]`;
         })
         .join("\n");
@@ -218,7 +233,10 @@ function prependTextToMessageContent(content: unknown, text: string): unknown {
   return text;
 }
 
-function prependRecallToLatestUserMessage(messages: AgentMessage[], recallBlock: string): AgentMessage[] {
+function prependRecallToLatestUserMessage(
+  messages: AgentMessage[],
+  recallBlock: string,
+): AgentMessage[] {
   const latest = messages.at(-1);
   if (!latest || latest.role !== "user" || hasAutoRecallBlock(latest)) {
     return messages;
@@ -232,9 +250,17 @@ function prependRecallToLatestUserMessage(messages: AgentMessage[], recallBlock:
   ];
 }
 
-function emitDiag(log: Logger, stage: string, sessionId: string, data: Record<string, unknown>, enabled = true): void {
+function emitDiag(
+  log: Logger,
+  stage: string,
+  sessionId: string,
+  data: Record<string, unknown>,
+  enabled = true,
+): void {
   if (!enabled) return;
-  log.info(`openviking: diag ${JSON.stringify({ ts: Date.now(), stage, sessionId, data })}`);
+  log.info(
+    `openviking: diag ${JSON.stringify({ ts: Date.now(), stage, sessionId, data })}`,
+  );
 }
 
 function validTokenBudget(raw: unknown): number | undefined {
@@ -252,7 +278,11 @@ export function createMemoryOpenVikingContextEngine(params: {
   logger: Logger;
   getClient: () => Promise<OpenVikingClient>;
   /** Extra args help match hook-populated routing when OpenClaw provides sessionKey / OV session id. */
-  resolveAgentId: (sessionId: string, sessionKey?: string, ovSessionId?: string) => string;
+  resolveAgentId: (
+    sessionId: string,
+    sessionKey?: string,
+    ovSessionId?: string,
+  ) => string;
   rememberSessionAgentId?: (ctx: {
     agentId?: string;
     sessionId?: string;
@@ -260,7 +290,10 @@ export function createMemoryOpenVikingContextEngine(params: {
     ovSessionId?: string;
   }) => void;
   queryConfigStore?: RuntimeQueryConfigStore;
-  traceRecorder?: { record(entry: RecallTraceEntry): void; recordAndFlush?: (entry: RecallTraceEntry) => Promise<unknown> };
+  traceRecorder?: {
+    record(entry: RecallTraceEntry): void;
+    recordAndFlush?: (entry: RecallTraceEntry) => Promise<unknown>;
+  };
 }): ContextEngineWithCommit {
   const {
     id,
@@ -276,12 +309,19 @@ export function createMemoryOpenVikingContextEngine(params: {
   } = params;
 
   const diagEnabled = cfg.emitStandardDiagnostics;
-  const bypassSessionPatterns = compileSessionPatterns(cfg.bypassSessionPatterns);
-  const diag = (stage: string, sessionId: string, data: Record<string, unknown>) =>
-    emitDiag(logger, stage, sessionId, data, diagEnabled);
+  const bypassSessionPatterns = compileSessionPatterns(
+    cfg.bypassSessionPatterns,
+  );
+  const diag = (
+    stage: string,
+    sessionId: string,
+    data: Record<string, unknown>,
+  ) => emitDiag(logger, stage, sessionId, data, diagEnabled);
 
-  const isBypassedSession = (params: { sessionId?: string; sessionKey?: string }): boolean =>
-    shouldBypassSession(params, bypassSessionPatterns);
+  const isBypassedSession = (params: {
+    sessionId?: string;
+    sessionKey?: string;
+  }): boolean => shouldBypassSession(params, bypassSessionPatterns);
 
   async function doCommitOVSession(params: {
     sessionId: string;
@@ -300,7 +340,9 @@ export function createMemoryOpenVikingContextEngine(params: {
     });
   }
 
-  function extractSessionKey(runtimeContext: Record<string, unknown> | undefined): string | undefined {
+  function extractSessionKey(
+    runtimeContext: Record<string, unknown> | undefined,
+  ): string | undefined {
     if (!runtimeContext) {
       return undefined;
     }
@@ -312,7 +354,8 @@ export function createMemoryOpenVikingContextEngine(params: {
     sessionKey?: string;
     runtimeContext?: Record<string, unknown>;
   }): string | undefined {
-    const direct = typeof params.sessionKey === "string" ? params.sessionKey.trim() : "";
+    const direct =
+      typeof params.sessionKey === "string" ? params.sessionKey.trim() : "";
     if (direct) {
       return direct;
     }
@@ -358,11 +401,12 @@ export function createMemoryOpenVikingContextEngine(params: {
     },
 
     async assemble(assembleParams): Promise<AssembleResult> {
-      const tokenBudget = validTokenBudget(assembleParams.tokenBudget) ?? 128_000;
+      const tokenBudget =
+        validTokenBudget(assembleParams.tokenBudget) ?? 128_000;
       const isMainAssemble =
-        Object.prototype.hasOwnProperty.call(assembleParams, "availableTools") ||
-        Object.prototype.hasOwnProperty.call(assembleParams, "citationsMode") ||
-        Object.prototype.hasOwnProperty.call(assembleParams, "prompt");
+        Object.hasOwn(assembleParams, "availableTools") ||
+        Object.hasOwn(assembleParams, "citationsMode") ||
+        Object.hasOwn(assembleParams, "prompt");
       return assembleOpenVikingSession({
         sessionId: assembleParams.sessionId,
         sessionKey: resolveSessionKey(assembleParams),
@@ -390,21 +434,27 @@ export function createMemoryOpenVikingContextEngine(params: {
     // Capture still happens in afterTurn (host calls it per LLM call + on finalize);
     // commitTurn only acknowledges the accepted turn so OpenClaw drains its outbox.
     // ponytail: in-memory key set, not durable across restarts — the host outbox is.
-    async commitTurn({ advancementKey, sessionId }): Promise<{ status: "committed" | "duplicate" }> {
+    async commitTurn({
+      advancementKey,
+      sessionId,
+    }): Promise<{ status: "committed" | "duplicate" }> {
       if (committedTurnKeys.has(advancementKey)) {
         diag("commitTurn_duplicate", sessionId, { advancementKey });
         return { status: "duplicate" };
       }
       committedTurnKeys.add(advancementKey);
       if (committedTurnKeys.size > 1024) {
-        committedTurnKeys.delete(committedTurnKeys.values().next().value as string);
+        committedTurnKeys.delete(
+          committedTurnKeys.values().next().value as string,
+        );
       }
       diag("commitTurn", sessionId, { advancementKey });
       return { status: "committed" };
     },
 
     async afterTurn(afterTurnParams): Promise<void> {
-      const tokenBudget = validTokenBudget(afterTurnParams.tokenBudget) ?? 128_000;
+      const tokenBudget =
+        validTokenBudget(afterTurnParams.tokenBudget) ?? 128_000;
       await afterTurnOpenVikingSession({
         sessionId: afterTurnParams.sessionId,
         sessionKey: resolveSessionKey(afterTurnParams),
@@ -424,7 +474,8 @@ export function createMemoryOpenVikingContextEngine(params: {
     },
 
     async compact(compactParams): Promise<CompactResult> {
-      const tokenBudget = validTokenBudget(compactParams.tokenBudget) ?? 128_000;
+      const tokenBudget =
+        validTokenBudget(compactParams.tokenBudget) ?? 128_000;
       return compactOpenVikingSession({
         sessionId: compactParams.sessionId,
         sessionKey: resolveSessionKey(compactParams),

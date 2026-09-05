@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, Mock
 
 import pytest
 import pytest_asyncio
+from openviking.service.task_work_index import TASK_WORK_ID_FIELD
 
 from openviking.resource.feishu_watch_auth import FeishuAppCredentials
 from openviking.resource.watch_manager import WatchManager
@@ -16,7 +17,6 @@ from openviking.server.identity import RequestContext, Role
 from openviking.service import resource_service as resource_service_module
 from openviking.service.resource_service import ResourceService
 from openviking.service.task_tracker import TaskStatus
-from openviking.service.task_work_index import TASK_WORK_ID_FIELD
 from openviking.storage.content_write import ContentWriteCoordinator
 from openviking.storage.queuefs.add_resource_msg import AddResourceMsg
 from openviking.storage.queuefs.add_resource_processor import AddResourceProcessor

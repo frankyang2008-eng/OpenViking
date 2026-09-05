@@ -10,6 +10,7 @@ pub const DEFAULT_CUSTOM_URL: &str = "http://127.0.0.1:1933";
 pub const GATEWAY_TOKEN_HEADER: &str = "X-Gateway-Token";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Default)]
 pub struct UploadConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ignore_dirs: Option<String>,
@@ -25,15 +26,6 @@ impl UploadConfig {
     }
 }
 
-impl Default for UploadConfig {
-    fn default() -> Self {
-        Self {
-            ignore_dirs: None,
-            include: None,
-            exclude: None,
-        }
-    }
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {

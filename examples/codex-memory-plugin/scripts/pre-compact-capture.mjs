@@ -26,8 +26,18 @@
 
 import { loadConfig } from "./config.mjs";
 import { createLogger } from "./debug-log.mjs";
-import { catchUpTurns, commitOvSession, hasCaptureKeyword, makeFetchJSON } from "./ov-session.mjs";
-import { clearEnded, loadState, saveState, withSessionLock } from "./session-state.mjs";
+import {
+  catchUpTurns,
+  commitOvSession,
+  hasCaptureKeyword,
+  makeFetchJSON,
+} from "./ov-session.mjs";
+import {
+  clearEnded,
+  loadState,
+  saveState,
+  withSessionLock,
+} from "./session-state.mjs";
 import { resolveEffectivePeerId } from "./shared/workspace-peer.mjs";
 
 let cfg = loadConfig();
@@ -42,7 +52,9 @@ const LOCK_WAIT_MS = (() => {
 
 const HOOK_STARTED_AT = Date.now();
 
-const { fetchJSONRes, fetchJSON } = makeFetchJSON(cfg, { getActorPeerId: () => activePeerId });
+const { fetchJSONRes, fetchJSON } = makeFetchJSON(cfg, {
+  getActorPeerId: () => activePeerId,
+});
 
 function output(obj) {
   process.stdout.write(JSON.stringify(obj) + "\n");
@@ -54,8 +66,16 @@ function noop(message) {
 
 async function compact(sessionId, transcriptPath, trigger, cwd, heartbeat) {
   const state = await loadState(sessionId);
-  activePeerId = cfg.peerId || state.workspacePeerId || resolveEffectivePeerId({ cfg, cwd }).peerId;
-  log("start", { sessionId, transcriptPath, trigger, hasPeer: Boolean(activePeerId) });
+  activePeerId =
+    cfg.peerId ||
+    state.workspacePeerId ||
+    resolveEffectivePeerId({ cfg, cwd }).peerId;
+  log("start", {
+    sessionId,
+    transcriptPath,
+    trigger,
+    hasPeer: Boolean(activePeerId),
+  });
 
   const health = await fetchJSON("/health");
   if (!health) {
@@ -63,39 +83,52 @@ async function compact(sessionId, transcriptPath, trigger, cwd, heartbeat) {
     return "";
   }
 
-  const { newTurns, added, ovSessionId, skipped, unreadable } = await catchUpTurns({
-    state,
-    transcriptPath,
-    fetchJSONRes,
-    activePeerId,
-    cfg,
-    log,
-    logError,
-    heartbeat,
-    // Keyword mode only gates sessions that have nothing live yet; once an OV
-    // session exists we always finish it before compaction.
-    shouldSend: (turns) =>
-      Boolean(state.ovSessionId) || cfg.captureMode !== "keyword" || hasCaptureKeyword(turns),
-  });
+  const { newTurns, added, ovSessionId, skipped, unreadable } =
+    await catchUpTurns({
+      state,
+      transcriptPath,
+      fetchJSONRes,
+      activePeerId,
+      cfg,
+      log,
+      logError,
+      heartbeat,
+      // Keyword mode only gates sessions that have nothing live yet; once an OV
+      // session exists we always finish it before compaction.
+      shouldSend: (turns) =>
+        Boolean(state.ovSessionId) ||
+        cfg.captureMode !== "keyword" ||
+        hasCaptureKeyword(turns),
+    });
 
   if (added > 0) log("appended_catchup", { ovSessionId, added });
 
   // An unreadable transcript is not an empty one: the tail turns may still be
   // there. Keep the live id and the marker so a later commit retries.
   if (unreadable) {
-    logError("transcript_unreadable", { ovSessionId: state.ovSessionId, transcriptPath });
+    logError("transcript_unreadable", {
+      ovSessionId: state.ovSessionId,
+      transcriptPath,
+    });
     await saveState(state, { touch: false });
     return `pre-compact transcript unreadable for ${state.ovSessionId || sessionId}; state preserved for retry`;
   }
 
   if (newTurns.length > 0 && !skipped && added < newTurns.length) {
-    logError("append_failed_keep_state", { ovSessionId, attempted: newTurns.length, added });
+    logError("append_failed_keep_state", {
+      ovSessionId,
+      attempted: newTurns.length,
+      added,
+    });
     await saveState(state);
     return `pre-compact catch-up append incomplete for ${ovSessionId}; state preserved for retry`;
   }
 
   if (!state.ovSessionId) {
-    log("skip", { stage: "commit", reason: "no OV session for this codex session" });
+    log("skip", {
+      stage: "commit",
+      reason: "no OV session for this codex session",
+    });
     await saveState(state);
     return "";
   }
@@ -115,8 +148,10 @@ async function compact(sessionId, transcriptPath, trigger, cwd, heartbeat) {
       error: commit.error?.message || commit.error?.code,
     });
     await saveState(state);
-    return `pre-compact commit attempted on ${liveOvSessionId}; result unavailable` +
-      `${commit.traceId ? ` (trace_id=${commit.traceId})` : ""} (state preserved for retry)`;
+    return (
+      `pre-compact commit attempted on ${liveOvSessionId}; result unavailable` +
+      `${commit.traceId ? ` (trace_id=${commit.traceId})` : ""} (state preserved for retry)`
+    );
   }
 
   const traceId = commit.traceId || commit.result?.trace_id || "";
@@ -133,7 +168,10 @@ async function compact(sessionId, transcriptPath, trigger, cwd, heartbeat) {
   state.ovSessionId = null;
   await saveState(state);
 
-  return `OpenViking session ${liveOvSessionId} is committed` + (traceId ? ` (trace_id=${traceId})` : "");
+  return (
+    `OpenViking session ${liveOvSessionId} is committed` +
+    (traceId ? ` (trace_id=${traceId})` : "")
+  );
 }
 
 async function main() {
@@ -159,7 +197,10 @@ async function main() {
   const trigger = input.trigger || "auto";
   // The workspace layer belongs to the session's directory, which only the
   // payload knows; see loadConfig for why re-resolving this late is safe.
-  const cwd = typeof input.cwd === "string" && input.cwd.trim() ? input.cwd : process.cwd();
+  const cwd =
+    typeof input.cwd === "string" && input.cwd.trim()
+      ? input.cwd
+      : process.cwd();
   cfg = loadConfig(cwd);
 
   // Compaction means the thread is running, so any earlier end marker is stale.
@@ -167,15 +208,22 @@ async function main() {
 
   const outcome = await withSessionLock(
     sessionId,
-    ({ heartbeat }) => compact(sessionId, transcriptPath, trigger, cwd, heartbeat),
+    ({ heartbeat }) =>
+      compact(sessionId, transcriptPath, trigger, cwd, heartbeat),
     { waitMs: LOCK_WAIT_MS },
   );
   if (outcome.skipped) {
-    logError("lock_timeout", `another writer holds ${sessionId}; leaving state untouched`);
+    logError(
+      "lock_timeout",
+      `another writer holds ${sessionId}; leaving state untouched`,
+    );
     noop();
     return;
   }
   noop(outcome.value);
 }
 
-main().catch((err) => { logError("uncaught", err); noop(); });
+main().catch((err) => {
+  logError("uncaught", err);
+  noop();
+});

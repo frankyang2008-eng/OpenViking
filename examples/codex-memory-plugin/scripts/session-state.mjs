@@ -22,7 +22,17 @@
  */
 
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, readFile, readdir, rename, rm, rmdir, stat, utimes, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  readFile,
+  readdir,
+  rename,
+  rm,
+  rmdir,
+  stat,
+  utimes,
+  writeFile,
+} from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { deriveCodexSessionId } from "./shared/session-model.mjs";
@@ -158,9 +168,10 @@ export async function saveState(state, { touch = true } = {}) {
   await mkdir(getStateDir(), { recursive: true });
   const next = {
     ...state,
-    lastUpdatedAt: touch || typeof state.lastUpdatedAt !== "number"
-      ? Date.now()
-      : state.lastUpdatedAt,
+    lastUpdatedAt:
+      touch || typeof state.lastUpdatedAt !== "number"
+        ? Date.now()
+        : state.lastUpdatedAt,
   };
   // Atomic write (tmpfile + rename) so a crash mid-write can't leave a
   // truncated/corrupt state file. See DESIGN.md "State file schema".
@@ -173,7 +184,9 @@ export async function saveState(state, { touch = true } = {}) {
 export async function clearState(codexSessionId) {
   try {
     await rm(statePath(codexSessionId), { force: true });
-  } catch { /* best effort */ }
+  } catch {
+    /* best effort */
+  }
   await clearEnded(codexSessionId);
 }
 
@@ -195,14 +208,18 @@ export async function markEnded(codexSessionId) {
     await mkdir(getStateDir(), { recursive: true });
     while (true) {
       try {
-        await writeFile(endedPath(codexSessionId, ts), String(ts), { flag: "wx" });
+        await writeFile(endedPath(codexSessionId, ts), String(ts), {
+          flag: "wx",
+        });
         break;
       } catch (err) {
         if (err?.code !== "EEXIST") throw err;
         ts += 1;
       }
     }
-  } catch { /* best effort */ }
+  } catch {
+    /* best effort */
+  }
   return ts;
 }
 
@@ -256,7 +273,10 @@ const LOCK_POLL_MS = 100;
  * that died mid-takeover ages out like the lock itself.
  */
 async function claimStaleLock(dir, ownerFile, token, seen, staleMs) {
-  const key = createHash("sha256").update(seen ?? "\u0000unstamped").digest("hex").slice(0, 32);
+  const key = createHash("sha256")
+    .update(seen ?? "\u0000unstamped")
+    .digest("hex")
+    .slice(0, 32);
   const claimDir = join(dir, `claim-${key}`);
   try {
     await mkdir(claimDir);
@@ -294,7 +314,11 @@ async function claimStaleLock(dir, ownerFile, token, seen, staleMs) {
  * may be momentarily absent, or a racer would claim the lock alongside the
  * taker. Instead the takers race for a claim directory; see `claimStaleLock`.
  */
-export async function withSessionLock(codexSessionId, fn, { waitMs = 0, staleMs = 300_000 } = {}) {
+export async function withSessionLock(
+  codexSessionId,
+  fn,
+  { waitMs = 0, staleMs = 300_000 } = {},
+) {
   const dir = lockPath(codexSessionId);
   const ownerFile = join(dir, "owner");
   const token = `${process.pid}:${randomUUID()}`;
@@ -319,7 +343,8 @@ export async function withSessionLock(codexSessionId, fn, { waitMs = 0, staleMs 
       } catch {}
       let ageMs;
       try {
-        ageMs = Date.now() - (await stat(seen === null ? dir : ownerFile)).mtimeMs;
+        ageMs =
+          Date.now() - (await stat(seen === null ? dir : ownerFile)).mtimeMs;
       } catch {
         continue; // holder released between mkdir and stat; retry immediately
       }
@@ -382,7 +407,9 @@ export async function listStates() {
         // re-reading the directory once per state file.
         const endedAt = await endedAtFrom(files, parsed.codexSessionId);
         out.push(endedAt ? { ...parsed, endedAt } : parsed);
-      } catch { /* skip */ }
+      } catch {
+        /* skip */
+      }
     }
     return out;
   } catch {

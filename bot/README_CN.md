@@ -43,11 +43,11 @@ Windows 激活虚拟环境：
 
 VikingBot 有三种主要使用方式。它们不是互相替代的模式，而是面向不同需求的入口。
 
-| 场景 | 适合谁                             | 启动命令 | OpenViking                    |
-|------|---------------------------------|----------|-------------------------------|
-| **A. OpenViking + Bot 一体启动** | 本地完整体验资源、记忆和 Agent              | `openviking-server --with-bot` | bot将使用当前启动的 OpenViking Server |
-| **B. 本地调试 Agent** | 想快速测试 Bot、开发 Tool/Skill         | `vikingbot chat` | 可选；未配置时，bot无法使用OpenViking功能   |
-| **C. Gateway 统一入口** | 单独启动bot，并配置已有的OpenViking Server | `vikingbot gateway` | 可显式配置或不配置                     |
+| 场景 | 适合谁 | 启动命令 | OpenViking |
+| ------ | --------------------------------- | ---------- | ------------------------------- |
+| **A. OpenViking + Bot 一体启动** | 本地完整体验资源、记忆和 Agent | `openviking-server --with-bot` | bot将使用当前启动的 OpenViking Server |
+| **B. 本地调试 Agent** | 想快速测试 Bot、开发 Tool/Skill | `vikingbot chat` | 可选；未配置时，bot无法使用OpenViking功能 |
+| **C. Gateway 统一入口** | 单独启动bot，并配置已有的OpenViking Server | `vikingbot gateway` | 可显式配置或不配置 |
 
 ### 场景 A：OpenViking + Bot 一体启动
 
@@ -145,7 +145,7 @@ ov ls/find/session/...   → Gateway /api/v1/* → OpenViking Server
 Gateway 与 OpenViking 有三种连接状态：
 
 | 状态 | 条件 | 行为 |
-|------|------|------|
+| ------ | ------ | ------ |
 | **Explicit** | 配置 `bot.ov_server.server_url` | 连接指定 OpenViking；不可达时启动失败 |
 | **Inherited** | 未显式配置 URL，但同一 `ov.conf` 有 `server` | 连接该 OpenViking；不可达时降级为 standalone |
 | **Standalone** | 没有可用 OpenViking | Chat 可用；OpenViking 工具禁用，`/api/v1/*` 返回 503 |
@@ -275,7 +275,7 @@ VikingBot 与 OpenViking 共用 `~/.openviking/ov.conf`。连接优先级和行�
 鉴权要求：
 
 | OpenViking `auth_mode` | Bot 凭证 | Gateway 请求 |
-|------------------------|----------|----------------|
+| ------------------------ | ---------- | ---------------- |
 | `dev` | 本地使用 | Gateway 必须监听 localhost |
 | `api_key` | `bot.ov_server.api_key` 必须是 User/Admin Key | Chat 调用者也必须提供有效 User/Admin Key；Root Key 不可用于数据接口 |
 | `trusted` | 显式连接使用 Root Key；继承连接可读取 `server.root_api_key` | 非本地入口还必须先通过 Gateway Token |
@@ -305,7 +305,7 @@ export OPENVIKING_CONFIG_FILE=/path/to/ov.conf
 ### 常用配置
 
 | 配置 | 默认值 | 说明 |
-|------|--------|------|
+| ------ | -------- | ------ |
 | `bot.agents.temperature` | `0.7` | 模型采样温度 |
 | `bot.agents.thinking` | `true` | Provider 支持时启用 reasoning/thinking |
 | `bot.agents.timeout` | 继承 `vlm.timeout` | 单次模型请求超时 |
@@ -325,7 +325,7 @@ export OPENVIKING_CONFIG_FILE=/path/to/ov.conf
 ### OpenViking 召回配置
 
 | 配置 | 默认值 | 说明 |
-|------|--------|------|
+| ------ | -------- | ------ |
 | `bot.ov_server.memory_recall_events_limit` | `10` | 每轮 events 记忆条数 |
 | `bot.ov_server.memory_recall_entities_limit` | `10` | 每轮 entities 记忆条数 |
 | `bot.ov_server.memory_recall_preferences_limit` | `3` | 每轮 preferences 记忆条数 |
@@ -355,7 +355,7 @@ vikingbot status
 Agent 实际使用的活动目录还取决于 `bot.sandbox.mode`：
 
 | 模式 | 活动 Workspace |
-|------|----------------|
+| ------ | ---------------- |
 | `shared`（默认） | `<workspace>/shared` |
 | `per-session` | `<workspace>/<session-key>` |
 | `per-channel` | `<workspace>/<channel-key>` |
@@ -367,7 +367,7 @@ Agent 实际使用的活动目录还取决于 `bot.sandbox.mode`：
 首次使用某个活动 Workspace 时，VikingBot 会从内置 `bot/workspace` 模板复制初始文件。常用定制入口如下：
 
 | 文件或目录 | 作用 | 加载方式 |
-|------------|------|----------|
+| ------------ | ------ | ---------- |
 | `SOUL.md` | 人格、价值观和表达风格 | 每轮自动加入系统提示 |
 | `AGENTS.md` | 全局工作规则和任务约束；可按需创建 | 每轮自动加入系统提示 |
 | `IDENTITY.md` | Agent 名称、角色和身份背景；可按需创建 | 每轮自动加入系统提示 |
@@ -400,7 +400,7 @@ Agent 实际使用的活动目录还取决于 `bot.sandbox.mode`：
 ### 内置工具
 
 | 类别 | 工具 |
-|------|------|
+| ------ | ------ |
 | 文件与命令 | `read_file`、`write_file`、`edit_file`、`list_dir`、`exec` |
 | Web | `web_search`、`web_fetch` |
 | OpenViking | `openviking_list`、`openviking_search`、`openviking_grep`、`openviking_glob`、`openviking_multi_read`、`openviking_add_resource`、`openviking_memory_commit` |
@@ -441,7 +441,7 @@ Agent 实际使用的活动目录还取决于 `bot.sandbox.mode`：
 ## 沙箱
 
 | 后端 | 说明 |
-|------|------|
+| ------ | ------ |
 | `direct` | 默认，直接在 Bot 宿主机执行，不是强隔离环境 |
 | `srt` | 支持网络和文件允许/拒绝策略 |
 | `opensandbox` | 连接 OpenSandbox Server |
@@ -471,7 +471,7 @@ DirectBackend 默认 `restrict_to_workspace: false`。对不可信用户开放 G
 Gateway 的 Bot API 前缀为 `/bot/v1`：
 
 | 方法 | 路径 | 用途 |
-|------|------|------|
+| ------ | ------ | ------ |
 | POST | `/bot/v1/chat` | 同步对话 |
 | POST | `/bot/v1/chat/stream` | SSE 流式对话 |
 | POST | `/bot/v1/feedback` | 提交回复反馈 |
@@ -483,7 +483,7 @@ Gateway 的 Bot API 前缀为 `/bot/v1`：
 ## 运维命令
 
 | 命令 | 用途 |
-|------|------|
+| ------ | ------ |
 | `vikingbot status` | 查看模型、配置和运行状态 |
 | `vikingbot channels status` | 查看渠道状态 |
 | `vikingbot channels login` | 登录 WhatsApp bridge |

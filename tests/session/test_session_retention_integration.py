@@ -803,9 +803,7 @@ async def test_wm_creation_detects_language_from_multiline_user_message(client, 
             _text_message(
                 "multiline-user",
                 "user",
-                "Task details:\n"
-                "当前生产环境已经完成部署。\n"
-                "请用中文总结当前状态和后续风险。",
+                "Task details:\n当前生产环境已经完成部署。\n请用中文总结当前状态和后续风险。",
             )
         ]
     )

@@ -1,5 +1,13 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
@@ -21,18 +29,26 @@ function runHook(event, input, env) {
     sessionEnd: "session-end.mjs",
   }[event];
   return new Promise((resolveRun, reject) => {
-    const child = spawn(process.execPath, [join(pluginRoot, "scripts", entrypoint)], {
-      env: { ...process.env, ...env },
-      stdio: ["pipe", "pipe", "pipe"],
-    });
+    const child = spawn(
+      process.execPath,
+      [join(pluginRoot, "scripts", entrypoint)],
+      {
+        env: { ...process.env, ...env },
+        stdio: ["pipe", "pipe", "pipe"],
+      },
+    );
     let stdout = "";
     let stderr = "";
-    child.stdout.on("data", (chunk) => { stdout += chunk; });
-    child.stderr.on("data", (chunk) => { stderr += chunk; });
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk;
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk;
+    });
     child.on("error", reject);
     child.on("close", (code) => {
-      if (code !== 0) reject(new Error(stderr || `hook exited ${code}`));
-      else resolveRun(JSON.parse(stdout.trim() || "{}"));
+      if (code === 0) resolveRun(JSON.parse(stdout.trim() || "{}"));
+      else reject(new Error(stderr || `hook exited ${code}`));
     });
     child.stdin.end(JSON.stringify(input));
   });
@@ -58,9 +74,15 @@ test("Cursor command-installed integration contains Hook, Rule, Skill, and MCP e
   ]) {
     assert.ok(existsSync(join(pluginRoot, file)), `${file} must exist`);
   }
-  const plugin = JSON.parse(readFileSync(join(pluginRoot, ".cursor-plugin", "plugin.json"), "utf8"));
-  const integration = JSON.parse(readFileSync(join(pluginRoot, "openviking.integration.json"), "utf8"));
-  const hooks = JSON.parse(readFileSync(join(pluginRoot, "hooks", "hooks.json"), "utf8"));
+  const plugin = JSON.parse(
+    readFileSync(join(pluginRoot, ".cursor-plugin", "plugin.json"), "utf8"),
+  );
+  const integration = JSON.parse(
+    readFileSync(join(pluginRoot, "openviking.integration.json"), "utf8"),
+  );
+  const hooks = JSON.parse(
+    readFileSync(join(pluginRoot, "hooks", "hooks.json"), "utf8"),
+  );
   assert.equal(plugin.name, integration.id);
   assert.equal(plugin.version, integration.version);
   assert.deepEqual(Object.keys(hooks.hooks), [
@@ -92,8 +114,19 @@ test("Cursor URI guard redirects virtual paths to OpenViking MCP tools", () => {
 
 test("Cursor transcript parser keeps only user and assistant text", () => {
   const raw = [
-    JSON.stringify({ role: "user", message: { content: [{ type: "text", text: "question" }] } }),
-    JSON.stringify({ role: "assistant", message: { content: [{ type: "text", text: "answer [REDACTED]" }, { type: "tool_use", name: "Read" }] } }),
+    JSON.stringify({
+      role: "user",
+      message: { content: [{ type: "text", text: "question" }] },
+    }),
+    JSON.stringify({
+      role: "assistant",
+      message: {
+        content: [
+          { type: "text", text: "answer [REDACTED]" },
+          { type: "tool_use", name: "Read" },
+        ],
+      },
+    }),
     JSON.stringify({ type: "turn_ended", status: "success" }),
   ].join("\n");
   assert.deepEqual(parseCursorTranscript(raw), [
@@ -107,13 +140,20 @@ test("Cursor injects recall before the request and Stop captures transcript delt
   const actorPeers = [];
   const server = createServer((request, response) => {
     let body = "";
-    request.on("data", (chunk) => { body += chunk; });
+    request.on("data", (chunk) => {
+      body += chunk;
+    });
     request.on("end", () => {
-      if (request.url === "/api/v1/search/search" || request.url === "/api/v1/search/recall") {
+      if (
+        request.url === "/api/v1/search/search" ||
+        request.url === "/api/v1/search/recall"
+      ) {
         actorPeers.push(request.headers["x-openviking-actor-peer"]);
-        response.end(JSON.stringify({
-          result: { rendered: "remembered context", entries: [], stats: {} },
-        }));
+        response.end(
+          JSON.stringify({
+            result: { rendered: "remembered context", entries: [], stats: {} },
+          }),
+        );
       } else if (request.url?.includes("/messages")) {
         const parsed = JSON.parse(body);
         messages.push(...(parsed.messages ?? [parsed]));
@@ -126,7 +166,9 @@ test("Cursor injects recall before the request and Stop captures transcript delt
       }
     });
   });
-  await new Promise((resolveListen) => server.listen(0, "127.0.0.1", resolveListen));
+  await new Promise((resolveListen) =>
+    server.listen(0, "127.0.0.1", resolveListen),
+  );
   const root = mkdtempSync(join(tmpdir(), "openviking-cursor-hook-"));
   const env = {
     HOME: root,
@@ -139,20 +181,48 @@ test("Cursor injects recall before the request and Stop captures transcript delt
     // one the plugin deliberately sends no peer at all.
     const workspace = join(root, "cursor-project");
     mkdirSync(join(workspace, ".git"), { recursive: true });
-    writeFileSync(join(workspace, ".git", "config"), '[remote "origin"]\n\turl = git@github.com:acme/cursor-project.git\n');
-    const base = { conversation_id: "cursor-test", workspace_roots: [workspace] };
+    writeFileSync(
+      join(workspace, ".git", "config"),
+      '[remote "origin"]\n\turl = git@github.com:acme/cursor-project.git\n',
+    );
+    const base = {
+      conversation_id: "cursor-test",
+      workspace_roots: [workspace],
+    };
     const injections = await Promise.all([
-      runHook("beforeSubmitPrompt", { ...base, prompt: "what did we decide?", generation_id: "prompt-1" }, env),
-      runHook("beforeSubmitPrompt", { ...base, prompt: "what did we decide?", generation_id: "prompt-1" }, env),
+      runHook(
+        "beforeSubmitPrompt",
+        { ...base, prompt: "what did we decide?", generation_id: "prompt-1" },
+        env,
+      ),
+      runHook(
+        "beforeSubmitPrompt",
+        { ...base, prompt: "what did we decide?", generation_id: "prompt-1" },
+        env,
+      ),
     ]);
-    assert.equal(injections.filter((item) => /remembered context/.test(item.additional_context || "")).length, 1);
+    assert.equal(
+      injections.filter((item) =>
+        /remembered context/.test(item.additional_context || ""),
+      ).length,
+      1,
+    );
     assert.deepEqual(actorPeers, ["github.com-acme-cursor-project"]);
 
     const transcript = join(root, "cursor-test.jsonl");
-    writeFileSync(transcript, [
-      JSON.stringify({ role: "user", message: { content: [{ type: "text", text: "question" }] } }),
-      JSON.stringify({ role: "assistant", message: { content: [{ type: "text", text: "answer" }] } }),
-    ].join("\n"));
+    writeFileSync(
+      transcript,
+      [
+        JSON.stringify({
+          role: "user",
+          message: { content: [{ type: "text", text: "question" }] },
+        }),
+        JSON.stringify({
+          role: "assistant",
+          message: { content: [{ type: "text", text: "answer" }] },
+        }),
+      ].join("\n"),
+    );
     await Promise.all([
       runHook("stop", { ...base, transcript_path: transcript }, env),
       runHook("stop", { ...base, transcript_path: transcript }, env),
@@ -172,7 +242,9 @@ test("Cursor replays offline capture on the next SessionStart", async () => {
   let offline = true;
   const server = createServer((request, response) => {
     let body = "";
-    request.on("data", (chunk) => { body += chunk; });
+    request.on("data", (chunk) => {
+      body += chunk;
+    });
     request.on("end", () => {
       if (request.url?.includes("/messages")) {
         if (offline) {
@@ -186,7 +258,9 @@ test("Cursor replays offline capture on the next SessionStart", async () => {
       response.end(JSON.stringify({ result: { ok: true } }));
     });
   });
-  await new Promise((resolveListen) => server.listen(0, "127.0.0.1", resolveListen));
+  await new Promise((resolveListen) =>
+    server.listen(0, "127.0.0.1", resolveListen),
+  );
   const root = mkdtempSync(join(tmpdir(), "openviking-cursor-replay-"));
   const pendingDir = join(root, "pending");
   const env = {
@@ -198,14 +272,30 @@ test("Cursor replays offline capture on the next SessionStart", async () => {
   };
   try {
     const transcript = join(root, "cursor-offline.jsonl");
-    writeFileSync(transcript, [
-      JSON.stringify({ role: "user", message: { content: [{ type: "text", text: "offline question" }] } }),
-      JSON.stringify({ role: "assistant", message: { content: [{ type: "text", text: "offline answer" }] } }),
-    ].join("\n"));
-    const input = { conversation_id: "cursor-offline", cwd: "/workspace", transcript_path: transcript };
+    writeFileSync(
+      transcript,
+      [
+        JSON.stringify({
+          role: "user",
+          message: { content: [{ type: "text", text: "offline question" }] },
+        }),
+        JSON.stringify({
+          role: "assistant",
+          message: { content: [{ type: "text", text: "offline answer" }] },
+        }),
+      ].join("\n"),
+    );
+    const input = {
+      conversation_id: "cursor-offline",
+      cwd: "/workspace",
+      transcript_path: transcript,
+    };
 
     await runHook("stop", input, env);
-    assert.equal(readdirSync(pendingDir).filter((name) => name.endsWith(".json")).length, 2);
+    assert.equal(
+      readdirSync(pendingDir).filter((name) => name.endsWith(".json")).length,
+      2,
+    );
 
     offline = false;
     await runHook("sessionStart", input, env);
@@ -213,10 +303,17 @@ test("Cursor replays offline capture on the next SessionStart", async () => {
       { role: "user", content: "offline question" },
       { role: "assistant", content: "offline answer" },
     ]);
-    assert.equal(readdirSync(pendingDir).filter((name) => name.endsWith(".json")).length, 0);
+    assert.equal(
+      readdirSync(pendingDir).filter((name) => name.endsWith(".json")).length,
+      0,
+    );
 
     await runHook("stop", input, env);
-    assert.equal(messages.length, 2, "captured hashes prevent replayed turns from being stored twice");
+    assert.equal(
+      messages.length,
+      2,
+      "captured hashes prevent replayed turns from being stored twice",
+    );
   } finally {
     server.close();
     rmSync(root, { recursive: true, force: true });

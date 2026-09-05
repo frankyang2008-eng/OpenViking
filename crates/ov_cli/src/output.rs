@@ -98,8 +98,8 @@ fn print_table<T: Serialize>(result: T, compact: bool) {
     }
 
     // Handle object
-    if let Some(obj) = value.as_object() {
-        if !obj.is_empty() {
+    if let Some(obj) = value.as_object()
+        && !obj.is_empty() {
             if let Some(rendered) = render_session_context(obj, compact) {
                 println!("{}", append_profile_section(rendered, obj));
                 return;
@@ -152,8 +152,8 @@ fn print_table<T: Serialize>(result: T, compact: bool) {
                     theme::heading("[system]").bold(),
                     style_health_label(health)
                 ));
-                if let Some(errors) = obj.get("errors") {
-                    if let Some(err_list) = errors.as_array() {
+                if let Some(errors) = obj.get("errors")
+                    && let Some(err_list) = errors.as_array() {
                         let error_strs: Vec<&str> =
                             err_list.iter().filter_map(|e| e.as_str()).collect();
                         if !error_strs.is_empty() {
@@ -164,7 +164,6 @@ fn print_table<T: Serialize>(result: T, compact: bool) {
                             ));
                         }
                     }
-                }
                 println!("{}", append_profile_section(lines.join("\n"), obj));
                 return;
             }
@@ -182,8 +181,8 @@ fn print_table<T: Serialize>(result: T, compact: bool) {
                 if key == "profile" {
                     continue;
                 }
-                if let Some(arr) = val.as_array() {
-                    if !arr.is_empty() {
+                if let Some(arr) = val.as_array()
+                    && !arr.is_empty() {
                         if arr.iter().all(|item| item.is_object()) {
                             dict_lists.push((key.clone(), arr));
                         } else if arr
@@ -193,7 +192,6 @@ fn print_table<T: Serialize>(result: T, compact: bool) {
                             prim_lists.push((key.clone(), arr));
                         }
                     }
-                }
             }
             let expandable_lists_are_entire_payload =
                 obj.keys().filter(|key| key.as_str() != "profile").count()
@@ -253,12 +251,11 @@ fn print_table<T: Serialize>(result: T, compact: bool) {
                         }
                     }
                 }
-                if !merged.is_empty() {
-                    if let Some(table) = format_array_to_table(&merged, compact) {
+                if !merged.is_empty()
+                    && let Some(table) = format_array_to_table(&merged, compact) {
                         println!("{}", append_profile_section(table, obj));
                         return;
                     }
-                }
             }
 
             // Rule 4: plain dict (no expandable lists) -> single-row horizontal table
@@ -290,7 +287,6 @@ fn print_table<T: Serialize>(result: T, compact: bool) {
                 return;
             }
         }
-    }
 
     // Default: JSON output
     if compact {
@@ -389,11 +385,10 @@ pub fn render_table_with_optional_profile(
 
 fn value_to_table(value: &serde_json::Value, compact: bool) -> Option<String> {
     // Rule 1: list[dict] -> multi-row table
-    if let Some(items) = value.as_array() {
-        if !items.is_empty() && items.iter().all(|i| i.is_object()) {
+    if let Some(items) = value.as_array()
+        && !items.is_empty() && items.iter().all(|i| i.is_object()) {
             return format_array_to_table(items, compact);
         }
-    }
 
     if let Some(obj) = value.as_object() {
         // ComponentStatus (name + is_healthy + status)
@@ -417,8 +412,8 @@ fn value_to_table(value: &serde_json::Value, compact: bool) -> Option<String> {
             if key == "profile" {
                 continue;
             }
-            if let Some(arr) = val.as_array() {
-                if !arr.is_empty() {
+            if let Some(arr) = val.as_array()
+                && !arr.is_empty() {
                     if arr.iter().all(|item| item.is_object()) {
                         dict_lists.push((key.clone(), arr));
                     } else if arr
@@ -428,7 +423,6 @@ fn value_to_table(value: &serde_json::Value, compact: bool) -> Option<String> {
                         prim_lists.push((key.clone(), arr));
                     }
                 }
-            }
         }
         let expandable_lists_are_entire_payload =
             obj.keys().filter(|key| key.as_str() != "profile").count()
@@ -772,13 +766,12 @@ fn format_array_to_table(items: &Vec<serde_json::Value>, compact: bool) -> Optio
         keys.iter()
             .filter(|key| {
                 items.iter().any(|item| {
-                    if let Some(obj) = item.as_object() {
-                        if let Some(value) = obj.get(*key) {
+                    if let Some(obj) = item.as_object()
+                        && let Some(value) = obj.get(*key) {
                             return !value.is_null()
                                 && value != ""
                                 && !(value.is_array() && value.as_array().unwrap().is_empty());
                         }
-                    }
                     false
                 })
             })
@@ -803,8 +796,8 @@ fn format_array_to_table(items: &Vec<serde_json::Value>, compact: bool) -> Optio
         let mut max_width = key.width(); // Start with header width
 
         for item in items {
-            if let Some(obj) = item.as_object() {
-                if let Some(value) = obj.get(key) {
+            if let Some(obj) = item.as_object()
+                && let Some(value) = obj.get(key) {
                     let formatted = format_value(value);
                     let display_width = formatted.width();
 
@@ -815,7 +808,6 @@ fn format_array_to_table(items: &Vec<serde_json::Value>, compact: bool) -> Optio
                         is_numeric = false;
                     }
                 }
-            }
         }
 
         column_info.push(ColumnInfo {
@@ -849,7 +841,7 @@ fn format_array_to_table(items: &Vec<serde_json::Value>, compact: bool) -> Optio
                 .enumerate()
                 .map(|(i, k)| {
                     let info = &column_info[i];
-                    let value = obj.get(k).map(|v| format_value(v)).unwrap_or_default();
+                    let value = obj.get(k).map(format_value).unwrap_or_default();
 
                     let (content, skip_padding) =
                         truncate_string(&value, info.is_unbounded_column, info.max_width);

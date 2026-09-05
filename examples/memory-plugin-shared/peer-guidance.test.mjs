@@ -53,7 +53,10 @@ test("every surface that teaches the peer file quotes the same snippet", () => {
   ];
   for (const rel of carriers) {
     const text = readFileSync(join(ROOT, rel), "utf-8");
-    assert.ok(text.includes(WORKSPACE_PEER_HINT), `${rel} must carry ${WORKSPACE_PEER_HINT} byte for byte`);
+    assert.ok(
+      text.includes(WORKSPACE_PEER_HINT),
+      `${rel} must carry ${WORKSPACE_PEER_HINT} byte for byte`,
+    );
   }
 });
 
@@ -67,7 +70,9 @@ test("no document still promises the working directory, or a command that does n
     join(ROOT, "examples/workspace-config.example.json"),
     // The shared library ships to eight plugins; a comment naming a command
     // that does not exist travels just as far as a document does.
-    ...walk(join(ROOT, "examples", "memory-plugin-shared", "lib"), (p) => p.endsWith(".mjs")),
+    ...walk(join(ROOT, "examples", "memory-plugin-shared", "lib"), (p) =>
+      p.endsWith(".mjs"),
+    ),
   ];
   assert.ok(files.length > 20, "the sweep found suspiciously few files");
 
@@ -79,28 +84,54 @@ test("no document still promises the working directory, or a command that does n
   for (const path of new Set(files)) {
     const rel = relative(ROOT, path);
     const text = readFileSync(path, "utf-8");
-    assert.ok(!retiredChain.test(text), `${rel} still spells the default chain with {cwd} in it`);
+    assert.ok(
+      !retiredChain.test(text),
+      `${rel} still spells the default chain with {cwd} in it`,
+    );
     if (generated.test(rel)) continue;
-    assert.ok(!withdrawnCommand.test(text), `${rel} names an ov workspace / ov peer command, which does not exist`);
+    assert.ok(
+      !withdrawnCommand.test(text),
+      `${rel} names an ov workspace / ov peer command, which does not exist`,
+    );
   }
 });
 
 test("the canonical page agrees with the code it documents", () => {
-  const page = readFileSync(join(ROOT, "docs/en/configuration/02-client.md"), "utf-8");
+  const page = readFileSync(
+    join(ROOT, "docs/en/configuration/02-client.md"),
+    "utf-8",
+  );
   const rendered = `[${PEER_SOURCE_PRESETS.git.map((t) => `"${t}"`).join(", ")}]`;
-  assert.ok(page.includes(rendered), `the page must spell the default chain as ${rendered}`);
+  assert.ok(
+    page.includes(rendered),
+    `the page must spell the default chain as ${rendered}`,
+  );
 
   // `harness` is the one variable the caller supplies rather than the identity,
   // which is cached under a cwd-only key and so cannot hold it.
-  const known = new Set([...Object.keys(resolveWorkspaceIdentity({ cwd: ROOT, cache: false }).vars), "harness"]);
+  const known = new Set([
+    ...Object.keys(resolveWorkspaceIdentity({ cwd: ROOT, cache: false }).vars),
+    "harness",
+  ]);
   const start = page.indexOf("### Workspace Peer");
   const end = page.indexOf("### What a Workspace File May Not Set");
-  assert.ok(start >= 0, "the page no longer has a '### Workspace Peer' heading");
-  assert.ok(end >= 0, "the page no longer has a '### What a Workspace File May Not Set' heading");
+  assert.ok(
+    start >= 0,
+    "the page no longer has a '### Workspace Peer' heading",
+  );
+  assert.ok(
+    end >= 0,
+    "the page no longer has a '### What a Workspace File May Not Set' heading",
+  );
   const section = page.slice(start, end);
-  const documented = new Set([...section.matchAll(/\{([a-z_]+)\}/g)].map((m) => m[1]));
+  const documented = new Set(
+    [...section.matchAll(/\{([a-z_]+)\}/g)].map((m) => m[1]),
+  );
   assert.ok(documented.size >= 4, "the variable table went missing");
   for (const name of documented) {
-    assert.ok(known.has(name), `the page documents {${name}}, which no identity variable provides`);
+    assert.ok(
+      known.has(name),
+      `the page documents {${name}}, which no identity variable provides`,
+    );
   }
 });

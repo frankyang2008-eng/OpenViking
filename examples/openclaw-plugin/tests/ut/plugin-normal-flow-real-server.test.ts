@@ -1,5 +1,9 @@
 import { once } from "node:events";
-import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import {
+  createServer,
+  type IncomingMessage,
+  type ServerResponse,
+} from "node:http";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
@@ -63,14 +67,17 @@ describe("plugin normal flow with healthy backend", () => {
       if (method === "POST" && url.pathname === "/api/v1/search/search") {
         json(res, 200, {
           result: {
-            entries: [{
-              uri: "viking://user/default/memories/rust-pref",
-              category: "preferences",
-              detail: "abstract",
-              text: "User prefers Rust for backend tasks.",
-              score: 0.91,
-            }],
-            rendered: '<memory uri="viking://user/default/memories/rust-pref">User prefers Rust for backend tasks.</memory>',
+            entries: [
+              {
+                uri: "viking://user/default/memories/rust-pref",
+                category: "preferences",
+                detail: "abstract",
+                text: "User prefers Rust for backend tasks.",
+                score: 0.91,
+              },
+            ],
+            rendered:
+              '<memory uri="viking://user/default/memories/rust-pref">User prefers Rust for backend tasks.</memory>',
             stats: { candidates: 1, used_tokens: 18 },
           },
           status: "ok",
@@ -92,14 +99,17 @@ describe("plugin normal flow with healthy backend", () => {
       ) {
         json(res, 200, {
           result: {
-            latest_archive_overview: "Earlier work focused on backend stack choices.",
+            latest_archive_overview:
+              "Earlier work focused on backend stack choices.",
             pre_archive_abstracts: [],
             messages: [
               {
                 id: "msg_1",
                 role: "assistant",
                 created_at: "2026-04-01T00:00:00Z",
-                parts: [{ type: "text", text: "Stored answer from OpenViking." }],
+                parts: [
+                  { type: "text", text: "Stored answer from OpenViking." },
+                ],
               },
             ],
             estimatedTokens: 64,
@@ -172,13 +182,14 @@ describe("plugin normal flow with healthy backend", () => {
   });
 
   it("keeps normal prompt-build and context-engine flow working", async () => {
-    const handlers = new Map<string, (event: unknown, ctx?: unknown) => unknown>();
-    let service:
-      | {
-          start: () => Promise<void>;
-          stop?: () => Promise<void> | void;
-        }
-      | null = null;
+    const handlers = new Map<
+      string,
+      (event: unknown, ctx?: unknown) => unknown
+    >();
+    let service: {
+      start: () => Promise<void>;
+      stop?: () => Promise<void> | void;
+    } | null = null;
     let contextEngineFactory: (() => unknown) | null = null;
 
     plugin.register({
@@ -234,7 +245,8 @@ describe("plugin normal flow with healthy backend", () => {
 
     expect(assembled.messages[0]).toEqual({
       role: "user",
-      content: "[Session History Summary]\nEarlier work focused on backend stack choices.",
+      content:
+        "[Session History Summary]\nEarlier work focused on backend stack choices.",
     });
     expect(assembled.messages[1]).toEqual({
       role: "assistant",
@@ -252,25 +264,45 @@ describe("plugin normal flow with healthy backend", () => {
     const latest = transformed.messages.at(-1);
     expect(latest?.role).toBe("user");
     expect(String(latest?.content)).toContain("Source: openviking-auto-recall");
-    expect(String(latest?.content)).toContain("User prefers Rust for backend tasks.");
-    expect(String(latest?.content)).toContain("what backend language should we use?");
+    expect(String(latest?.content)).toContain(
+      "User prefers Rust for backend tasks.",
+    );
+    expect(String(latest?.content)).toContain(
+      "what backend language should we use?",
+    );
 
     await contextEngine.afterTurn({
       sessionId: "session-normal",
       sessionFile: "",
       messages: [
-        { role: "user", content: "Please keep using Rust.", timestamp: Date.parse("2026-04-07T08:00:00Z") },
-        { role: "assistant", content: [{ type: "text", text: "Understood." }], timestamp: Date.parse("2026-04-07T08:00:01Z") },
+        {
+          role: "user",
+          content: "Please keep using Rust.",
+          timestamp: Date.parse("2026-04-07T08:00:00Z"),
+        },
+        {
+          role: "assistant",
+          content: [{ type: "text", text: "Understood." }],
+          timestamp: Date.parse("2026-04-07T08:00:01Z"),
+        },
       ],
       prePromptMessageCount: 0,
     });
 
-    expect(requests.some((entry) => entry.method === "GET" && entry.path === "/health")).toBe(true);
     expect(
-      requests.some((entry) => entry.method === "POST" && entry.path === "/api/v1/search/search"),
+      requests.some(
+        (entry) => entry.method === "GET" && entry.path === "/health",
+      ),
+    ).toBe(true);
+    expect(
+      requests.some(
+        (entry) =>
+          entry.method === "POST" && entry.path === "/api/v1/search/search",
+      ),
     ).toBe(true);
     const contextSearchRequest = requests.find(
-      (entry) => entry.method === "POST" && entry.path === "/api/v1/search/search",
+      (entry) =>
+        entry.method === "POST" && entry.path === "/api/v1/search/search",
     );
     const contextSearchBody = JSON.parse(contextSearchRequest?.body ?? "{}");
     expect(contextSearchBody).toMatchObject({
@@ -293,13 +325,23 @@ describe("plugin normal flow with healthy backend", () => {
     });
     expect(contextSearchBody).not.toHaveProperty("limit");
     expect(
-      requests.some((entry) => entry.method === "GET" && entry.path.startsWith("/api/v1/sessions/session-normal/context")),
+      requests.some(
+        (entry) =>
+          entry.method === "GET" &&
+          entry.path.startsWith("/api/v1/sessions/session-normal/context"),
+      ),
     ).toBe(true);
     expect(
-      requests.some((entry) => entry.method === "POST" && entry.path === "/api/v1/sessions/session-normal/messages"),
+      requests.some(
+        (entry) =>
+          entry.method === "POST" &&
+          entry.path === "/api/v1/sessions/session-normal/messages",
+      ),
     ).toBe(true);
     const addMessageRequest = requests.find(
-      (entry) => entry.method === "POST" && entry.path === "/api/v1/sessions/session-normal/messages",
+      (entry) =>
+        entry.method === "POST" &&
+        entry.path === "/api/v1/sessions/session-normal/messages",
     );
     expect(addMessageRequest).toBeTruthy();
     expect(JSON.parse(addMessageRequest!.body ?? "{}")).toMatchObject({
@@ -307,7 +349,11 @@ describe("plugin normal flow with healthy backend", () => {
       created_at: "2026-04-07T08:00:01.000Z",
     });
     expect(
-      requests.some((entry) => entry.method === "POST" && entry.path === "/api/v1/sessions/session-normal/commit"),
+      requests.some(
+        (entry) =>
+          entry.method === "POST" &&
+          entry.path === "/api/v1/sessions/session-normal/commit",
+      ),
     ).toBe(true);
 
     await service?.stop?.();

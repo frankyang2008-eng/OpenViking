@@ -9,8 +9,9 @@
 OpenViking 支持多种资源类型，按照功能分类如下：
 
 文档类
+
 | 类型 | 扩展名 | 说明 |
-|------|--------|------|
+| ------ | -------- | ------ |
 | PDF | `.pdf` | 支持本地解析和 MinerU API 转换 |
 | Markdown | `.md`, `.markdown`, `.mdown`, `.mkd` | 原生支持，会提取结构并分段存储 |
 | HTML | `.html`, `.htm` | 清理导航/广告后提取内容，转换为 Markdown |
@@ -19,20 +20,23 @@ OpenViking 支持多种资源类型，按照功能分类如下：
 | EPUB | `.epub` | 基于 anydoc 将电子书内容和嵌入图片转换为 Markdown |
 
 表格类
+
 | 类型 | 扩展名 | 说明 |
 |------|--------|------|
 | Excel | `.xlsx`, `.xls`, `.xlsm`, `.xlsb`, `.ods`, `.csv` | 基于 anydoc 按工作表转换为 Markdown 表格 |
 | PowerPoint | `.pptx`, `.ppt`, `.pptm`, `.pps`, `.ppsx`, `.ppsm`, `.pot`, `.odp` | 基于 anydoc 按幻灯片提取内容和嵌入图片并转换为 Markdown |
 
 代码类
+
 | 类型 | 资源名 | 说明 |
-|------|--------|------|
+| ------ | -------- | ------ |
 | 代码文件 | `*.py`, `*.js`, ... | 支持常见编程语言（Python, JavaScript, Go, Rust, Java 等） |
 | Git 协议代码仓库 | `git://...` | Git URL, 本地目录, `.zip` 包，遵循 `.gitignore` 并自动过滤 `.git`, `node_modules` 等目录 |
 | Git 代码托管平台 | `https://github.com/{org}/{repo}` | GitHub, GitLab, Bitbucket 等代码托管平台的 URL |
 | Git 代码托管平台上的 raw 文件 | `https://github.com/{org}/{repo}/raw/{branch}/{path}` | GitHub, GitLab, Bitbucket 等代码托管平台的 raw 文件下载 URL |
 
 媒体类
+
 | 类型 | 资源名 | 说明 |
 |------|--------|------|
 | 图片 | `*.jpg`, `*.jpeg`, `*.png`, `*.gif` ... | 多种图片格式，通过 VLM 生成描述（实验特性） |
@@ -40,11 +44,13 @@ OpenViking 支持多种资源类型，按照功能分类如下：
 | 音频 | `*.mp3`, `*.wav`, `*.m4a` ... | 进行语音转录处理（规划） |
 
 云文档类
+
 | 类型 | 说明 |
 |------|------|
 | 飞书/Lark | URL 方式，支持 doc/docx, wiki, sheets, bitable。默认使用 FEISHU_APP_ID 和 FEISHU_APP_SECRET 应用凭证；用户 token 导入可传 `args.feishu_access_token`，用户 token watch 还需传 `args.feishu_refresh_token`，并可选传入 `args.feishu_app_id` / `args.feishu_app_secret` |
 
 网页类（递归网页爬虫）
+
 | 类型 | 资源名 | 说明 |
 |------|--------|------|
 | 单页 / 递归抓取 | `https://host/path` | 默认仅抓入口页；设置 `args.depth > 0` 后，沿同域链接 BFS 递归展开，`args.max_pages` 只限制最多收集的页面数。每页用 trafilatura 抽成 Markdown。可选 `args`：`depth`、`max_pages`、`include_paths`、`exclude_paths`、`allow_external_links`、`skip_download_links`。页面中发现的下载链接默认跳过（`skip_download_links=true`），避免导入 `llms.txt` 等 sidecar 文件造成重复；设为 `false` 时会下载同域文件链接，并计入 `max_pages`。`include_paths`/`exclude_paths` 按**路径前缀**匹配（例如 `/docs/` 仅匹配以 `/docs/` 开头的路径，不会误命中 `/blog/docs-tips`）。|
@@ -52,8 +58,9 @@ OpenViking 支持多种资源类型，按照功能分类如下：
 > 路由说明：`https://host/sitemap.xml`、`https://host/feed.xml`、`*.atom` 等 sitemap-looking URL 和显式 `args.site=true` 让出给下表的整站导入；`https://github.com/{org}/{repo}` 等 Git 托管平台 URL 让出给上文的代码导入。
 
 网站类（sitemap / RSS / Atom 整站导入）
+
 | 类型 | 资源名 | 说明 |
-|------|--------|------|
+| ------ | -------- | ------ |
 | 站点地图 Sitemap | `https://host/sitemap.xml`、`https://host/sitemap-index.xml` | 解析 sitemap，将站点所有页面抓取为**一棵资源树**（每页一个子节点），支持嵌套 `<sitemapindex>` 递归。整站只生成一个资源，落在 `viking://resources/<host>`。 |
 | RSS / Atom 订阅源 | `https://host/rss.xml`、`https://host/atom.xml`、`https://host/feed` | 解析 RSS 2.0 / Atom，逐条把文章正文抓成树节点（feed 内含全文则直接使用，省一次抓取）。 |
 | 整站自动发现 | `https://host` + `args.site=true` | 对裸域名/普通页面强制整站导入：自动通过 robots.txt、HTML `<link rel="alternate">` autodiscovery、常见路径发现 sitemap/RSS，再整站抓取。 |
@@ -71,17 +78,20 @@ URL/文件  Parser  TreeBuilder  AGFS    Summarizer/Vector
 ```
 
 #### 阶段 1：源解析 (Parse)
+
 - 使用 `UnifiedResourceProcessor` 根据资源类型解析内容
 - 支持多种格式：文档（PDF/Markdown/Word）、表格（Excel/PPT）、代码、媒体文件等
 - 解析结果写入临时 VikingFS 目录
 - 媒体文件通过 VLM（视觉语言模型）生成描述
 
 #### 阶段 2：资源树构建 (TreeBuilder)
+
 - `TreeBuilder.finalize_from_temp()` 扫描临时目录结构
 - 构建资源树节点，处理 URI 冲突（自动重命名）
 - 建立目录与资源的关联关系
 
 #### 阶段 3：持久化存储 (Persist)
+
 - 检查目标 URI 是否已存在
 - 新资源：移动临时文件到正式 AGFS 位置
 - 已存在资源：保留临时树用于后续差异比较
@@ -89,11 +99,13 @@ URL/文件  Parser  TreeBuilder  AGFS    Summarizer/Vector
 - 清理临时目录
 
 #### 阶段 4：语义处理 (Semantic Processing)
+
 - **摘要生成**：`Summarizer` 生成 L0（摘要）和 L1（概述）
 - **向量索引**：将内容向量化用于语义搜索
 - 通过 `SemanticQueue` 异步处理，可通过 `wait=True` 等待完成
 
 #### 非等待 Git 仓库导入
+
 - 对 Git 仓库来源使用 `wait=false` 时，OpenViking 会先校验仓库、解析目标 URI、预占最终 `root_uri`，然后在 clone/parse/finalize 完成前返回。
 - 立即响应包含 `status`、`root_uri` 和 `task_id`；抓取、解析、finalize 以及队列等待会在持久化后台任务中继续执行。
 - 可通过 `GET /api/v1/tasks/{task_id}` 查询任务状态。Git 资源导入任务的阶段包括 `queued`、`fetching`、`parsing`、`finalizing`、`processing_queue`。
@@ -104,6 +116,7 @@ URL/文件  Parser  TreeBuilder  AGFS    Summarizer/Vector
 资源增量更新通过**监控任务 (Watch Task)** 机制实现：
 
 #### 监控任务创建
+
 - 调用 `add_resource` 时，为 URL、sitemap、RSS 等可重新读取的来源设置 `watch_interval > 0`（单位：分钟），即可创建监控任务
 - `temp_file_id` 引用的上传内容只会作为一次性快照处理，不能创建监控任务；本地来源变化后请重新添加
 - 可指定 `to` 参数确定目标 URI；未指定时，系统会使用本次导入返回的 `root_uri` 作为监控目标
@@ -112,12 +125,14 @@ URL/文件  Parser  TreeBuilder  AGFS    Summarizer/Vector
 - 支持多租户权限控制（ROOT/ADMIN/USER 权限分级）
 
 #### 任务调度执行
+
 - `WatchScheduler` 每 60 秒检查到期任务
 - 默认并发控制，避免重复执行
 - 到期任务自动重新调用 `add_resource` 处理
 - 更新任务的最后执行时间和下次执行时间
 
 #### 任务管理操作
+
 - **创建**：`watch_interval > 0` 时创建新任务或重新激活已停用任务
 - **更新**：对同一目标 URI 重新设置参数
 - **取消**：对同一目标 URI 设置 `watch_interval <= 0` 时停用任务
@@ -134,6 +149,7 @@ URL/文件  Parser  TreeBuilder  AGFS    Summarizer/Vector
 此接口是资源管理的核心入口，支持多种来源的资源添加，并可选择等待语义处理完成。SDK 可直接处理本地文件/目录、URL 等来源；直接 HTTP 调用只通过 `path` 接受远程 URL，或通过 `temp_file_id` 引用先上传的本地文件。
 
 **处理流程**：
+
 1. 识别并校验资源来源（URL 或上传的临时文件）
 2. 解析目标 URI
 3. 调用对应格式 Parser；`args.parse_mode` 控制转换后的 Markdown 正文是否允许拆分
@@ -144,6 +160,7 @@ URL/文件  Parser  TreeBuilder  AGFS    Summarizer/Vector
 8. 如指定 `--watch-interval`，设置定时更新任务
 
 **代码入口**：
+
 - `sdk/python/openviking_sdk/client.py:AsyncHTTPClient.add_resource` - Python SDK 入口
 - `openviking/server/routers/resources.py:add_resource` - HTTP 路由
 - `openviking/service/resource_service.py` - 核心服务实现
@@ -154,7 +171,7 @@ URL/文件  Parser  TreeBuilder  AGFS    Summarizer/Vector
 **参数**
 
 | 参数 | 类型 | 必填 | 默认值 | 说明 |
-|------|------|------|--------|------|
+| ------ | ------ | ------ | -------- | ------ |
 | path | string | 否 | - | 远程资源 URL（HTTP/HTTPS/Git）。与 `temp_file_id` 二选一 |
 | temp_file_id | string | 否 | - | 临时上传文件 ID。与 `path` 二选一 |
 | to | string | 否 | - | 本次导入的最终保存位置。目标已存在时会覆盖该目标；与 `parent` 互斥 |
@@ -179,6 +196,7 @@ URL/文件  Parser  TreeBuilder  AGFS    Summarizer/Vector
 | telemetry | TelemetryRequest | 否 | False | 是否返回遥测数据 |
 
 **补充说明**：
+
 - `to` 和 `parent` 不能同时使用。`to` 是最终保存位置：目标不存在就创建，目标已存在就覆盖该目标；如果目标是目录，目录里本次导入没有生成的旧文件或子目录会被删除。`parent` 是保存目录，适合向已有目录追加新资源；父目录不存在时使用 `create_parent=true` 或 CLI 的 `--parent-auto-create`。当导入后的 `root_uri` 与 `to` 相同时，语义与向量处理会复用未变化内容，只处理变化部分。
 - 创建新资源要求目标父目录可写；显式更新已有 `to` 要求该目标可写。权限校验在任务入队前完成。自动命名按实际 URI 占用判断，即使同名资源不可读也会选择 `_1`、`_2` 等后缀，而不会尝试覆盖。
 - `wait=false` 返回的 `status=accepted` 表示任务已通过预检查并入队，不表示资源处理已经完成；最终状态以对应 `task_id` 为准。
@@ -586,7 +604,7 @@ task_id      uuid-xxx
 **字段说明**
 
 | 字段 | 类型 | 说明 |
-|------|------|------|
+| ------ | ------ | ------ |
 | `status` | string | 处理状态：`accepted` 表示已入队，`success` 表示成功，`error` 表示失败 |
 | `root_uri` | string | 资源在 OpenViking 中的最终 URI |
 | `task_id` | string | （可选，仅当 `wait=false` 时）可轮询 `/api/v1/tasks/{task_id}` 的任务 ID。非 Git 导入用于队列跟踪；Git 仓库导入用于完整后台导入跟踪。 |
@@ -644,12 +662,14 @@ task_id      uuid-xxx
 此接口用于把本地文件上传到服务端托管的临时存储中，返回 `temp_file_id` 供后续 API 使用。这是一个辅助接口，通常不直接调用，而是通过 SDK 或 CLI 自动使用。
 
 **处理流程**：
+
 1. 接收上传的文件
 2. 根据 `upload_mode` 选择临时上传后端
 3. 保存文件并记录原始文件名
 4. 返回临时文件 ID
 
 **代码入口**：
+
 - `openviking/server/routers/resources.py:temp_upload` - HTTP 路由
 - `openviking/service/resource_service.py` - 服务实现
 
@@ -658,7 +678,7 @@ task_id      uuid-xxx
 **参数**
 
 | 参数 | 类型 | 必填 | 默认值 | 说明 |
-|------|------|------|--------|------|
+| ------ | ------ | ------ | -------- | ------ |
 | file | UploadFile | 是 | - | 上传的文件（multipart/form-data） |
 | telemetry | bool | 否 | False | 是否返回遥测数据 |
 | upload_mode | string | 否 | `"local"` | 临时上传模式。`local` 保持现有单机行为；`shared` 将文件上传到共享临时存储，适用于分布式部署。 |

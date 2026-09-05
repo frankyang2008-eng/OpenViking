@@ -71,11 +71,14 @@ async def test_collect_grep_files_skips_directory_vector_count(monkeypatch):
     monkeypatch.setattr(viking_fs, "stat", stat)
     monkeypatch.setattr(viking_fs, "ls", AsyncMock(return_value=[]))
 
-    assert await viking_fs._collect_grep_files(
-        "viking://resources",
-        excluded_prefix=None,
-        level_limit=1,
-    ) == []
+    assert (
+        await viking_fs._collect_grep_files(
+            "viking://resources",
+            excluded_prefix=None,
+            level_limit=1,
+        )
+        == []
+    )
     stat.assert_awaited_once_with("viking://resources", ctx=None, skip_count=True)
 
 
@@ -163,9 +166,7 @@ async def test_grep_vikingdb_does_not_project_tags_without_filter_or_request(mon
     )
 
     assert vector_store.calls[0]["output_fields"] == ["uri"]
-    assert result["matches"] == [
-        {"uri": "viking://resources/a.md", "line": 1, "content": "needle"}
-    ]
+    assert result["matches"] == [{"uri": "viking://resources/a.md", "line": 1, "content": "needle"}]
 
 
 @pytest.mark.asyncio

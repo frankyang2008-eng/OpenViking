@@ -181,9 +181,7 @@ class _AsyncVectorAdapter:
             index_meta = collection.get_index_meta_data(index_name) or {}
             current_scalar_index = index_meta.get("ScalarIndex", [])
             indexed_fields = set(current_scalar_index)
-            missing_scalar_fields = [
-                field for field in scalar_index if field not in indexed_fields
-            ]
+            missing_scalar_fields = [field for field in scalar_index if field not in indexed_fields]
             if missing_scalar_fields:
                 collection.update_index(
                     index_name,
@@ -389,9 +387,7 @@ class _SingleAccountBackend:
     async def update_collection_schema(
         self, fields: List[Dict[str, Any]], scalar_index: List[str]
     ) -> None:
-        await self._async_adapter.update_collection_schema(
-            fields, scalar_index, self._index_name
-        )
+        await self._async_adapter.update_collection_schema(fields, scalar_index, self._index_name)
         await self._refresh_meta_data_async()
 
     # =========================================================================

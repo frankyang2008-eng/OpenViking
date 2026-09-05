@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -8,8 +15,12 @@ import test from "node:test";
 
 const installer = fileURLToPath(new URL("./install.sh", import.meta.url));
 const installerSource = readFileSync(installer, "utf8");
-const mainMarker = "# ---------------------------------------------------------------------------\n# Main\n";
-const installerPrelude = installerSource.slice(0, installerSource.indexOf(mainMarker));
+const mainMarker =
+  "# ---------------------------------------------------------------------------\n# Main\n";
+const installerPrelude = installerSource.slice(
+  0,
+  installerSource.indexOf(mainMarker),
+);
 
 function runInstallerPrelude(body) {
   return spawnSync("/bin/bash", [], {
@@ -130,7 +141,11 @@ printf '%s:%s:%s\\n' "$SELECTED_HARNESSES" "$detected" "$label"
 `);
 
     assert.equal(result.status, 0, result.stderr);
-    assert.equal(result.stdout.trim(), "codex,trae:yes:TraeCode CLI 2.0", command);
+    assert.equal(
+      result.stdout.trim(),
+      "codex,trae:yes:TraeCode CLI 2.0",
+      command,
+    );
   }
 });
 
@@ -175,7 +190,10 @@ printf '%s|%s\\n' "$WIZ_URL" "$WIZ_KEY"
 test("the credentials step writes ovcli.conf when the stored key is kept", (t) => {
   const home = makeTempHome(t);
   const conf = join(home, "ovcli.conf");
-  writeFileSync(conf, `${JSON.stringify({ url: "http://127.0.0.1:1933", api_key: "stored-key", output: "table" }, null, 2)}\n`);
+  writeFileSync(
+    conf,
+    `${JSON.stringify({ url: "http://127.0.0.1:1933", api_key: "stored-key", output: "table" }, null, 2)}\n`,
+  );
 
   const result = runInstallerPrelude(`
 tui_menu() { TUI_MENU_CHOICE=1; }
@@ -202,7 +220,9 @@ test("menu digit shortcuts move the cursor instead of confirming", () => {
   assert.ok(menuArm, "tui_menu no longer has a [1-9] case arm");
   assert.doesNotMatch(menuArm[1], /\bbreak\b/);
 
-  const chooseFormat = /^tui_choose_cli_format\(\) \{$[\s\S]*?^\}$/m.exec(installerSource);
+  const chooseFormat = /^tui_choose_cli_format\(\) \{$[\s\S]*?^\}$/m.exec(
+    installerSource,
+  );
   assert.ok(chooseFormat, "tui_choose_cli_format not found");
   assert.match(chooseFormat[0], /^ +1\) cursor=0 ;;$/m);
   assert.match(chooseFormat[0], /^ +2\) cursor=1 ;;$/m);
@@ -226,7 +246,10 @@ test("the credentials step names the field it changed", (t) => {
   const home = makeTempHome(t);
   const conf = join(home, "ovcli.conf");
   const url = "https://api.vikingdb.cn-beijing.volces.com/openviking";
-  writeFileSync(conf, `${JSON.stringify({ url, api_key: "stored-key" }, null, 2)}\n`);
+  writeFileSync(
+    conf,
+    `${JSON.stringify({ url, api_key: "stored-key" }, null, 2)}\n`,
+  );
 
   const result = runInstallerPrelude(`
 tui_menu() { TUI_MENU_CHOICE=1; }
@@ -239,6 +262,9 @@ configure_ovcli
 
   assert.equal(result.status, 0, result.stderr);
   assert.doesNotMatch(result.stdout, /Updated: url:/);
-  assert.match(result.stdout, /Updated: api_key: stor…-key \(10\) -> rota…-key \(11\)/);
+  assert.match(
+    result.stdout,
+    /Updated: api_key: stor…-key \(10\) -> rota…-key \(11\)/,
+  );
   assert.equal(JSON.parse(readFileSync(conf, "utf8")).api_key, "rotated-key");
 });

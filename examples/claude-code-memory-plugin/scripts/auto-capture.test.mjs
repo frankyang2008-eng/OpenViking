@@ -33,7 +33,10 @@ function readRequestBody(req) {
 async function withMockOpenViking(handler, fn) {
   const server = http.createServer((req, res) => {
     handler(req, res).catch((err) => {
-      writeJson(res, 500, { status: "error", error: String(err?.stack || err) });
+      writeJson(res, 500, {
+        status: "error",
+        error: String(err?.stack || err),
+      });
     });
   });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -51,14 +54,22 @@ function runAutoCapture(input, env) {
     for (const key of Object.keys(cleanEnv)) {
       if (key.startsWith("OPENVIKING_")) delete cleanEnv[key];
     }
-    const child = spawn(process.execPath, [join(SCRIPT_DIR, "auto-capture.mjs")], {
-      env: { ...cleanEnv, ...env },
-      stdio: ["pipe", "pipe", "pipe"],
-    });
+    const child = spawn(
+      process.execPath,
+      [join(SCRIPT_DIR, "auto-capture.mjs")],
+      {
+        env: { ...cleanEnv, ...env },
+        stdio: ["pipe", "pipe", "pipe"],
+      },
+    );
     let stdout = "";
     let stderr = "";
-    child.stdout.on("data", (chunk) => { stdout += chunk.toString(); });
-    child.stderr.on("data", (chunk) => { stderr += chunk.toString(); });
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk.toString();
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk.toString();
+    });
     child.on("error", reject);
     child.on("close", (code) => {
       if (code !== 0) {
@@ -89,8 +100,14 @@ async function writeTranscript(path) {
   await writeFile(
     path,
     [
-      JSON.stringify({ role: "user", content: "remember the capture regression" }),
-      JSON.stringify({ role: "assistant", content: "I will retain that context" }),
+      JSON.stringify({
+        role: "user",
+        content: "remember the capture regression",
+      }),
+      JSON.stringify({
+        role: "assistant",
+        content: "I will retain that context",
+      }),
     ].join("\n"),
   );
 }
@@ -104,52 +121,68 @@ test("failed non-retryable capture keeps the cursor for a later retry", async ()
 
   try {
     await writeTranscript(transcriptPath);
-    await withMockOpenViking(async (req, res) => {
-      const url = new URL(req.url, "http://127.0.0.1");
-      if (req.method === "GET" && url.pathname === "/health") {
-        writeJson(res, 200, { status: "ok", result: { healthy: true } });
-        return;
-      }
-      if (req.method === "POST" && url.pathname.endsWith("/messages/batch")) {
-        const body = await readRequestBody(req);
-        if (rejectWrites) {
+    await withMockOpenViking(
+      async (req, res) => {
+        const url = new URL(req.url, "http://127.0.0.1");
+        if (req.method === "GET" && url.pathname === "/health") {
+          writeJson(res, 200, { status: "ok", result: { healthy: true } });
+          return;
+        }
+        if (req.method === "POST" && url.pathname.endsWith("/messages/batch")) {
+          const body = await readRequestBody(req);
+          if (rejectWrites) {
+            writeJson(res, 404, {
+              status: "error",
+              error: { code: "NOT_FOUND", message: "Resource not found" },
+            });
+            return;
+          }
+          batches.push(body);
+          writeJson(res, 200, {
+            status: "ok",
+            result: { added: body.messages.length },
+          });
+          return;
+        }
+        if (req.method === "POST" && url.pathname.endsWith("/messages")) {
+          await readRequestBody(req);
           writeJson(res, 404, {
             status: "error",
             error: { code: "NOT_FOUND", message: "Resource not found" },
           });
           return;
         }
-        batches.push(body);
-        writeJson(res, 200, { status: "ok", result: { added: body.messages.length } });
-        return;
-      }
-      if (req.method === "POST" && url.pathname.endsWith("/messages")) {
-        await readRequestBody(req);
-        writeJson(res, 404, {
-          status: "error",
-          error: { code: "NOT_FOUND", message: "Resource not found" },
-        });
-        return;
-      }
-      if (req.method === "GET" && url.pathname === "/api/v1/sessions/cc-capture-retry") {
-        writeJson(res, 200, {
-          status: "ok",
-          result: { message_count: 2, pending_tokens: 10, commit_count: 0 },
-        });
-        return;
-      }
-      writeJson(res, 404, { status: "error", error: { code: "NOT_FOUND" } });
-    }, async (baseUrl) => {
-      const input = { session_id: sessionId, transcript_path: transcriptPath, cwd: root };
-      await runAutoCapture(input, hookEnv(root, baseUrl));
-      rejectWrites = false;
-      await runAutoCapture(input, hookEnv(root, baseUrl));
-    });
+        if (
+          req.method === "GET" &&
+          url.pathname === "/api/v1/sessions/cc-capture-retry"
+        ) {
+          writeJson(res, 200, {
+            status: "ok",
+            result: { message_count: 2, pending_tokens: 10, commit_count: 0 },
+          });
+          return;
+        }
+        writeJson(res, 404, { status: "error", error: { code: "NOT_FOUND" } });
+      },
+      async (baseUrl) => {
+        const input = {
+          session_id: sessionId,
+          transcript_path: transcriptPath,
+          cwd: root,
+        };
+        await runAutoCapture(input, hookEnv(root, baseUrl));
+        rejectWrites = false;
+        await runAutoCapture(input, hookEnv(root, baseUrl));
+      },
+    );
 
     assert.equal(batches.length, 1);
     assert.equal(batches[0].messages.length, 2);
     const state = JSON.parse(
-      await readFile(join(root, "openviking-cc-capture-state", `${sessionId}.json`), "utf-8"),
+      await readFile(
+        join(root, "openviking-cc-capture-state", `${sessionId}.json`),
+        "utf-8",
+      ),
     );
     assert.equal(state.capturedTurnCount, 2);
   } finally {
@@ -184,38 +217,47 @@ test("legacy advanced cursor rewinds when the server session is empty", async ()
       }),
     );
 
-    await withMockOpenViking(async (req, res) => {
-      const url = new URL(req.url, "http://127.0.0.1");
-      if (req.method === "GET" && url.pathname === "/health") {
-        writeJson(res, 200, { status: "ok", result: { healthy: true } });
-        return;
-      }
-      if (req.method === "GET" && url.pathname === "/api/v1/sessions/cc-legacy-empty-session") {
-        writeJson(res, 200, {
-          status: "ok",
-          result: {
-            message_count: captured ? 2 : 0,
-            total_message_count: null,
-            commit_count: 0,
-            pending_tokens: captured ? 10 : 0,
-          },
-        });
-        return;
-      }
-      if (req.method === "POST" && url.pathname.endsWith("/messages/batch")) {
-        const body = await readRequestBody(req);
-        batches.push(body);
-        captured = true;
-        writeJson(res, 200, { status: "ok", result: { added: body.messages.length } });
-        return;
-      }
-      writeJson(res, 404, { status: "error", error: { code: "NOT_FOUND" } });
-    }, async (baseUrl) => {
-      await runAutoCapture(
-        { session_id: sessionId, transcript_path: transcriptPath, cwd: root },
-        hookEnv(root, baseUrl),
-      );
-    });
+    await withMockOpenViking(
+      async (req, res) => {
+        const url = new URL(req.url, "http://127.0.0.1");
+        if (req.method === "GET" && url.pathname === "/health") {
+          writeJson(res, 200, { status: "ok", result: { healthy: true } });
+          return;
+        }
+        if (
+          req.method === "GET" &&
+          url.pathname === "/api/v1/sessions/cc-legacy-empty-session"
+        ) {
+          writeJson(res, 200, {
+            status: "ok",
+            result: {
+              message_count: captured ? 2 : 0,
+              total_message_count: null,
+              commit_count: 0,
+              pending_tokens: captured ? 10 : 0,
+            },
+          });
+          return;
+        }
+        if (req.method === "POST" && url.pathname.endsWith("/messages/batch")) {
+          const body = await readRequestBody(req);
+          batches.push(body);
+          captured = true;
+          writeJson(res, 200, {
+            status: "ok",
+            result: { added: body.messages.length },
+          });
+          return;
+        }
+        writeJson(res, 404, { status: "error", error: { code: "NOT_FOUND" } });
+      },
+      async (baseUrl) => {
+        await runAutoCapture(
+          { session_id: sessionId, transcript_path: transcriptPath, cwd: root },
+          hookEnv(root, baseUrl),
+        );
+      },
+    );
 
     assert.equal(batches.length, 1);
     assert.equal(batches[0].messages.length, 2);
@@ -228,34 +270,48 @@ test("legacy advanced cursor rewinds when the server session is empty", async ()
   }
 });
 
-async function captureToolResult(root, transcriptPath, sessionId, extraEnv = {}) {
+async function captureToolResult(
+  root,
+  transcriptPath,
+  sessionId,
+  extraEnv = {},
+) {
   const batches = [];
-  await withMockOpenViking(async (req, res) => {
-    const url = new URL(req.url, "http://127.0.0.1");
-    if (req.method === "GET" && url.pathname === "/health") {
-      writeJson(res, 200, { status: "ok", result: { healthy: true } });
-      return;
-    }
-    if (req.method === "POST" && url.pathname.endsWith("/messages/batch")) {
-      const body = await readRequestBody(req);
-      batches.push(body);
-      writeJson(res, 200, { status: "ok", result: { added: body.messages.length } });
-      return;
-    }
-    if (req.method === "GET" && url.pathname === `/api/v1/sessions/cc-${sessionId}`) {
-      writeJson(res, 200, {
-        status: "ok",
-        result: { message_count: 2, pending_tokens: 10, commit_count: 0 },
-      });
-      return;
-    }
-    writeJson(res, 404, { status: "error", error: { code: "NOT_FOUND" } });
-  }, async (baseUrl) => {
-    await runAutoCapture(
-      { session_id: sessionId, transcript_path: transcriptPath, cwd: root },
-      { ...hookEnv(root, baseUrl), ...extraEnv },
-    );
-  });
+  await withMockOpenViking(
+    async (req, res) => {
+      const url = new URL(req.url, "http://127.0.0.1");
+      if (req.method === "GET" && url.pathname === "/health") {
+        writeJson(res, 200, { status: "ok", result: { healthy: true } });
+        return;
+      }
+      if (req.method === "POST" && url.pathname.endsWith("/messages/batch")) {
+        const body = await readRequestBody(req);
+        batches.push(body);
+        writeJson(res, 200, {
+          status: "ok",
+          result: { added: body.messages.length },
+        });
+        return;
+      }
+      if (
+        req.method === "GET" &&
+        url.pathname === `/api/v1/sessions/cc-${sessionId}`
+      ) {
+        writeJson(res, 200, {
+          status: "ok",
+          result: { message_count: 2, pending_tokens: 10, commit_count: 0 },
+        });
+        return;
+      }
+      writeJson(res, 404, { status: "error", error: { code: "NOT_FOUND" } });
+    },
+    async (baseUrl) => {
+      await runAutoCapture(
+        { session_id: sessionId, transcript_path: transcriptPath, cwd: root },
+        { ...hookEnv(root, baseUrl), ...extraEnv },
+      );
+    },
+  );
   return batches
     .flatMap((batch) => batch.messages)
     .flatMap((message) => message.parts || [])
@@ -266,18 +322,30 @@ async function writeToolTranscript(path, output) {
   await writeFile(
     path,
     [
-      JSON.stringify({ role: "user", content: "read the large fixture please" }),
+      JSON.stringify({
+        role: "user",
+        content: "read the large fixture please",
+      }),
       JSON.stringify({
         role: "assistant",
-        content: [{ type: "tool_use", id: "toolu_1", name: "Read", input: { file_path: "/big.txt" } }],
+        content: [
+          {
+            type: "tool_use",
+            id: "toolu_1",
+            name: "Read",
+            input: { file_path: "/big.txt" },
+          },
+        ],
       }),
       JSON.stringify({
         role: "user",
-        content: [{
-          type: "tool_result",
-          tool_use_id: "toolu_1",
-          content: [{ type: "text", text: output }],
-        }],
+        content: [
+          {
+            type: "tool_result",
+            tool_use_id: "toolu_1",
+            content: [{ type: "text", text: output }],
+          },
+        ],
       }),
     ].join("\n"),
   );
@@ -290,7 +358,11 @@ test("tool output is reported verbatim so the server can externalize it", async 
 
   try {
     await writeToolTranscript(transcriptPath, output);
-    const toolParts = await captureToolResult(root, transcriptPath, "capture-toolout");
+    const toolParts = await captureToolResult(
+      root,
+      transcriptPath,
+      "capture-toolout",
+    );
     const result = toolParts.find((part) => part.tool_status === "completed");
     assert.equal(result.tool_name, "Read");
     assert.equal(result.tool_output, output);
@@ -306,9 +378,14 @@ test("captureToolMaxChars still caps tool output when an operator lowers it", as
 
   try {
     await writeToolTranscript(transcriptPath, output);
-    const toolParts = await captureToolResult(root, transcriptPath, "capture-toolcap", {
-      OPENVIKING_CAPTURE_TOOL_MAX_CHARS: "1000",
-    });
+    const toolParts = await captureToolResult(
+      root,
+      transcriptPath,
+      "capture-toolcap",
+      {
+        OPENVIKING_CAPTURE_TOOL_MAX_CHARS: "1000",
+      },
+    );
     const result = toolParts.find((part) => part.tool_status === "completed");
     assert.ok(result.tool_output.startsWith("y".repeat(1000)));
     assert.match(result.tool_output, /\[truncated, 4000 more chars\]$/);
@@ -341,45 +418,70 @@ test("the workspace that decides capture is the payload's, not the hook process'
     const env = (baseUrl) => {
       const base = hookEnv(root, baseUrl);
       delete base.OPENVIKING_AUTO_CAPTURE;
-      return { ...base, HOME: home, OPENVIKING_HOME: join(home, ".openviking") };
+      return {
+        ...base,
+        HOME: home,
+        OPENVIKING_HOME: join(home, ".openviking"),
+      };
     };
 
-    await withMockOpenViking(async (req, res) => {
-      const url = new URL(req.url, "http://127.0.0.1");
-      paths.push(url.pathname);
-      if (req.method === "GET" && url.pathname === "/health") {
-        writeJson(res, 200, { status: "ok", result: { healthy: true } });
-        return;
-      }
-      if (req.method === "POST" && url.pathname.endsWith("/messages/batch")) {
-        const body = await readRequestBody(req);
-        writeJson(res, 200, { status: "ok", result: { added: body.messages.length } });
-        return;
-      }
-      if (req.method === "GET" && url.pathname.startsWith("/api/v1/sessions/")) {
-        writeJson(res, 200, {
-          status: "ok",
-          result: { message_count: 0, pending_tokens: 10, commit_count: 0 },
-        });
-        return;
-      }
-      writeJson(res, 404, { status: "error", error: { code: "NOT_FOUND" } });
-    }, async (baseUrl) => {
-      await runAutoCapture(
-        { session_id: "ws-off", transcript_path: transcriptPath, cwd: workspaceDir },
-        env(baseUrl),
-      );
-      assert.deepEqual(paths, [], "the workspace file turned capture off for this directory");
+    await withMockOpenViking(
+      async (req, res) => {
+        const url = new URL(req.url, "http://127.0.0.1");
+        paths.push(url.pathname);
+        if (req.method === "GET" && url.pathname === "/health") {
+          writeJson(res, 200, { status: "ok", result: { healthy: true } });
+          return;
+        }
+        if (req.method === "POST" && url.pathname.endsWith("/messages/batch")) {
+          const body = await readRequestBody(req);
+          writeJson(res, 200, {
+            status: "ok",
+            result: { added: body.messages.length },
+          });
+          return;
+        }
+        if (
+          req.method === "GET" &&
+          url.pathname.startsWith("/api/v1/sessions/")
+        ) {
+          writeJson(res, 200, {
+            status: "ok",
+            result: { message_count: 0, pending_tokens: 10, commit_count: 0 },
+          });
+          return;
+        }
+        writeJson(res, 404, { status: "error", error: { code: "NOT_FOUND" } });
+      },
+      async (baseUrl) => {
+        await runAutoCapture(
+          {
+            session_id: "ws-off",
+            transcript_path: transcriptPath,
+            cwd: workspaceDir,
+          },
+          env(baseUrl),
+        );
+        assert.deepEqual(
+          paths,
+          [],
+          "the workspace file turned capture off for this directory",
+        );
 
-      await runAutoCapture(
-        { session_id: "ws-on", transcript_path: transcriptPath, cwd: plainDir },
-        env(baseUrl),
-      );
-      assert.ok(
-        paths.some((path) => path.endsWith("/messages/batch")),
-        `expected the same env to capture outside that workspace; paths=${JSON.stringify(paths)}`,
-      );
-    });
+        await runAutoCapture(
+          {
+            session_id: "ws-on",
+            transcript_path: transcriptPath,
+            cwd: plainDir,
+          },
+          env(baseUrl),
+        );
+        assert.ok(
+          paths.some((path) => path.endsWith("/messages/batch")),
+          `expected the same env to capture outside that workspace; paths=${JSON.stringify(paths)}`,
+        );
+      },
+    );
   } finally {
     await rm(root, { recursive: true, force: true });
   }

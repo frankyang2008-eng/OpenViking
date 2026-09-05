@@ -628,8 +628,8 @@ fn lock_summary(status: Option<&str>) -> String {
     if let Some(total_row) = pipe_rows(status).into_iter().find(|row| {
         row.first()
             .is_some_and(|cell| cell.to_ascii_uppercase().starts_with("TOTAL"))
-    }) {
-        if let Some(count) = total_row
+    })
+        && let Some(count) = total_row
             .first()
             .and_then(|cell| cell.split_once('('))
             .and_then(|(_, rest)| rest.split_once(')'))
@@ -637,7 +637,6 @@ fn lock_summary(status: Option<&str>) -> String {
         {
             return format!("{} active {}", count, pluralize(count, "lock"));
         }
-    }
     // Plain-text observer format (`/api/v1/observer/system` lock component):
     //   Active locks: N / Waiting locks: N / Stale locks removed: N / Conflicts: M
     let mut active = None;

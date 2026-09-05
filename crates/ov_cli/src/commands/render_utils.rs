@@ -99,11 +99,10 @@ pub(crate) fn wrap_display_text(input: &str, width: usize, max_lines: usize) -> 
         truncated = true;
     }
 
-    if truncated {
-        if let Some(last) = lines.last_mut() {
+    if truncated
+        && let Some(last) = lines.last_mut() {
             *last = with_ascii_ellipsis(last, width);
         }
-    }
 
     lines
 }

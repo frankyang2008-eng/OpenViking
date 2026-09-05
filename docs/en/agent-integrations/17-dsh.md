@@ -71,7 +71,7 @@ Accidental filesystem or shell calls on `viking://` URIs are blocked with a hint
 Credentials resolve from `OPENVIKING_*` environment variables, then `~/.openviking/ovcli.conf`, then `~/.openviking/ov.conf` — the same chain the Claude Code, Codex, OpenCode, and pi integrations use. The bundle reloads them when those files change.
 
 | Env Var | Default | Description |
-|---------|---------|-------------|
+| --------- | --------- | ------------- |
 | `OPENVIKING_URL` / `OPENVIKING_BASE_URL` | `http://127.0.0.1:1933` | Server endpoint |
 | `OPENVIKING_API_KEY` / `OPENVIKING_BEARER_TOKEN` | — | API key (sent as `Authorization: Bearer`) |
 | `OPENVIKING_ACCOUNT` / `OPENVIKING_USER` | — | Trusted-mode account and user |
@@ -110,7 +110,7 @@ Credentials given in the patch win over the environment; behavior toggles read t
 ## Troubleshooting
 
 | Issue | What to check |
-|-------|---------------|
+| ------- | --------------- |
 | Nothing injected, no OpenViking tools | `dsh --profile web --dump-config` should list `openviking-memory`; re-run the installer or `dsh plugin --profile web add …` |
 | Installed into the wrong profile | The installer defaults to `web`; re-run it with `--dsh-profile <name>` |
 | `ERESOLVE` during install | The `@deepseek-ai/dsh-*` prerelease tags drift apart; install `@deepseek-ai/dsh@0.1.0-rc.6` exactly |

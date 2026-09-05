@@ -212,7 +212,7 @@ openviking-server doctor
 **参数**
 
 | 参数 | 类型 | 说明 |
-|------|------|------|
+| ------ | ------ | ------ |
 | `max_concurrent` | int | 最大并发 Embedding 请求数（`embedding.max_concurrent`，默认：`10`；必须 `>= 1`） |
 | `max_retries` | int | Embedding provider 瞬时错误的最大重试次数（`embedding.max_retries`，默认：`3`；`0` 表示禁用重试） |
 | `text_source` | str | 文本文件向量化时使用的文本来源。`content_only` 读取原文内容；`summary_first` 优先使用摘要，没有摘要时回退到原文；`summary_only` 只使用摘要。默认：`content_only` |
@@ -245,7 +245,7 @@ openviking-server doctor
 ```
 
 | 参数 | 类型 | 说明 |
-|------|------|------|
+| ------ | ------ | ------ |
 | `circuit_breaker.failure_threshold` | int | 连续失败多少次后熔断（默认：`5`） |
 | `circuit_breaker.reset_timeout` | float | 基础恢复等待时间（秒，默认：`60`） |
 | `circuit_breaker.max_reset_timeout` | float | 指数退避后的最大恢复等待时间（秒，默认：`600`） |
@@ -260,6 +260,7 @@ openviking-server doctor
 使用 `input: "multimodal"` 时，OpenViking 可以嵌入文本、图片（PNG、JPG 等）和混合内容。以图搜图需要该模式；纯文本 embedding 模型仍会索引图片 summary，但不能接收图片查询。
 
 **支持的 provider:**
+
 - `openai`: OpenAI Embedding API
 - `azure`: Azure OpenAI Embedding API
 - `volcengine`: 火山引擎 Embedding API
@@ -389,6 +390,7 @@ openviking-server doctor
 ```
 
 可用 Jina 模型:
+
 - `jina-embeddings-v5-text-small`: 677M 参数, 1024 维, 最大序列长度 32768 (默认)
 - `jina-embeddings-v5-text-nano`: 239M 参数, 768 维, 最大序列长度 8192
 
@@ -408,7 +410,7 @@ openviking-server doctor
 }
 ```
 
-获取 API Key: https://jina.ai
+获取 API Key: <https://jina.ai>
 
 **gemini provider 配置示例:**
 
@@ -428,13 +430,14 @@ openviking-server doctor
 ```
 
 可用 Gemini 嵌入模型:
+
 - `gemini-embedding-2-preview`: 8192 token 输入限制, 1–3072 输出维度 (MRL)
 - `gemini-embedding-001`: 2048 token 输入限制, 1–3072 输出维度 (MRL)
 - `text-embedding-004`: 2048 token 输入限制, 768 输出维度（固定）
 
 推荐维度: `768`、`1536` 或 `3072`（默认: `3072`）。
 
-获取 API Key: https://aistudio.google.com/apikey
+获取 API Key: <https://aistudio.google.com/apikey>
 
 **DashScope（阿里通义）provider 配置示例:**
 
@@ -455,7 +458,7 @@ openviking-server doctor
 **可用 DashScope 模型:**
 
 | 模型 | 维度 | 输入类型 | 说明 |
-|------|------|----------|------|
+| ------ | ------ | ---------- | ------ |
 | `text-embedding-v3` | 1024 | text | 针对中文优化 |
 | `text-embedding-v4` | 1024 | text | 针对中文优化 |
 | `tongyi-embedding-vision-plus` | 1152 | multimodal | 支持通过 `enable_fusion` 启用融合向量 |
@@ -466,7 +469,7 @@ openviking-server doctor
 **输入和多模态参数**:
 
 | 参数 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
+| ------ | ------ | -------- | ------ |
 | `input` | str | `"multimodal"` | 嵌入模式：`"text"` 或 `"multimodal"` |
 | `enable_fusion` | bool | `false` | 为 `tongyi-embedding-vision-*` 模型启用融合向量 |
 | `res_level` | int | `2` | 图像分辨率级别（1=高，2=中，3=低） |
@@ -485,7 +488,7 @@ openviking-server doctor
 `/api/v1/services/embeddings/multimodal-embedding/multimodal-embedding`
 （多模态模式）。
 
-获取 API Key: https://dashscope.console.aliyun.com/api-key
+获取 API Key: <https://dashscope.console.aliyun.com/api-key>
 
 **非对称检索**（索引和查询使用不同的 task type）:
 
@@ -600,7 +603,7 @@ provider，并设置 `storage.vectordb.sparse_weight > 0`。自托管模型的�
 **参数**
 
 | 参数 | 类型 | 说明 |
-|------|------|------|
+| ------ | ------ | ------ |
 | `api_key` | str | API Key。`openai-codex` 在 Codex OAuth 可用时可省略；使用 provider 原生凭据的 `litellm` 路由也可省略 |
 | `forward_api_key` | bool | 仅 LiteLLM 使用。覆盖是否把 `api_key` 透传给 LiteLLM。默认情况下，OpenViking 不会把占位 key 透传给 `bedrock/`、`sagemaker/`、`vertex_ai/` 等 AWS/GCP 原生鉴权路由；如果明确使用 LiteLLM 的 Bedrock bearer-token API-key 鉴权，可设为 `true` |
 | `model` | str | 模型名称 |
@@ -640,6 +643,7 @@ provider，并设置 `storage.vectordb.sparse_weight > 0`。自托管模型的�
 如果未配置 VLM，L0/L1 将直接从内容生成（语义性较弱），多模态资源的描述可能有限。
 
 **支持的 provider：**
+
 - `volcengine`：火山引擎 VLM API
 - `openai`：OpenAI 兼容 VLM API
 - `openai-codex`：通过 ChatGPT/Codex OAuth 使用 Codex VLM
@@ -674,6 +678,7 @@ LiteLLM 的 Bedrock bearer-token API-key 鉴权，请设置 `forward_api_key=tru
 ```
 
 常见使用场景：
+
 - **OpenRouter**: 需要 `HTTP-Referer` 和 `X-Title` 来标识应用
 - **Kimi Coding**: 需要自定义 user agent 或追加订阅请求头时可以在这里覆盖
 - **自定义代理**: 添加认证头或追踪头
@@ -778,7 +783,6 @@ ollama pull guoxuter/ov_intent_analysis_sft:v7_q8
 
 这样可以用小模型承担检索规划，降低延迟，同时保留更强的 `vlm` 处理语义提取、记忆提取和多模态内容。
 
-
 ### feishu
 
 飞书/Lark 云端文档解析配置。支持的 URL 格式详见[资源管理](../api/02-resources.md)。
@@ -796,7 +800,7 @@ ollama pull guoxuter/ov_intent_analysis_sft:v7_q8
 ```
 
 | 参数 | 类型 | 说明 |
-|------|------|------|
+| ------ | ------ | ------ |
 | `app_id` | str | 飞书应用 ID（也可通过 `FEISHU_APP_ID` 环境变量设置） |
 | `app_secret` | str | 飞书应用密钥（也可通过 `FEISHU_APP_SECRET` 环境变量设置） |
 | `domain` | str | 飞书 API 域名。Lark 国际版请设为 `https://open.larksuite.com` |
@@ -818,7 +822,7 @@ ollama pull guoxuter/ov_intent_analysis_sft:v7_q8
 通过 URL 拉取资源时，OpenViking 会拒绝环回、链路本地、私有及其他非公网目标，以及不在代码托管白名单中的主机，并抛出 `PermissionDeniedError`。要从自建 GitHub Enterprise / GitLab / Azure DevOps 拉取代码，请将主机加入 `code` 下对应的白名单：
 
 | 字段 | 类型 | 说明 | 默认值 |
-|------|------|------|--------|
+| ------ | ------ | ------ | -------- |
 | `github_domains` | list[str] | 允许的 GitHub 主机（在此添加你的 GitHub Enterprise 主机） | `["github.com", "www.github.com"]` |
 | `gitlab_domains` | list[str] | 允许的 GitLab 主机（在此添加你的自建 GitLab 主机） | `["gitlab.com", "www.gitlab.com"]` |
 | `azure_devops_domains` | list[str] | 允许的 Azure DevOps 主机 | `["dev.azure.com", "ssh.dev.azure.com", "vs-ssh.visualstudio.com"]` |
@@ -858,7 +862,7 @@ PDF 解析配置。支持三种策略：`local`（本地 pdfplumber）、`mineru
 ```
 
 | 参数 | 类型 | 说明 |
-|------|------|------|
+| ------ | ------ | ------ |
 | `strategy` | str | 解析策略：`local` / `mineru` / `auto`（默认 `auto`） |
 | `mineru_endpoint` | str | MinerU API **base URL**（如 `http://127.0.0.1:8000`） |
 | `mineru_timeout` | float | 请求超时秒数（默认 `300.0`） |
@@ -903,7 +907,7 @@ PDF 解析配置。支持三种策略：`local`（本地 pdfplumber）、`mineru
 **参数**
 
 | 参数 | 类型 | 说明 |
-|------|------|------|
+| ------ | ------ | ------ |
 | `provider` | str | `"vikingdb"`、`"cohere"` 或 `"openai"`。省略时基于字段自动识别。 |
 | `ak` | str | VikingDB Access Key（仅 `vikingdb` 提供方使用） |
 | `sk` | str | VikingDB Secret Key（仅 `vikingdb` 提供方使用） |
@@ -917,6 +921,7 @@ PDF 解析配置。支持三种策略：`local`（本地 pdfplumber）、`mineru
 | `extra_headers` | object | 自定义 HTTP 请求头（OpenAI 兼容 provider 可用，可选） |
 
 **支持的提供方:**
+
 - `vikingdb`: 火山引擎 VikingDB Rerank API (使用 AK/SK)
 - `cohere`: Cohere Rerank API
 - `openai`: OpenAI 兼容的 Rerank 接口
@@ -981,12 +986,11 @@ Grep 引擎配置，用于内容模式搜索。这些设置为服务端配置，
 #### 根级配置
 
 | 参数 | 类型 | 说明 | 默认值 |
-|------|------|------|--------|
+| ------ | ------ | ------ | -------- |
 | `workspace` | str | 本地数据存储路径（主要配置） | "./data" |
 | `skip_process_lock` | bool | 是否跳过 `storage.workspace` 的启动进程锁检查。启用后，OpenViking 不会检查或创建 `.openviking.pid` 锁文件。 | `false` |
 | `agfs` | object | RAGFS（Rust 实现的 AGFS）配置 | {} |
 | `vectordb` | object | 向量库存储配置 | {} |
-
 
 ```json
 {
@@ -1006,15 +1010,14 @@ Grep 引擎配置，用于内容模式搜索。这些设置为服务端配置，
 #### agfs (RAGFS)
 
 | 参数 | 类型 | 说明 | 默认值 |
-|------|------|------|--------|
+| ------ | ------ | ------ | -------- |
 | `backend` | str | `"local"`、`"s3"` 或 `"memory"` | `"local"` |
 | `timeout` | float | 请求超时时间（秒） | `10.0` |
 | `backups` | object | 多写存储配置。配置后顶层 `backend` 作为 primary，`backups.items[]` 作为 backup | `null` |
 | `redirects` | array | 多写存储的文件重定向策略。命中后文件写入指定 backup，而不是 primary | `[]` |
 | `queuefs` | object | QueueFS 配置。控制 `/queue` 的命名空间模式、后端和运行时参数 | `{ "mode": "shared", "backend": "sqlite", "recover_stale_sec": 0, "busy_timeout_ms": 5000 }` |
-| `queue_db_path` | str（可选）| 旧版兼容字段，用于覆盖 QueueFS 的 sqlite 数据库文件路径。已被 `storage.agfs.queuefs.db_path` 取代。未设置时默认为 `{storage.workspace}/_system/queue/queue.db`。适用于 workspace 卷不支持 sqlite 的场景（例如某些网络文件系统） | `null` |
+| `queue_db_path` | str（可选） | 旧版兼容字段，用于覆盖 QueueFS 的 sqlite 数据库文件路径。已被 `storage.agfs.queuefs.db_path` 取代。未设置时默认为 `{storage.workspace}/_system/queue/queue.db`。适用于 workspace 卷不支持 sqlite 的场景（例如某些网络文件系统） | `null` |
 | `s3` | object | S3 backend configuration (when backend is 's3') | - |
-
 
 **配置示例**
 
@@ -1065,7 +1068,7 @@ RAGFS 默认使用 Rust binding 模式，通过 Rust 实现直接访问文件系
 `backups` 常用字段：
 
 | 参数 | 类型 | 说明 | 默认值 |
-|------|------|------|--------|
+| ------ | ------ | ------ | -------- |
 | `sync_type` | str | 多写同步模式，支持 `"async"` 或 `"sync"` | `"async"` |
 | `write_ack_count` | int | `sync` 模式下返回前需要的 backup 确认数 | 全部 backup |
 | `write_ack_timeout_ms` | int | `sync` 模式下等待 backup 确认的超时时间，单位毫秒 | `null` |
@@ -1075,7 +1078,7 @@ RAGFS 默认使用 Rust binding 模式，通过 Rust 实现直接访问文件系
 `redirects` 常用字段：
 
 | 参数 | 类型 | 说明 | 默认值 |
-|------|------|------|--------|
+| ------ | ------ | ------ | -------- |
 | `type` | str | 策略类型，支持 `"FileExtensionPolicy"` 或 `"FileOverSizePolicy"` | 必填 |
 | `extensions` | array | `FileExtensionPolicy` 使用的扩展名正则列表，例如 `["(pdf\|ppt)"]` | `[]` |
 | `max_size_mb` | int | `FileOverSizePolicy` 使用的文件大小阈值，单位 MB | `null` |
@@ -1111,7 +1114,7 @@ RAGFS 默认使用 Rust binding 模式，通过 Rust 实现直接访问文件系
 `storage.agfs.cachefs` 只控制 CacheFS 业务行为：
 
 | 参数 | 类型 | 说明 | 默认值 |
-|------|------|------|--------|
+| ------ | ------ | ------ | -------- |
 | `backend` | str | `local` 完全沿用原文件系统；`cache` 启用 CacheFS wrapper | `local` |
 | `namespace` | str | CacheFS key 命名空间 | `openviking` |
 | `max_file_size_bytes` | int | 允许缓存的单文件最大字节数 | `1048576` |
@@ -1156,7 +1159,7 @@ RAGFS 默认使用 Rust binding 模式，通过 Rust 实现直接访问文件系
 ##### QueueFS 配置
 
 | 参数 | 类型 | 说明 | 默认值 |
-|------|------|------|--------|
+| ------ | ------ | ------ | -------- |
 | `mode` | str | QueueFS 命名空间模式：`"shared"` 使用 `/queue`；`"worker"` 为每个 worker 隔离到 `/queue/worker-<index\|pid>` | `"shared"` |
 | `backend` | str | QueueFS 后端：`"memory"`、`"sqlite"`、`"sqlite3"` 或 `"cache"` | `"sqlite"` |
 | `db_path` | str（可选） | 当 backend 为 `"sqlite"` 或 `"sqlite3"` 时使用的 QueueFS sqlite 数据库路径 | `null` |
@@ -1248,7 +1251,7 @@ RAGFS 默认使用 Rust binding 模式，通过 Rust 实现直接访问文件系
 ```
 
 | 参数 | 类型 | 说明 | 默认值 |
-|------|------|------|--------|
+| ------ | ------ | ------ | -------- |
 | `default_enabled` | bool | 对未显式传入 `auto_commit_policy` 的新 session，是否默认开启 auto commit。为 `false` 时，这类 session 保持关闭 | `false` |
 | `idle_enabled` | bool | 是否启用服务端 idle timeout 自动 commit 调度器。关闭后，不会启动 idle scheduler；但 token / message-count 的即时触发仍然生效 | `false` |
 | `check_interval_seconds` | float | idle scheduler 的检查周期，单位秒，必须大于 `0` | `60.0` |
@@ -1273,7 +1276,7 @@ RAGFS 默认使用 Rust binding 模式，通过 Rust 实现直接访问文件系
 当 session 带有 `auto_commit_policy` 时，未传的字段会回退到下方推荐默认值。没有存储 policy 的 session 保持 auto commit 关闭。取值会被 clamp 到 `[0, 上限]`，未知字段会以 `InvalidArgumentError` 拒绝。设置和查看方式见 [Sessions API](../api/05-sessions.md#create_session)。
 
 | 字段 | 类型 | 默认值 | 上限 | 说明 |
-|------|------|--------|------|------|
+| ------ | ------ | -------- | ------ | ------ |
 | `pending_token_threshold` | int | 150000 | 1000000 | 当未提交的 pending token 超过该值（严格大于）时，会在消息写入后触发一次自动 commit。 |
 | `message_count_threshold` | int | 100 | 1000 | 当未提交的 live message 数量超过该值（严格大于）时，会在消息写入后触发一次自动 commit。 |
 | `idle_timeout_seconds` | int | 86400 | 604800 | 有未提交内容的 session 在空闲这么多秒后，进入服务端 idle scheduler 的处理范围。idle 触发的 commit 会归档全部积压消息，并忽略 `keep_recent_count`。 |
@@ -1282,11 +1285,10 @@ RAGFS 默认使用 Rust binding 模式，通过 Rust 实现直接访问文件系
 
 代码入口：`openviking/session/auto_commit_policy.py:AutoCommitPolicy`。
 
-
 ##### S3 后端配置
 
 | 参数 | 类型 | 说明 | 默认值 |
-|------|------|------|--------|
+| ------ | ------ | ------ | -------- |
 | `bucket` | str | S3 存储桶名称 | null |
 | `region` | str | 存储桶所在的 AWS 区域（例如 us-east-1, cn-beijing） | null |
 | `access_key` | str | S3 访问密钥 ID | null |
@@ -1365,8 +1367,8 @@ RAGFS 默认使用 Rust binding 模式，通过 Rust 实现直接访问文件系
   }
 }
 ```
-</details>
 
+</details>
 
 <details>
 <summary><b>VirtualHostStyle S3</b></summary>
@@ -1399,10 +1401,10 @@ RAGFS 默认使用 Rust binding 模式，通过 Rust 实现直接访问文件系
 向量库存储的配置
 
 | 参数 | 类型 | 说明 | 默认值 |
-|------|------|------|--------|
+| ------ | ------ | ------ | -------- |
 | `backend` | str | VectorDB 后端类型: 'local'（基于文件）, 'http'（远程服务）, 'volcengine'（云上 VikingDB）, 'vikingdb'（私有部署）或 'cuvs'（本地存储 + GPU dense search） | "local" |
 | `name` | str | VectorDB 的集合名称 | "context" |
-| `url` | str | 'http' 类型的远程服务 URL（例如 'http://localhost:5000'） | null |
+| `url` | str | 'http' 类型的远程服务 URL（例如 '<http://localhost:5000'）> | null |
 | `project_name` | str | 项目名称（别名 project） | "default" |
 | `distance_metric` | str | 向量相似度搜索的距离度量（例如 'cosine', 'l2', 'ip'） | "cosine" |
 | `dimension` | int | 向量嵌入的维度 | 0 |
@@ -1412,6 +1414,7 @@ RAGFS 默认使用 Rust binding 模式，通过 Rust 实现直接访问文件系
 | `cuvs` | object | NVIDIA cuVS 配置，也用于在 'local' 下显式开启显存感知自动模式，参见 [cuVS 使用指南](./16-cuvs.md) | - |
 
 默认使用本地模式
+
 ```
 {
   "storage": {
@@ -1441,6 +1444,7 @@ RAGFS 默认使用 Rust binding 模式，通过 Rust 实现直接访问文件系
   }
 }
 ```
+
 </details>
 
 ##### ACL schema
@@ -1491,14 +1495,12 @@ acl_inherited_grants
 分布式 openGauss 部署可将 `mode` 设为 `"distributed"`；OpenViking 会尝试把元数据表标记为 reference table，并按 `id` 分布集合表。
 </details>
 
-
-
 ## 配置文件
 
 OpenViking 使用两个配置文件：
 
 | 配置文件 | 用途 | 默认路径 |
-|---------|------|---------|
+| --------- | ------ | --------- |
 | `ov.conf` | OpenViking Server 配置 | `~/.openviking/ov.conf` |
 | `ovcli.conf` | HTTP 客户端和 CLI 连接远程服务端 | `~/.openviking/ovcli.conf` |
 
@@ -1546,7 +1548,7 @@ openviking-server --config /path/to/ov.conf
 ```
 
 | 字段 | 说明 | 默认值 |
-|------|------|--------|
+| ------ | ------ | -------- |
 | `version` | 已废弃且会被忽略。OpenViking 始终使用 v3 记忆抽取链路；已有配置中保留该字段仍可正常加载，不会报错。 | `"v3"` |
 | `custom_templates_dir` | 自定义 memory templates 目录。设置后会在内置模板之外加载该目录中的模板。 | `""` |
 | `extraction_enabled` | session commit 时是否执行长期记忆抽取。 | `true` |
@@ -1577,7 +1579,7 @@ HTTP 客户端（`SyncHTTPClient` / `AsyncHTTPClient`）和 CLI 工具连接远�
 ```
 
 | 字段 | 说明 | 默认值 |
-|------|------|--------|
+| ------ | ------ | -------- |
 | `url` | 服务端地址 | （必填） |
 | `api_key` | API Key 认证（root key 或 user key） | `null`（无认证） |
 | `account` | 可选的 trusted 模式 account 身份 header | `null` |
@@ -1643,7 +1645,7 @@ openviking add-resource ./docs --exclude "*.tmp"
 ```
 
 | 字段 | 类型 | 说明 | 默认值 |
-|------|------|------|--------|
+| ------ | ------ | ------ | -------- |
 | `host` | str | 绑定地址 | `127.0.0.1` |
 | `port` | int | 绑定端口 | `1933` |
 | `auth_mode` | str | 认证模式：`"api_key"` 或 `"trusted"`。默认值为 `"api_key"` | `"api_key"` |
@@ -1730,7 +1732,7 @@ openviking add-resource ./docs --exclude "*.tmp"
 ```
 
 | 参数 | 类型 | 说明 | 默认值 |
-|------|------|------|--------|
+| ------ | ------ | ------ | -------- |
 | `enabled` | bool | 是否启用加密 | `false` |
 | `provider` | str | 密钥提供程序：`"local"`、`"vault"` 或 `"volcengine_kms"` | - |
 | `api_key_hashing.enabled` | bool | 是否对 API key 字段启用 Argon2id 单向哈希（与文件级 `enabled` 独立控制），详见 [加密指南](./08-encryption.md) | `false` |
@@ -1775,7 +1777,7 @@ openviking add-resource ./docs --exclude "*.tmp"
 ```
 
 | 参数 | 类型 | 说明 | 默认值 |
-|------|------|------|--------|
+| ------ | ------ | ------ | -------- |
 | `vault.address` | str | Vault 服务地址 | - |
 | `vault.token` | str | Vault 访问令牌 | - |
 | `vault.mount_point` | str | Transit 引擎挂载点 | `"transit"` |
@@ -1801,7 +1803,7 @@ openviking add-resource ./docs --exclude "*.tmp"
 ```
 
 | 参数 | 类型 | 说明 | 默认值 |
-|------|------|------|--------|
+| ------ | ------ | ------ | -------- |
 | `volcengine_kms.key_id` | str | KMS 密钥 ID | - |
 | `volcengine_kms.region` | str | 区域 | `"cn-beijing"` |
 | `volcengine_kms.access_key` | str | 火山引擎 Access Key | - |
@@ -1840,7 +1842,7 @@ openviking add-resource ./docs --exclude "*.tmp"
 ```
 
 | 参数 | 类型 | 说明 | 默认值 |
-|------|------|------|--------|
+| ------ | ------ | ------ | -------- |
 | `lock_timeout` | float | 已废弃且忽略。运行时等待超时固定为 `0.0`。 | `0.0` |
 | `lock_expire` | float | 已废弃。改用 `storage.agfs.pathlock.lock_expire_secs`。未显式配置新字段时会自动映射。 | `30.0` |
 | `redo_recovery_enabled` | bool | 已废弃且忽略。当前版本的 `session.commit` phase-2 恢复由持久化 `session_commit` 队列负责。 | `true` |
@@ -1945,6 +1947,7 @@ Task 记录文件位于所属账号的系统目录：
 ```
 
 说明：
+
 - `storage.vectordb.sparse_weight` 用于混合（dense + sparse）索引/检索的权重，仅在使用 hybrid 索引时生效；设置为 > 0 才会启用 sparse 信号。
 
 ## 故障排除
@@ -1984,6 +1987,7 @@ Error: Rate limit exceeded
 ```
 
 火山引擎有速率限制。考虑批量处理时添加延迟或升级套餐。
+
 - 优先降低 `embedding.max_concurrent` / `vlm.max_concurrent`
 - 对偶发 `429` 可保留少量 `max_retries`；若希望快速失败，可将其设为 `0`
 

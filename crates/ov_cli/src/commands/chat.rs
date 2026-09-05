@@ -296,11 +296,10 @@ impl ChatCommand {
         for (key, value) in &auth.extra_headers {
             req_builder = req_builder.header(key.as_str(), value);
         }
-        if auth.gateway_token_required {
-            if let Some(gateway_token) = &auth.gateway_token {
+        if auth.gateway_token_required
+            && let Some(gateway_token) = &auth.gateway_token {
                 req_builder = req_builder.header("X-Gateway-Token", gateway_token);
             }
-        }
         req_builder
     }
 
@@ -509,8 +508,8 @@ impl ChatCommand {
                 }
 
                 // Parse SSE line: "data: {json}"
-                if let Some(data_str) = line.strip_prefix("data: ") {
-                    if let Ok(event) = serde_json::from_str::<ChatStreamEvent>(data_str) {
+                if let Some(data_str) = line.strip_prefix("data: ")
+                    && let Ok(event) = serde_json::from_str::<ChatStreamEvent>(data_str) {
                         self.print_stream_event(&event);
                         if event.event == "response" {
                             if let Some(msg) = event.data.as_str() {
@@ -528,7 +527,6 @@ impl ChatCommand {
                             }
                         }
                     }
-                }
             }
         }
 
@@ -799,8 +797,8 @@ impl ChatCommand {
                 }
 
                 // Parse SSE line: "data: {json}"
-                if let Some(data_str) = line.strip_prefix("data: ") {
-                    if let Ok(event) = serde_json::from_str::<ChatStreamEvent>(data_str) {
+                if let Some(data_str) = line.strip_prefix("data: ")
+                    && let Ok(event) = serde_json::from_str::<ChatStreamEvent>(data_str) {
                         self.print_stream_event(&event);
                         if event.event == "response" {
                             if let Some(msg) = event.data.as_str() {
@@ -818,7 +816,6 @@ impl ChatCommand {
                             }
                         }
                     }
-                }
             }
         }
 
@@ -1252,13 +1249,7 @@ fn non_empty_str(value: &str) -> Option<&str> {
 }
 
 fn non_empty_string(value: Option<String>) -> Option<String> {
-    value.and_then(|text| {
-        if text.trim().is_empty() {
-            None
-        } else {
-            Some(text)
-        }
-    })
+    value.filter(|text| !text.trim().is_empty())
 }
 
 #[cfg(test)]

@@ -69,7 +69,7 @@ Tool calls and results are captured as dedicated `tool` parts, and `tool_output`
 Credential source: env vars win by default — when any `OPENVIKING_*` credential env var (`OPENVIKING_URL`/`OPENVIKING_BASE_URL`, `OPENVIKING_BEARER_TOKEN`/`OPENVIKING_API_KEY`, `OPENVIKING_ACCOUNT`, `OPENVIKING_USER`, `OPENVIKING_PEER_ID`) is set, its value takes precedence over the active `ovcli.conf`. Only when none of them are set does the active `ovcli.conf` (`OPENVIKING_CLI_CONFIG_FILE` or `~/.openviking/ovcli.conf`) drive hooks, MCP proxy, and child `ov` commands together, so `ov config switch <name>` takes effect on the next launch. Set `OPENVIKING_CREDENTIAL_SOURCE=cli` to force the active ovcli config even while credential env vars are present. Fields not covered by either fall back to `ovcli.conf`, then `ov.conf`, then built-in defaults.
 
 | Env Var | Default | Description |
-|---------|---------|-------------|
+| --------- | --------- | ------------- |
 | `OPENVIKING_URL` / `OPENVIKING_BASE_URL` | — | Full server URL |
 | `OPENVIKING_API_KEY` | — | API key (sent as `Authorization: Bearer`) |
 | `OPENVIKING_CLI_CONFIG_FILE` | `~/.openviking/ovcli.conf` | Active CLI config to use for hooks, MCP, and child `ov` commands |
@@ -96,7 +96,7 @@ Change it with `OPENVIKING_PEER_SOURCE`, with `plugin.peerSource` in `ovcli.conf
 ## Troubleshooting
 
 | Symptom | Cause | Fix |
-|---------|-------|-----|
+| --------- | ------- | ----- |
 | MCP tool calls fail with an auth error | The active ovcli config has no valid `api_key` for an authenticated server | Fix `~/.openviking/ovcli.conf` (or run `node <plugin-dir>/scripts/setup.mjs`) and restart Codex; the stdio proxy re-reads it on launch and after auth failures. |
 | MCP tool calls fail with a connection error | Server unreachable or the URL is wrong | Check the endpoint: `curl "$(jq -r '.url' ~/.openviking/ovcli.conf)/health"` |
 | `4 hooks need review` | Security review on first launch | Run `/hooks` within Codex and approve the hooks. |

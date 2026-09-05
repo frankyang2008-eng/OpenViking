@@ -51,7 +51,7 @@ defer client.CloseIdleConnections()
 The Go SDK sends the same identity headers as the Python HTTP client:
 
 | Config field | HTTP header |
-|--------------|-------------|
+| -------------- | ------------- |
 | `APIKey` | `X-API-Key` |
 | `Account` | `X-OpenViking-Account` |
 | `User` | `X-OpenViking-User` |
@@ -110,7 +110,7 @@ Configuration file example:
 Configuration field description:
 
 | Field | Description | Default |
-|-------|-------------|---------|
+| ------- | ------------- | --------- |
 | `url` | Server address | (required) |
 | `api_key` | API Key | `null` (no auth) |
 | `account` | Default account header for tenant-scoped requests | `null` |
@@ -137,6 +137,7 @@ client.initialize()
 ```
 
 ⚠️ **Note**: The client will attempt to load the configuration file if any of the following conditions are met:
+
 - `url` is `None`
 - `api_key` is `None`
 - `timeout` equals `600.0` (default value)
@@ -303,7 +304,7 @@ JSON output - error:
 **Note**: Exit codes are return codes from the CLI (command line tool), not HTTP API status codes.
 
 | Code | Meaning |
-|------|---------|
+| ------ | --------- |
 | 0 | Success |
 | 1 | General error |
 | 2 | Configuration error |
@@ -312,7 +313,7 @@ JSON output - error:
 ## Error Codes
 
 | Code | HTTP Status | Description |
-|------|-------------|-------------|
+| ------ | ------------- | ------------- |
 | `OK` | 200 | Success |
 | `INVALID_ARGUMENT` | 400 | Invalid parameter |
 | `INVALID_URI` | 400 | Invalid Viking URI format |
@@ -342,7 +343,7 @@ This catalog follows the routes actually mounted by the server. Each group headi
 ### [System Status](07-system.md)
 
 | Method | Path | Description |
-|--------|------|-------------|
+| -------- | ------ | ------------- |
 | GET | `/health` | Basic health check (no authentication) |
 | GET | `/ready` | AGFS, VectorDB, and API key manager readiness (no authentication) |
 | GET | `/api/v1/system/status` | System status |
@@ -356,7 +357,7 @@ This catalog follows the routes actually mounted by the server. Each group headi
 ### [Resources](02-resources.md) and [Filesystem](03-filesystem.md)
 
 | Method | Path | Description |
-|--------|------|-------------|
+| -------- | ------ | ------------- |
 | POST | `/api/v1/resources/temp_upload` | Upload a temporary file for a later import |
 | POST | `/api/v1/resources` | Add a resource from a URL or temporary upload |
 | GET | `/api/v1/fs/ls` | List a directory |
@@ -372,7 +373,7 @@ This catalog follows the routes actually mounted by the server. Each group headi
 ### [ACL](12-acl.md)
 
 | Method | Path | Description |
-|--------|------|-------------|
+| -------- | ------ | ------------- |
 | GET | `/api/v1/acl` | Get direct, inherited, and effective ACLs |
 | PUT | `/api/v1/acl` | Replace a resource's direct ACL |
 | DELETE | `/api/v1/acl` | Clear a resource's direct ACL |
@@ -382,7 +383,7 @@ This catalog follows the routes actually mounted by the server. Each group headi
 ### [Content](12-content.md)
 
 | Method | Path | Description |
-|--------|------|-------------|
+| -------- | ------ | ------------- |
 | GET | `/api/v1/content/read` | Read full content (L2) |
 | GET | `/api/v1/content/abstract` | Read an abstract (L0) |
 | GET | `/api/v1/content/overview` | Read an overview (L1) |
@@ -395,7 +396,7 @@ This catalog follows the routes actually mounted by the server. Each group headi
 ### [Skills](04-skills.md)
 
 | Method | Path | Description |
-|--------|------|-------------|
+| -------- | ------ | ------------- |
 | GET | `/api/v1/skills` | List skills |
 | POST | `/api/v1/skills` | Add a skill |
 | POST | `/api/v1/skills/find` | Search skills |
@@ -407,7 +408,7 @@ This catalog follows the routes actually mounted by the server. Each group headi
 ### [Sessions](05-sessions.md), [Memory](16-memory.md), and [Agent Evolution](19-agent-evolution.md)
 
 | Method | Path | Description |
-|--------|------|-------------|
+| -------- | ------ | ------------- |
 | POST | `/api/v1/sessions` | Create a session |
 | GET | `/api/v1/sessions` | List sessions |
 | GET | `/api/v1/sessions/{session_id}` | Get a session |
@@ -430,7 +431,7 @@ This catalog follows the routes actually mounted by the server. Each group headi
 ### [Retrieval](06-retrieval.md)
 
 | Method | Path | Description |
-|--------|------|-------------|
+| -------- | ------ | ------------- |
 | POST | `/api/v1/search/find` | Semantic search |
 | POST | `/api/v1/search/search` | Context-aware search; `mode="context"` returns assembled, injection-ready context |
 | POST | `/api/v1/search/grep` | Content pattern search |
@@ -439,7 +440,7 @@ This catalog follows the routes actually mounted by the server. Each group headi
 ### [Watches](15-watches.md), [Snapshots](11-snapshot.md), and [OVPack](14-ovpack.md)
 
 | Method | Path | Description |
-|--------|------|-------------|
+| -------- | ------ | ------------- |
 | GET | `/api/v1/watches` | List watches or query by `to_uri` |
 | GET | `/api/v1/watches/{task_id}` | Get a watch by task ID |
 | PATCH | `/api/v1/watches` | Update a watch by `to_uri` |
@@ -464,7 +465,7 @@ This catalog follows the routes actually mounted by the server. Each group headi
 ### [Background Tasks](17-tasks.md), [Runtime Observer](18-observer.md), and [Metrics](09-metrics.md)
 
 | Method | Path | Description |
-|--------|------|-------------|
+| -------- | ------ | ------------- |
 | GET | `/api/v1/tasks/{task_id}` | Get a background task |
 | POST | `/api/v1/tasks/{task_id}/cancel` | Cancel a background task |
 | GET | `/api/v1/tasks` | List background tasks |
@@ -480,7 +481,7 @@ This catalog follows the routes actually mounted by the server. Each group headi
 ### [Administration](08-admin.md) and [Privacy Configuration](10-privacy.md)
 
 | Method | Path | Description |
-|--------|------|-------------|
+| -------- | ------ | ------------- |
 | GET | `/api/v1/admin/agent-evolution` | Get the caller account's Agent Evolution status |
 | PUT | `/api/v1/admin/agent-evolution` | Update the caller account's Agent Evolution status |
 | GET | `/api/v1/admin/accounts/{account_id}/settings` | Get effective account settings |
@@ -513,7 +514,7 @@ This catalog follows the routes actually mounted by the server. Each group headi
 ### [OpenViking Assets](22-openviking-assets.md), [WebDAV](20-webdav.md), and [VikingBot API](24-vikingbot.md)
 
 | Method | Path | Description |
-|--------|------|-------------|
+| -------- | ------ | ------------- |
 | POST | `/api/v1/openviking-assets/resolve` | Parse and validate a Catalog and Manifest, returning a normalized asset plan |
 | POST | `/api/v1/openviking-assets/preflight` | Read-only access check for a Git repository and ref |
 | OPTIONS | `/webdav/resources`, `/webdav/resources/{resource_path}` | Query WebDAV capabilities |
@@ -538,7 +539,7 @@ This catalog follows the routes actually mounted by the server. Each group headi
 The sidebar is organized by responsibility rather than historical file size:
 
 | Group | What to look for |
-|-------|------------------|
+| ------- | ------------------ |
 | Core Data | Resources, content, filesystem, skills, sessions, and memory |
 | Retrieval | Semantic retrieval and code retrieval |
 | Data Lifecycle | Watches, snapshots, and OVPack |

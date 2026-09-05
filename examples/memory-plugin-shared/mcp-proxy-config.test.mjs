@@ -15,20 +15,38 @@ const OVCLI = join(homedir(), ".openviking", "ovcli.conf");
 const OV = join(homedir(), ".openviking", "ov.conf");
 
 test("a base URL becomes the /mcp endpoint exactly once", () => {
-  assert.equal(buildMcpProxyConfig({ baseUrl: "http://x:1933" }).mcpUrl, "http://x:1933/mcp");
-  assert.equal(buildMcpProxyConfig({ baseUrl: "http://x:1933/" }).mcpUrl, "http://x:1933/mcp");
-  assert.equal(buildMcpProxyConfig({ baseUrl: "http://x:1933///" }).mcpUrl, "http://x:1933/mcp");
+  assert.equal(
+    buildMcpProxyConfig({ baseUrl: "http://x:1933" }).mcpUrl,
+    "http://x:1933/mcp",
+  );
+  assert.equal(
+    buildMcpProxyConfig({ baseUrl: "http://x:1933/" }).mcpUrl,
+    "http://x:1933/mcp",
+  );
+  assert.equal(
+    buildMcpProxyConfig({ baseUrl: "http://x:1933///" }).mcpUrl,
+    "http://x:1933/mcp",
+  );
 });
 
 test("an explicit MCP URL wins over the derived one", () => {
-  const cfg = buildMcpProxyConfig({ baseUrl: "http://x:1933", mcpUrl: "http://y/custom" });
+  const cfg = buildMcpProxyConfig({
+    baseUrl: "http://x:1933",
+    mcpUrl: "http://y/custom",
+  });
   assert.equal(cfg.mcpUrl, "http://y/custom");
 });
 
 test("the timeout is clamped and defaulted", () => {
   assert.equal(buildMcpProxyConfig({}).timeoutMs, DEFAULT_PROXY_TIMEOUT_MS);
-  assert.equal(buildMcpProxyConfig({ timeoutMs: 0 }).timeoutMs, DEFAULT_PROXY_TIMEOUT_MS);
-  assert.equal(buildMcpProxyConfig({ timeoutMs: "nope" }).timeoutMs, DEFAULT_PROXY_TIMEOUT_MS);
+  assert.equal(
+    buildMcpProxyConfig({ timeoutMs: 0 }).timeoutMs,
+    DEFAULT_PROXY_TIMEOUT_MS,
+  );
+  assert.equal(
+    buildMcpProxyConfig({ timeoutMs: "nope" }).timeoutMs,
+    DEFAULT_PROXY_TIMEOUT_MS,
+  );
   assert.equal(buildMcpProxyConfig({ timeoutMs: 5 }).timeoutMs, 1000);
   assert.equal(buildMcpProxyConfig({ timeoutMs: 30000 }).timeoutMs, 30000);
 });
@@ -68,13 +86,19 @@ test("debug stays strictly boolean-true opt-in", () => {
 });
 
 test("broad MCP recall does not send an actor peer header", () => {
-  assert.equal(resolveMcpActorPeerId({ peerId: "workspace-a", recallPeerScope: "all" }), "");
+  assert.equal(
+    resolveMcpActorPeerId({ peerId: "workspace-a", recallPeerScope: "all" }),
+    "",
+  );
   assert.equal(resolveMcpActorPeerId({ peerId: "workspace-a" }), "");
 });
 
 test("actor-scoped MCP recall takes and trims an explicit peer", () => {
   assert.equal(
-    resolveMcpActorPeerId({ peerId: " workspace-a ", recallPeerScope: "actor" }),
+    resolveMcpActorPeerId({
+      peerId: " workspace-a ",
+      recallPeerScope: "actor",
+    }),
     "workspace-a",
   );
 });
@@ -82,12 +106,19 @@ test("actor-scoped MCP recall takes and trims an explicit peer", () => {
 test("a missing actor peer warns and widens instead of taking the proxy down", () => {
   const warnings = [];
   assert.equal(
-    resolveMcpActorPeerId({ recallPeerScope: "actor", onWarn: (m) => warnings.push(m) }),
+    resolveMcpActorPeerId({
+      recallPeerScope: "actor",
+      onWarn: (m) => warnings.push(m),
+    }),
     "",
     "no header means broad recall, which is the default anyway",
   );
   assert.equal(warnings.length, 1);
-  assert.match(warnings[0], /OPENVIKING_PEER_ID/, "the warning says how to fix it");
+  assert.match(
+    warnings[0],
+    /OPENVIKING_PEER_ID/,
+    "the warning says how to fix it",
+  );
 });
 
 test("path and URL helpers stay exported for entrypoints that need them", () => {
@@ -114,7 +145,15 @@ test("no MCP proxy derives its peer from the launch directory", async () => {
     "agent-plugins/servers/mcp-proxy.mjs",
   ]) {
     const source = await readFile(join(root, proxy), "utf-8");
-    assert.doesNotMatch(source, /resolveEffectivePeerId/, `${proxy} must not derive a peer`);
-    assert.doesNotMatch(source, /cwd:\s*process\.cwd\(\)/, `${proxy} must not key a peer off its cwd`);
+    assert.doesNotMatch(
+      source,
+      /resolveEffectivePeerId/,
+      `${proxy} must not derive a peer`,
+    );
+    assert.doesNotMatch(
+      source,
+      /cwd:\s*process\.cwd\(\)/,
+      `${proxy} must not key a peer off its cwd`,
+    );
   }
 });

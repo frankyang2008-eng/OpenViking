@@ -12,7 +12,12 @@
 
 import { isPluginEnabled, loadConfig } from "./config.mjs";
 import { createLogger } from "./debug-log.mjs";
-import { commitSession, deriveOvSessionId, isBypassed, makeFetchJSON } from "./lib/ov-session.mjs";
+import {
+  commitSession,
+  deriveOvSessionId,
+  isBypassed,
+  makeFetchJSON,
+} from "./lib/ov-session.mjs";
 
 if (!isPluginEnabled()) {
   process.stdout.write(JSON.stringify({ decision: "approve" }) + "\n");
@@ -33,7 +38,9 @@ async function main() {
     const chunks = [];
     for await (const chunk of process.stdin) chunks.push(chunk);
     input = JSON.parse(Buffer.concat(chunks).toString() || "{}");
-  } catch { /* best effort */ }
+  } catch {
+    /* best effort */
+  }
 
   const sessionId = input.session_id;
   const cwd = input.cwd;
@@ -79,4 +86,7 @@ async function main() {
   approve();
 }
 
-main().catch((err) => { logError("uncaught", err); approve(); });
+main().catch((err) => {
+  logError("uncaught", err);
+  approve();
+});

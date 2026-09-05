@@ -15,7 +15,7 @@ OpenViking 提供类 Unix 的文件系统操作来管理上下文。
 **参数**
 
 | 参数 | 类型 | 必填 | 默认值 | 说明 |
-|------|------|------|--------|------|
+| ------ | ------ | ------ | -------- | ------ |
 | uri | str | 是 | - | Viking URI |
 | simple | bool | 否 | False | 仅返回相对路径 |
 | recursive | bool | 否 | False | 递归列出所有子目录 |
@@ -61,7 +61,6 @@ OpenViking 提供类 Unix 的文件系统操作来管理上下文。
 列举会保留无权限目录本身，但不会继续展开其内容，搜索结果也不会包含无权读取的
 内容。该行为只适用于共享的
 `viking://resources` 命名空间；个人和 peer 私有命名空间仍按原有规则隐藏。
-
 
 **Python HTTP SDK**
 
@@ -144,7 +143,6 @@ openviking glob "**/*.md" [--uri viking://resources/] [--simple] [--tags team=se
 openviking ls viking://resources/ --fields tags
 ```
 
-
 **响应**
 
 ```json
@@ -174,7 +172,7 @@ openviking ls viking://resources/ --fields tags
 **参数**
 
 | 参数 | 类型 | 必填 | 默认值 | 说明 |
-|------|------|------|--------|------|
+| ------ | ------ | ------ | -------- | ------ |
 | uri | str | 是 | - | Viking URI |
 | output | str | 否 | HTTP：`agent`；SDK：`original` | 输出格式：`agent` 或 `original` |
 | abs_limit | int | 否 | HTTP：256；SDK：128 | `agent` 输出中的摘要长度限制 |
@@ -184,7 +182,6 @@ openviking ls viking://resources/ --fields tags
 | tags | string[] | 否 | 未设置 | 仅保留同时匹配全部 `k=v` 检索标签的节点 |
 
 `tags` 使用 AND 语义，并在 `node_limit` 前应用。带 tags 过滤的响应会返回 `tags`；未过滤时需传 `include_tags=true` 才返回它们，否则会省略 tags 以避免额外的向量库读取。
-
 
 **Python HTTP SDK**
 
@@ -243,7 +240,6 @@ curl -G "http://localhost:1933/api/v1/fs/tree" \
 openviking tree viking://resources/my-project/ --fields tags
 ```
 
-
 **响应**
 
 ```json
@@ -282,7 +278,6 @@ openviking tree viking://resources/my-project/ --fields tags
 | 参数 | 类型 | 必填 | 默认值 | 说明 |
 |------|------|------|--------|------|
 | uri | str | 是 | - | Viking URI（如 `viking://resources/docs/api.md`）或 32 字符十六进制向量记录 `id` |
-
 
 **Python HTTP SDK**
 
@@ -331,7 +326,6 @@ curl -X GET "http://localhost:1933/api/v1/fs/stat?uri=viking://resources/docs/ap
 openviking stat viking://resources/my-project/docs/api.md
 openviking stat viking://resources/my-project/docs
 ```
-
 
 **响应（文件）**
 
@@ -389,7 +383,6 @@ openviking stat viking://resources/my-project/docs
 |------|------|------|--------|------|
 | uri | str | 是 | - | Viking URI |
 
-
 **Python SDK (HTTP)**
 
 ```python
@@ -444,7 +437,6 @@ openviking attrs set-tags viking://resources/docs --tags team=search --mode appe
 
 目录目标会更新目录语义记录；`recursive=true` 还会更新已有子文件和子目录语义记录。
 
-
 **响应（Resource）**
 
 ```json
@@ -496,7 +488,6 @@ openviking attrs set-tags viking://resources/docs --tags team=search --mode appe
 | uri | str | 是 | - | 新目录的 Viking URI |
 | description | str | 否 | `null` | 目录初始说明。未传入时使用目录名作为默认 L0；传入后使用该说明。两种情况都会写入 `.abstract.md` 并进入 L0 向量化队列。 |
 
-
 **Python HTTP SDK**
 
 ```python
@@ -541,7 +532,6 @@ openviking mkdir viking://resources/new-project/
 openviking mkdir viking://resources/new-project/ --description "接口文档目录"
 ```
 
-
 **响应**
 
 ```json
@@ -569,7 +559,6 @@ URI 格式非法、scheme 不支持或使用非公开作用域时返回 `INVALID
 |------|------|------|--------|------|
 | uri | str | 是 | - | 要删除的 Viking URI |
 | recursive | bool | 否 | False | 递归删除目录 |
-
 
 **Python HTTP SDK**
 
@@ -620,7 +609,6 @@ curl -X DELETE "http://localhost:1933/api/v1/fs?uri=viking://resources/old-proje
 openviking rm viking://resources/old.md [--recursive]
 ```
 
-
 **响应（单个文件）**
 
 ```json
@@ -661,7 +649,7 @@ openviking rm viking://resources/old.md [--recursive]
 **参数**
 
 | 参数 | 类型 | 必填 | 默认值 | 说明 |
-|------|------|------|--------|------|
+| ------ | ------ | ------ | -------- | ------ |
 | from_uri | str | 是 | - | 源 Viking URI |
 | to_uri | str | 是 | - | 目标 Viking URI，必须包含新的文件名或目录名 |
 | recursive | bool | 否 | False | 源为目录时必须设为 `true` |
@@ -747,7 +735,6 @@ ov cp -r viking://resources/docs viking://resources/docs-backup
 | from_uri | str | 是 | - | 源 Viking URI |
 | to_uri | str | 是 | - | 目标 Viking URI |
 
-
 **Python HTTP SDK**
 
 ```python
@@ -795,7 +782,6 @@ curl -X POST http://localhost:1933/api/v1/fs/mv \
 ```bash
 openviking mv viking://resources/old-name/ viking://resources/new-name/
 ```
-
 
 **响应**
 
