@@ -1,0 +1,6 @@
+{
+  "name": "openviking",
+  "displayName": "OpenViking Memory & Context Plugin",
+  "version": "1.0.0",
+  "description": "Agent-native context database integration for Antigravity (AGY) IDE"
+}

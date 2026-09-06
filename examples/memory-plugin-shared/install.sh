@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 #
 # OpenViking Memory Plugin shared installer for Claude Code, Codex, Cursor,
-# TRAE / TRAE CN, TraeCode CLI 2.0, ZCode, OpenCode, pi, Qoder, CodeBuddy, and omp (oh-my-pi).
+# TRAE / TRAE CN, TraeCode CLI 2.0, ZCode, OpenCode, pi, Qoder, CodeBuddy, omp (oh-my-pi), and Antigravity (AGY).
 #
 # One-liner (GitHub):
 #   bash <(curl -fsSL https://raw.githubusercontent.com/volcengine/OpenViking/main/examples/memory-plugin-shared/install.sh)
 # One-liner (TOS mirror, for regions where GitHub is unreachable):
 #   bash <(curl -fsSL https://ovrelease.tos-cn-beijing.volces.com/memory-plugin-shared/install.sh) --dist tos
 # Non-interactive:
-#   bash install.sh --harness claude,codex,cursor,trae,trae-cn,trae-cli,zcode,opencode,pi,qoder,codebuddy,omp,dsh --dist github --lang en --url http://127.0.0.1:1933 --api-key ''
+#   bash install.sh --harness claude,codex,cursor,trae,trae-cn,trae-cli,zcode,opencode,pi,qoder,codebuddy,omp,dsh,agy --dist github --lang en --url http://127.0.0.1:1933 --api-key ''
 # Format-compatible CLI aliases:
 #   bash install.sh --harness trae-cli
 #   bash install.sh --harness claude --claude-bin claude,seed
@@ -113,6 +113,7 @@ ACCOUNT_ARG="__OPENVIKING_UNSET__"
 USER_ARG="__OPENVIKING_UNSET__"
 STATUSLINE_ARG="" # "", yes, no
 YES=0
+RECONFIGURE=0
 UNINSTALL=0
 SYNC_TARGET=""
 VERIFY_TARGET=""
@@ -178,7 +179,7 @@ usage() {
 Usage: install.sh [options]
 
 Options:
-  --harness LIST     Comma-separated harnesses: claude, codex, cursor, trae, trae-cn, trae-cli, zcode, opencode, pi, qoder, codebuddy, omp, dsh.
+  --harness LIST     Comma-separated harnesses: claude, codex, cursor, trae, trae-cn, trae-cli, zcode, opencode, pi, qoder, codebuddy, omp, dsh, agy.
                      Use trae-cli for TraeCode CLI 2.0 (installed through its Codex-compatible plugin format).
   --claude-bin LIST  Comma-separated Claude-format CLI commands (default: claude).
   --codex-bin LIST   Comma-separated Codex-format CLI commands (default: codex).
@@ -190,6 +191,7 @@ Options:
   --api-key KEY      OpenViking API key. Pass '' for unauthenticated local mode.
   --account ID       Optional OpenViking account.
   --user ID          Optional OpenViking user.
+  --reconfigure      Prompt to reconfigure OpenViking URL / API key even if ovcli.conf exists.
   --statusline       Register the Claude Code statusline without asking.
   --no-statusline    Skip the statusline prompt.
   --uninstall        Remove Cursor/TRAE/TRAE CN/ZCode/Qoder/CodeBuddy integration files and config,
@@ -257,6 +259,10 @@ while [ "$#" -gt 0 ]; do
     ;;
   --uninstall)
     UNINSTALL=1
+    shift
+    ;;
+  --reconfigure)
+    RECONFIGURE=1
     shift
     ;;
   --sync)
@@ -500,6 +506,7 @@ refresh_available_harnesses() {
   HAVE_OMP=0
   HAVE_ZCODE=0
   HAVE_DSH=0
+  HAVE_AGY=0
   has_available_bin "$CLAUDE_BINS" && HAVE_CLAUDE=1
   has_available_bin "$CODEX_BINS" && HAVE_CODEX=1
   { command -v cursor >/dev/null 2>&1 || command -v cursor-agent >/dev/null 2>&1 || [ -d "/Applications/Cursor.app" ] || [ -d "$HOME/.cursor" ]; } && HAVE_CURSOR=1
@@ -513,6 +520,7 @@ refresh_available_harnesses() {
   command -v omp >/dev/null 2>&1 && HAVE_OMP=1
   command -v dsh >/dev/null 2>&1 && HAVE_DSH=1
   { command -v zcode >/dev/null 2>&1 || [ -d "$HOME/.zcode" ]; } && HAVE_ZCODE=1
+  { command -v agy >/dev/null 2>&1 || [ -d "$HOME/.gemini/config" ] || [ -d "$HOME/.gemini/antigravity-ide" ]; } && HAVE_AGY=1
   return 0
 }
 
@@ -653,6 +661,7 @@ HAVE_CODEBUDDY=0
 HAVE_OMP=0
 HAVE_ZCODE=0
 HAVE_DSH=0
+HAVE_AGY=0
 refresh_available_harnesses
 
 TUI_CLAUDE_BINS="$CLAUDE_BINS"
@@ -671,6 +680,7 @@ SEL_QODER=0
 SEL_CODEBUDDY=0
 SEL_OMP=0
 SEL_ZCODE=0
+SEL_AGY=0
 TUI_CURSOR=0
 TUI_LINES=0
 
@@ -685,7 +695,7 @@ EOF
 }
 
 tui_selectable_count() {
-  printf '%s' $(($(list_count "$TUI_CLAUDE_BINS") + $(list_count "$TUI_CODEX_BINS") + 10))
+  printf '%s' $(($(list_count "$TUI_CLAUDE_BINS") + $(list_count "$TUI_CODEX_BINS") + 11))
 }
 
 tui_total_count() {
@@ -763,6 +773,11 @@ EOF
     printf 'zcode|zcode'
     return 0
   fi
+  i=$((i + 1))
+  if [ "$i" -eq "$idx" ]; then
+    printf 'agy|agy'
+    return 0
+  fi
   printf 'add|'
 }
 
@@ -798,6 +813,7 @@ tui_bin_label() {
   codebuddy:*) printf 'CodeBuddy' ;;
   omp:*) printf 'oh-my-pi (omp)' ;;
   zcode:*) printf 'ZCode' ;;
+  agy:*) printf 'Antigravity (AGY) IDE' ;;
   claude:*) printf '%s %s' "$bin" "$(t '(Claude-format)' '（Claude 格式）')" ;;
   codex:*) printf '%s %s' "$bin" "$(t '(Codex-format)' '（Codex 格式）')" ;;
   esac
@@ -827,6 +843,8 @@ tui_bin_selected() {
     [ "$SEL_QODER" -eq 1 ]
   elif [ "$kind" = "omp" ]; then
     [ "$SEL_OMP" -eq 1 ]
+  elif [ "$kind" = "agy" ]; then
+    [ "$SEL_AGY" -eq 1 ]
   else
     [ "$SEL_CODEBUDDY" -eq 1 ]
   fi
@@ -841,6 +859,7 @@ tui_bin_detected() { # tui_bin_detected <kind> <bin>
   codebuddy) [ "$HAVE_CODEBUDDY" -eq 1 ] ;;
   omp) [ "$HAVE_OMP" -eq 1 ] ;;
   zcode) [ "$HAVE_ZCODE" -eq 1 ] ;;
+  agy) [ "$HAVE_AGY" -eq 1 ] ;;
   *) command -v "$2" >/dev/null 2>&1 ;;
   esac
 }
@@ -858,6 +877,7 @@ tui_set_all_bins() {
   SEL_CODEBUDDY=1
   SEL_OMP=1
   SEL_ZCODE=1
+  SEL_AGY=1
 }
 
 tui_toggle_bin() {
@@ -892,6 +912,9 @@ tui_toggle_bin() {
     return 0
   elif [ "$kind" = "omp" ]; then
     SEL_OMP=$((1 - SEL_OMP))
+    return 0
+  elif [ "$kind" = "agy" ]; then
+    SEL_AGY=$((1 - SEL_AGY))
     return 0
   else
     SEL_CODEBUDDY=$((1 - SEL_CODEBUDDY))
@@ -969,6 +992,7 @@ tui_reset_bin_selection() {
   SEL_CODEBUDDY=0
   SEL_OMP=0
   SEL_ZCODE=0
+  SEL_AGY=0
   while IFS= read -r bin; do
     [ -n "$bin" ] || continue
     if command -v "$bin" >/dev/null 2>&1; then
@@ -1027,6 +1051,10 @@ EOF
   fi
   if [ "$HAVE_ZCODE" -eq 1 ]; then
     SEL_ZCODE=1
+    any=1
+  fi
+  if [ "$HAVE_AGY" -eq 1 ]; then
+    SEL_AGY=1
     any=1
   fi
   if [ "$any" -ne 1 ]; then
@@ -1119,7 +1147,7 @@ tui_add_compatible_cli() {
 tui_has_selection() {
   [ -n "$(list_words "$SEL_CLAUDE_BINS")" ] || [ -n "$(list_words "$SEL_CODEX_BINS")" ] ||
     [ "$SEL_OPENCODE" -eq 1 ] || [ "$SEL_PI" -eq 1 ] || [ "$SEL_DSH" -eq 1 ] || [ "$SEL_CURSOR_APP" -eq 1 ] ||
-    [ "$SEL_TRAE" -eq 1 ] || [ "$SEL_TRAE_CN" -eq 1 ] || [ "$SEL_QODER" -eq 1 ] || [ "$SEL_CODEBUDDY" -eq 1 ] || [ "$SEL_OMP" -eq 1 ] || [ "$SEL_ZCODE" -eq 1 ]
+    [ "$SEL_TRAE" -eq 1 ] || [ "$SEL_TRAE_CN" -eq 1 ] || [ "$SEL_QODER" -eq 1 ] || [ "$SEL_CODEBUDDY" -eq 1 ] || [ "$SEL_OMP" -eq 1 ] || [ "$SEL_ZCODE" -eq 1 ] || [ "$SEL_AGY" -eq 1 ]
 }
 
 tui_finish_selection() {
@@ -1138,6 +1166,7 @@ tui_finish_selection() {
   [ "$SEL_CODEBUDDY" -eq 1 ] && SELECTED_HARNESSES="${SELECTED_HARNESSES:+$SELECTED_HARNESSES,}codebuddy"
   [ "$SEL_OMP" -eq 1 ] && SELECTED_HARNESSES="${SELECTED_HARNESSES:+$SELECTED_HARNESSES,}omp"
   [ "$SEL_ZCODE" -eq 1 ] && SELECTED_HARNESSES="${SELECTED_HARNESSES:+$SELECTED_HARNESSES,}zcode"
+  [ "$SEL_AGY" -eq 1 ] && SELECTED_HARNESSES="${SELECTED_HARNESSES:+$SELECTED_HARNESSES,}agy"
   return 0
 }
 
@@ -1218,6 +1247,7 @@ select_harnesses() {
   [ "$HAVE_OMP" -eq 1 ] && detected="${detected:+$detected,}omp"
   [ "$HAVE_DSH" -eq 1 ] && detected="${detected:+$detected,}dsh"
   [ "$HAVE_ZCODE" -eq 1 ] && detected="${detected:+$detected,}zcode"
+  [ "$HAVE_AGY" -eq 1 ] && detected="${detected:+$detected,}agy"
 
   if [ -n "$REQUESTED_HARNESSES" ]; then
     SELECTED_HARNESSES="$REQUESTED_HARNESSES"
@@ -1371,7 +1401,7 @@ validate_selected_harnesses() {
   local h bad=0
   while IFS= read -r h; do
     case "$h" in
-    claude | codex | cursor | trae | trae-cn | opencode | pi | zcode | qoder | codebuddy | omp | dsh) ;;
+    claude | codex | cursor | trae | trae-cn | opencode | pi | zcode | qoder | codebuddy | omp | dsh | agy) ;;
     trae-cli) [ "$UNINSTALL" -eq 1 ] || bad=1 ;;
     *)
       err "Unsupported harness: $h"
@@ -1416,9 +1446,9 @@ EOF
   if contains_harness codebuddy && command -v codebuddy >/dev/null 2>&1; then ok=1; fi
   if contains_harness omp && command -v omp >/dev/null 2>&1; then ok=1; fi
   if contains_harness dsh && command -v dsh >/dev/null 2>&1; then ok=1; fi
-  # Cursor and TRAE are config-driven integrations. They may be installed
+  # Cursor, TRAE, and AGY are config-driven integrations. They may be installed
   # before the desktop app itself, so a CLI in PATH is not required.
-  if contains_harness cursor || contains_harness trae || contains_harness trae-cn || contains_harness trae-cli || contains_harness zcode; then ok=1; fi
+  if contains_harness cursor || contains_harness trae || contains_harness trae-cn || contains_harness trae-cli || contains_harness zcode || contains_harness agy; then ok=1; fi
   if [ "$ok" -ne 1 ]; then
     err "$(t 'No selected compatible CLI command was found in PATH.' '未在 PATH 中找到任何已选择的兼容 CLI 命令。')"
     exit 2
@@ -1510,6 +1540,20 @@ configure_ovcli() {
   current_account="$(json_get "$OVCLI_CONF" account)"
   current_user="$(json_get "$OVCLI_CONF" user)"
 
+  # Fall back to ov.conf if ovcli.conf does not supply url or key
+  if [ -z "$current_url" ] && [ -f "$OV_HOME/ov.conf" ]; then
+    local ov_host ov_port
+    ov_host="$(node -e 'try{const c=JSON.parse(require("node:fs").readFileSync(process.argv[1],"utf8"));process.stdout.write(c.server?.host||"127.0.0.1");}catch{}' "$OV_HOME/ov.conf" 2>/dev/null || true)"
+    ov_port="$(node -e 'try{const c=JSON.parse(require("node:fs").readFileSync(process.argv[1],"utf8"));process.stdout.write(String(c.server?.port||1933));}catch{}' "$OV_HOME/ov.conf" 2>/dev/null || true)"
+    [ "$ov_host" = "0.0.0.0" ] && ov_host="127.0.0.1"
+    if [ -n "$ov_host" ] && [ -n "$ov_port" ]; then
+      current_url="http://$ov_host:$ov_port"
+    fi
+  fi
+  if [ -z "$current_key" ] && [ -f "$OV_HOME/ov.conf" ]; then
+    current_key="$(node -e 'try{const c=JSON.parse(require("node:fs").readFileSync(process.argv[1],"utf8"));process.stdout.write(c.server?.root_api_key||"");}catch{}' "$OV_HOME/ov.conf" 2>/dev/null || true)"
+  fi
+
   url="$current_url"
   key="__OPENVIKING_KEEP__"
   account="__OPENVIKING_KEEP__"
@@ -1519,6 +1563,10 @@ configure_ovcli() {
   [ "$API_KEY_ARG" != "__OPENVIKING_UNSET__" ] && key="$API_KEY_ARG"
   [ "$ACCOUNT_ARG" != "__OPENVIKING_UNSET__" ] && account="$ACCOUNT_ARG"
   [ "$USER_ARG" != "__OPENVIKING_UNSET__" ] && user="$USER_ARG"
+
+  if [ "$key" = "__OPENVIKING_KEEP__" ] && [ ! -f "$OVCLI_CONF" ] && [ -n "$current_key" ]; then
+    key="$current_key"
+  fi
 
   # Show what is configured today, then offer to keep or reconfigure.
   if [ -n "$current_url" ] || [ -n "$current_key" ]; then
@@ -1533,13 +1581,21 @@ configure_ovcli() {
 
   if [ "$INTERACTIVE" -eq 1 ] && [ -z "$URL_ARG" ] && [ "$API_KEY_ARG" = "__OPENVIKING_UNSET__" ]; then
     if [ -n "$current_url" ] || [ -n "$current_key" ]; then
-      tui_menu "$(t 'Existing credentials found — what next?' '检测到已有凭据——如何处理？')" 0 \
-        "$(t 'Keep current credentials' '沿用当前凭据')" \
-        "$(t 'Reconfigure (server URL / API key)' '重新配置（服务地址 / API key）')"
-      if [ "$TUI_MENU_CHOICE" -eq 1 ]; then
+      if [ -n "$REQUESTED_HARNESSES" ] && [ "$RECONFIGURE" -ne 1 ]; then
+        info "$(t 'Defaulting to existing credentials from:' '默认读取已有凭据：') $OVCLI_CONF"
+      elif [ "$RECONFIGURE" -eq 1 ]; then
         prompt_connection "$current_url" "$current_key"
         url="$WIZ_URL"
         key="$WIZ_KEY"
+      else
+        tui_menu "$(t 'Existing credentials found — what next?' '检测到已有凭据——如何处理？')" 0 \
+          "$(t 'Keep current credentials' '沿用当前凭据')" \
+          "$(t 'Reconfigure (server URL / API key)' '重新配置（服务地址 / API key）')"
+        if [ "$TUI_MENU_CHOICE" -eq 1 ]; then
+          prompt_connection "$current_url" "$current_key"
+          url="$WIZ_URL"
+          key="$WIZ_KEY"
+        fi
       fi
     else
       prompt_connection "" ""
@@ -2968,13 +3024,19 @@ CLEAN_NODE
     rm -rf "$OV_HOME/agent-integrations/zcode"
     info "$(t 'Removed ZCode OpenViking hooks and MCP config.' '已移除 ZCode OpenViking hooks 与 MCP 配置。')"
   fi
+  if contains_harness agy; then
+    rm -rf "$HOME/.gemini/config/plugins/openviking"
+    rm -rf "$OV_HOME/agent-integrations/agy"
+    info "$(t 'Removed Antigravity (AGY) OpenViking plugin.' '已移除 Antigravity (AGY) OpenViking 插件。')"
+  fi
   if [ ! -d "$OV_HOME/agent-integrations/cursor" ] &&
     [ ! -d "$OV_HOME/agent-integrations/trae" ] &&
     [ ! -d "$OV_HOME/agent-integrations/trae-cn" ] &&
     [ ! -d "$OV_HOME/agent-integrations/qoder" ] &&
     [ ! -d "$OV_HOME/agent-integrations/codebuddy" ] &&
     [ ! -d "$OV_HOME/agent-integrations/trae-cli" ] &&
-    [ ! -d "$OV_HOME/agent-integrations/zcode" ]; then
+    [ ! -d "$OV_HOME/agent-integrations/zcode" ] &&
+    [ ! -d "$OV_HOME/agent-integrations/agy" ]; then
     rm -rf "$OV_HOME/agent-integrations/memory-plugin-shared"
   fi
 }
@@ -3890,6 +3952,79 @@ verify_codebuddy() {
   return $fail
 }
 
+install_agy() {
+  heading "$(t '4. Antigravity (AGY) plugin integration' '4. Antigravity (AGY) 插件集成')"
+  local root target_dir node_bin="$NODE_BIN"
+  root="$(assemble_agent_integration agy-memory-plugin agy)" || return 1
+  target_dir="$HOME/.gemini/config/plugins/openviking"
+  mkdir -p "$target_dir" "$target_dir/rules" "$target_dir/skills"
+  cp "$root/plugin.json" "$target_dir/plugin.json"
+  [ -f "$root/package.json" ] && cp "$root/package.json" "$target_dir/package.json"
+  cp -R "$root/rules/"* "$target_dir/rules/"
+  cp -R "$root/skills/"* "$target_dir/skills/"
+  "$node_bin" - "$target_dir/hooks.json" "$target_dir/mcp_config.json" "$root" "$node_bin" "$OVCLI_CONF" <<'AGY_NODE'
+const fs = require("node:fs");
+const path = require("node:path");
+const [hooksPath, mcpPath, root, nodeBin, ovcliConf] = process.argv.slice(2);
+
+function atomicWrite(file, value) {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const next = JSON.stringify(value, null, 2) + "\n";
+  const tmp = `${file}.${process.pid}.tmp`;
+  fs.writeFileSync(tmp, next, { mode: 0o600 });
+  fs.renameSync(tmp, file);
+}
+
+const hooks = {
+  "openviking-memory": {
+    "PreInvocation": [
+      {
+        "type": "command",
+        "command": `${nodeBin} "${path.join(root, "scripts/pre-invocation.mjs")}"`,
+        "timeout": 5
+      }
+    ],
+    "Stop": [
+      {
+        "type": "command",
+        "command": `${nodeBin} "${path.join(root, "scripts/stop.mjs")}"`,
+        "timeout": 5
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "view_file|replace_file_content|run_command",
+        "hooks": [
+          {
+            "type": "command",
+            "command": `${nodeBin} "${path.join(root, "scripts/uri-guard.mjs")}"`,
+            "timeout": 3
+          }
+        ]
+      }
+    ]
+  }
+};
+atomicWrite(hooksPath, hooks);
+
+const mcp = {
+  "mcpServers": {
+    "openviking": {
+      "command": nodeBin,
+      "args": [path.join(root, "servers/mcp-proxy.mjs")],
+      "env": {
+        "OPENVIKING_CLI_CONFIG_FILE": ovcliConf
+      }
+    }
+  }
+};
+atomicWrite(mcpPath, mcp);
+AGY_NODE
+  info "$(t 'Antigravity (AGY) plugin installed:' 'Antigravity (AGY) 插件已安装：') $target_dir"
+  info "$(t 'Antigravity (AGY) hooks configured:' 'Antigravity (AGY) hooks 已配置：') $target_dir/hooks.json"
+  info "$(t 'Antigravity (AGY) MCP configured:' 'Antigravity (AGY) MCP 已配置：') $target_dir/mcp_config.json"
+}
+
 # ---------------------------------------------------------------------------
 # Validation
 # ---------------------------------------------------------------------------
@@ -4247,6 +4382,38 @@ EOF
       ok=0
     fi
   fi
+  if contains_harness agy; then
+    local agy_plugin_dir="$HOME/.gemini/config/plugins/openviking"
+    if [ -f "$agy_plugin_dir/plugin.json" ] &&
+      [ -f "$agy_plugin_dir/hooks.json" ] &&
+      [ -f "$agy_plugin_dir/mcp_config.json" ] &&
+      [ -f "$OV_HOME/agent-integrations/agy/scripts/pre-invocation.mjs" ] &&
+      [ -f "$OV_HOME/agent-integrations/agy/scripts/stop.mjs" ] &&
+      [ -f "$OV_HOME/agent-integrations/agy/scripts/uri-guard.mjs" ] &&
+      [ -f "$OV_HOME/agent-integrations/agy/servers/mcp-proxy.mjs" ]; then
+      "$NODE_BIN" --check "$OV_HOME/agent-integrations/agy/scripts/pre-invocation.mjs" || { ok=0; agent_fatal=1; }
+      "$NODE_BIN" --check "$OV_HOME/agent-integrations/agy/scripts/stop.mjs" || { ok=0; agent_fatal=1; }
+      "$NODE_BIN" --check "$OV_HOME/agent-integrations/agy/scripts/uri-guard.mjs" || { ok=0; agent_fatal=1; }
+      "$NODE_BIN" --check "$OV_HOME/agent-integrations/agy/servers/mcp-proxy.mjs" || { ok=0; agent_fatal=1; }
+      if "$NODE_BIN" - "$OV_HOME/agent-integrations/agy/scripts/config.mjs" "$OVCLI_CONF" <<'AGY_CFG_TEST' 2>/dev/null; then
+const { pathToFileURL } = require("node:url");
+const [configScript, ovcliConf] = process.argv.slice(2);
+process.env.OPENVIKING_CLI_CONFIG_FILE = ovcliConf;
+import(pathToFileURL(configScript).href).then(({ loadAgyConfig }) => {
+  const cfg = loadAgyConfig();
+  if (!cfg.baseUrl) process.exit(1);
+  process.exit(0);
+}).catch(() => process.exit(1));
+AGY_CFG_TEST
+        info "agy: $(t 'credentials verified from' '已验证凭据源：') $OVCLI_CONF"
+      fi
+      info "agy: $(t 'Antigravity plugin and hooks verified' 'Antigravity 插件与 hooks 校验通过')"
+    else
+      warn "agy: $(t 'Antigravity plugin files incomplete' 'Antigravity 插件文件不完整')"
+      ok=0
+      agent_fatal=1
+    fi
+  fi
   if [ -n "$MKT_DIR" ] && [ -f "$MKT_DIR/claude-code-memory-plugin/scripts/marketplace.test.mjs" ] && [ -d "$MKT_DIR/../.git" ]; then
     node --test "$MKT_DIR/claude-code-memory-plugin/scripts/marketplace.test.mjs" \
       "$MKT_DIR/codex-memory-plugin/scripts/marketplace.test.mjs" || ok=0
@@ -4365,6 +4532,7 @@ if contains_harness omp; then install_omp; fi
 if contains_harness qoder; then install_qoder; fi
 if contains_harness codebuddy; then install_codebuddy; fi
 if contains_harness dsh; then install_dsh; fi
+if contains_harness agy; then install_agy; fi
 validate_install
 
 heading "$(t 'Done' '完成')"
@@ -4389,3 +4557,4 @@ if contains_harness omp; then info "omp: $(resolve_omp_agent_dir)/extensions/ope
 if contains_harness qoder; then info "Qoder: $QODER_PLUGIN_ID (user scope)"; fi
 if contains_harness codebuddy; then info "CodeBuddy: $CODEBUDDY_PLUGIN_ID (user scope)"; fi
 if contains_harness dsh; then info "DeepSeek Harness: $DSH_PACKAGE ($(t 'profile' '配置档') ${DSH_PROFILE:-$DSH_PROFILE_DEFAULT})"; fi
+if contains_harness agy; then info "Antigravity (AGY): $HOME/.gemini/config/plugins/openviking"; fi

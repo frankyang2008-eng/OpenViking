@@ -1,0 +1,30 @@
+{
+  "openviking-memory": {
+    "PreInvocation": [
+      {
+        "type": "command",
+        "command": "node ./scripts/pre-invocation.mjs",
+        "timeout": 5
+      }
+    ],
+    "Stop": [
+      {
+        "type": "command",
+        "command": "node ./scripts/stop.mjs",
+        "timeout": 5
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "view_file|replace_file_content|run_command",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node ./scripts/uri-guard.mjs",
+            "timeout": 3
+          }
+        ]
+      }
+    ]
+  }
+}

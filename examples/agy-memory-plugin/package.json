@@ -1,0 +1,19 @@
+{
+  "name": "@openviking/agy-memory-plugin",
+  "version": "1.0.0",
+  "description": "OpenViking Long-term Memory and Context Plugin for Antigravity (AGY) IDE",
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/agy-plugin.test.mjs"
+  },
+  "keywords": [
+    "antigravity",
+    "agy",
+    "openviking",
+    "memory",
+    "context",
+    "agent"
+  ],
+  "author": "OpenViking Team",
+  "license": "Apache-2.0"
+}
