@@ -9,7 +9,6 @@ from unittest.mock import AsyncMock, MagicMock, Mock
 
 import pytest
 import pytest_asyncio
-from openviking.service.task_work_index import TASK_WORK_ID_FIELD
 
 from openviking.resource.feishu_watch_auth import FeishuAppCredentials
 from openviking.resource.watch_manager import WatchManager
@@ -21,6 +20,7 @@ from openviking.storage.content_write import ContentWriteCoordinator
 from openviking.storage.queuefs.add_resource_msg import AddResourceMsg
 from openviking.storage.queuefs.add_resource_processor import AddResourceProcessor
 from openviking.storage.queuefs.queue_manager import QueueManager
+from openviking.storage.queuefs.task_work_index import TASK_WORK_ID_FIELD
 from openviking.utils.ingest_options import IngestOptions
 from openviking_cli.exceptions import ConflictError, InvalidArgumentError
 from openviking_cli.session.user_id import UserIdentifier
