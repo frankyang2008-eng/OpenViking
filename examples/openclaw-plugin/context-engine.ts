@@ -20,6 +20,7 @@ import {
   compactOpenVikingSession,
   commitOpenVikingSession,
 } from "./services/context-lifecycle-service.js";
+import { loadRuntimeCompactionDelegate } from "./plugin/openclaw-runtime-compaction.js";
 
 type ContextEngineInfo = {
   id: string;
@@ -488,6 +489,10 @@ export function createMemoryOpenVikingContextEngine(params: {
         logger,
         resolveAgentId,
         isBypassedSession,
+        runtimeCompact: async () => {
+          const delegate = await loadRuntimeCompactionDelegate();
+          return delegate ? delegate(compactParams) : undefined;
+        },
         diag,
       });
     },

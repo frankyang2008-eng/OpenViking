@@ -11,7 +11,7 @@ OpenViking supports various resource types, categorized by functionality:
 **Documents**
 
 | Type | Extensions | Description |
-| ------ | ------------ | ------------- |
+|------|------------|-------------|
 | PDF | `.pdf` | Supports local parsing and MinerU API conversion |
 | Markdown | `.md`, `.markdown`, `.mdown`, `.mkd` | Native support, extracts structure and stores in segments |
 | HTML | `.html`, `.htm` | Cleans navigation/ads and extracts content, converts to Markdown |
@@ -29,7 +29,7 @@ OpenViking supports various resource types, categorized by functionality:
 **Code**
 
 | Type | Resource Name | Description |
-| ------ | --------------- | ------------- |
+|------|---------------|-------------|
 | Code Files | `*.py`, `*.js`, ... | Supports common programming languages (Python, JavaScript, Go, Rust, Java, etc.) |
 | Git Protocol Repository | `git://...` | Git URL, local directory, `.zip` package, respects `.gitignore` and automatically filters `.git`, `node_modules` and other directories |
 | Git Code Hosting Platform | `https://github.com/{org}/{repo}` | URLs from GitHub, GitLab, Bitbucket and other code hosting platforms |
@@ -38,7 +38,7 @@ OpenViking supports various resource types, categorized by functionality:
 **Media**
 
 | Type | Resource Name | Description |
-| ------ | --------------- | ------------- |
+|------|---------------|-------------|
 | Images | `*.jpg`, `*.jpeg`, `*.png`, `*.gif` ... | Various image formats, descriptions generated via VLM (Experimental) |
 | Video | `*.mp4`, `*.avi`, `*.mov` ... | Extracts keyframes and analyzes with VLM (Planning) |
 | Audio | `*.mp3`, `*.wav`, `*.m4a` ... | Performs speech transcription (Planning) |
@@ -60,7 +60,7 @@ OpenViking supports various resource types, categorized by functionality:
 **Whole Website (sitemap / RSS / Atom)**
 
 | Type | Resource Name | Description |
-| ------ | --------------- | ------------- |
+|------|---------------|-------------|
 | Sitemap | `https://host/sitemap.xml`, `https://host/sitemap-index.xml` | Parses the sitemap and ingests every listed page as a single resource tree (one child node per page). Nested `<sitemapindex>` is followed recursively. The whole site becomes one resource under `viking://resources/<host>`. |
 | RSS / Atom feed | `https://host/rss.xml`, `https://host/atom.xml`, `https://host/feed` | Parses RSS 2.0 / Atom and ingests each entry as a tree node; the article body is fetched from its link (or taken inline when the feed carries full content). |
 | Whole-site auto-discovery | `https://host` + `args.site=true` | Forces whole-site ingestion for a bare domain or ordinary page: discovers the site's sitemap/RSS via robots.txt, HTML `<link rel="alternate">` autodiscovery, and conventional paths, then ingests it. |
@@ -78,20 +78,17 @@ Source Input -> Parse -> Resource Tree Build -> Persistence -> Semantic Processi
 ```
 
 #### Stage 1: Parse
-
 - Uses `UnifiedResourceProcessor` to parse content based on resource type
 - Supports multiple formats: documents (PDF/Markdown/Word), spreadsheets (Excel/PPT), code, media files, etc.
 - Parsed results are written to a temporary VikingFS directory
 - Media files have descriptions generated via VLM (Vision Language Model)
 
 #### Stage 2: Resource Tree Build (TreeBuilder)
-
 - `TreeBuilder.finalize_from_temp()` scans the temporary directory structure
 - Builds resource tree nodes, handles URI conflicts (auto-renames)
 - Establishes relationships between directories and resources
 
 #### Stage 3: Persistence
-
 - Checks if target URI already exists
 - New resources: moves temporary files to permanent AGFS location
 - Existing resources: retains temporary tree for subsequent diff comparison
@@ -99,13 +96,11 @@ Source Input -> Parse -> Resource Tree Build -> Persistence -> Semantic Processi
 - Cleans up temporary directory
 
 #### Stage 4: Semantic Processing
-
 - **Summary Generation**: `Summarizer` generates L0 (abstract) and L1 (overview)
 - **Vector Index**: Vectorizes content for semantic search
 - Processed asynchronously via `SemanticQueue`, can wait for completion with `wait=True`
 
 #### Non-Wait Git Repository Imports
-
 - For Git repository sources with `wait=false`, OpenViking validates the repository, resolves the target URI, reserves the final `root_uri`, and returns before clone/parse/finalize completes.
 - The immediate response contains `status`, `root_uri`, and `task_id`; fetching, parsing, finalizing, and queue waiting continue in a persistent background task.
 - Poll `GET /api/v1/tasks/{task_id}` to inspect task state. Git resource import tasks use stages such as `queued`, `fetching`, `parsing`, `finalizing`, and `processing_queue`.
@@ -116,7 +111,6 @@ Source Input -> Parse -> Resource Tree Build -> Persistence -> Semantic Processi
 Resource incremental updates are implemented via the **Watch Task** mechanism:
 
 #### Watch Task Creation
-
 - Set `watch_interval > 0` (in minutes) when calling `add_resource` with a re-readable source, such as a URL, sitemap, or RSS feed, to create a watch task
 - Uploaded content referenced by `temp_file_id` is a static snapshot and cannot be watched; re-add it when the local source changes
 - You may specify `to` to define the target URI; if omitted, the task binds to the `root_uri` returned by this import
@@ -124,19 +118,23 @@ Resource incremental updates are implemented via the **Watch Task** mechanism:
 - `WatchManager` handles task persistence
 - Supports multi-tenant permission control (ROOT/ADMIN/USER permission levels)
 
-#### Task Scheduling & Execution
+#### Target Ownership
 
+- Within an account, a native Watch exclusively owns its resolved target, even while paused. A new native Watch requires an unoccupied target; a Connector Watch cannot share with a native Watch.
+- Multiple Connector Watches may share a target. Repeating the same source and target creates another independent Watch; imports do not update or reactivate an existing Watch. The same source imported into different targets also gets separate Watches.
+- Connector Watches are created before the initial import and held by the scheduler until that import records its result.
+
+#### Task Scheduling & Execution
 - `WatchScheduler` checks for expired tasks every 60 seconds
 - Default concurrency control prevents duplicate execution
 - Expired tasks automatically re-invoke `add_resource`
 - Updates task's last execution time and next execution time
 
 #### Task Management Operations
-
-- **Create**: Creates new task or reactivates disabled task when `watch_interval > 0`
-- **Update**: Re-sets parameters for the same target URI
-- **Cancel**: Disables task when `watch_interval <= 0` for the same target URI
-- **Query**: Queries task status by task ID or target URI
+- **Create**: `watch_interval > 0` creates a new task subject to the target ownership rules above; incompatible occupancy returns `409 Conflict`.
+- **Update or resume**: Use `PATCH /api/v1/watches/{task_id}` to change parameters or set `is_active: true`. Re-importing does not update or reactivate a task.
+- **Pause or delete**: Use `PATCH /api/v1/watches/{task_id}` with `is_active: false` to pause, or `DELETE /api/v1/watches/{task_id}` to release the target. A native import with an explicit `to` and `watch_interval <= 0` pauses the single accessible Watch on that target; multiple accessible Watches produce `409 Conflict`. A one-off Connector import leaves existing Watches untouched.
+- **Query**: Use the task ID, or the target URI when it identifies a single accessible Watch. URI lookup returns `409 Conflict` for multiple accessible Watches; use `task_id` to query, update, or delete an individual task.
 
 ## API Reference
 
@@ -149,7 +147,6 @@ Add a resource to the knowledge base. The SDK supports local files/directories, 
 This endpoint is the core entry point for resource management, supporting adding resources from various sources with optional waiting for semantic processing and vectorization completion.
 
 **Processing Flow**:
-
 1. Identify and validate the resource source (URL or uploaded temporary file)
 2. Resolve the target URI
 3. Call the corresponding format Parser; `args.parse_mode` controls whether the converted Markdown body may be split
@@ -160,7 +157,6 @@ This endpoint is the core entry point for resource management, supporting adding
 8. Set up scheduled update task if `watch_interval` is specified
 
 **Code Entry Points**:
-
 - `sdk/python/openviking_sdk/client.py:AsyncHTTPClient.add_resource` - Python SDK entry
 - `openviking/server/routers/resources.py:add_resource` - HTTP router
 - `openviking/service/resource_service.py` - Core service implementation
@@ -171,7 +167,7 @@ This endpoint is the core entry point for resource management, supporting adding
 **Parameters**
 
 | Parameter | Type | Required | Default | Description |
-| ----------- | ------ | ---------- | --------- | ------------- |
+|-----------|------|----------|---------|-------------|
 | path | string | No | - | Remote resource URL (HTTP/HTTPS/Git). Mutually exclusive with `temp_file_id` |
 | temp_file_id | string | No | - | Temporary upload file ID. Mutually exclusive with `path` |
 | to | string | No | - | Final location for this import. If the target already exists, it is refreshed. Mutually exclusive with `parent` |
@@ -188,13 +184,12 @@ This endpoint is the core entry point for resource management, supporting adding
 | directly_upload_media | bool | No | True | Whether to directly upload media files |
 | preserve_structure | bool | No | None | Whether to preserve directory structure |
 | args | object | No | `{}` | Parser-specific import options forwarded to the source parser/accessor. Native HTTPS Git imports and watches accept HTTP Basic credentials over TLS as `args.auth_config={"username":"oauth2","token":"..."}`; `username` defaults to `oauth2`. Git `branch` or `commit` remains at the top level of `args`. To import a private TOS object through its HTTP(S) URL, pass exactly one non-empty string: `args.tos_signature` (sent as `X-Tos-Signature`) or `args.tos_access` (sent as `X-Tos-Access`). TOS credentials are used only for the current HEAD/GET fetch, which is staged as a snapshot; they are not persisted to resource metadata or queue jobs. `args.parse_mode` accepts `default` (existing splitting behavior) or `no_split` (parse and convert each source document to one Markdown body). E.g. `args.site=true/false` forces/opts out of whole-site (sitemap/RSS) ingestion, `args.max_pages` etc. override the `webfeed` config; the recursive web crawler accepts `args.depth`, `args.max_pages`, `args.include_paths`, `args.exclude_paths`, `args.allow_external_links`, `args.skip_download_links`; Feishu user-token imports pass `args.feishu_access_token`. Core `add_resource` fields such as `path`, `to`, `watch_interval`, `include`, and `exclude` are not allowed inside `args` |
-| watch_interval | float | No | 0 | Scheduled update interval (minutes). >0 creates a task for a re-readable URL/sitemap/RSS source; uploaded `temp_file_id` content is a static snapshot and must be re-added when it changes. <=0 cancels a task; explicit `to` wins, otherwise binds to the imported `root_uri` |
+| watch_interval | float | No | 0 | Scheduled update interval (minutes). >0 creates a new Watch for a re-readable source, subject to target ownership rules; uploaded `temp_file_id` snapshots cannot be watched. <=0 creates no Watch: native imports with explicit `to` pause a single accessible task (409 if ambiguous), while Connector imports leave Watches untouched. Explicit `to` wins, otherwise the Watch binds to the imported `root_uri`. |
 | is_active | bool | No | True | Initial Watch scheduling state. `false` requires `watch_interval > 0` and either `to` or `parent`. `parent` is supported for native Feishu URL imports; Connector imports still require an exact `to`. The initial import still runs once and the Watch remains paused afterward |
 | processing_mode | string | No | `semantic_and_vectors` | Post-ingest processing mode. `semantic_and_vectors` is the normal flow: generate semantic artifacts (`.abstract.md`, `.overview.md`) and vectors. `vectors_only` skips semantic understanding/VLM summarization and only vectorizes current resource files |
 | telemetry | TelemetryRequest | No | False | Whether to return telemetry data |
 
 **Additional Notes**:
-
 - `to` and `parent` cannot be specified together. `to` is the final save location: a missing target is created, and an existing target is refreshed. If the target is a directory, old files or subdirectories that are not produced by the current import may be removed. `parent` is the destination directory, and is the right option for adding a new resource under an existing directory; use `create_parent=true` or CLI `--parent-auto-create` when that directory should be created automatically. When the imported `root_uri` is the same as `to`, semantic and vector processing reuse unchanged content and process only the changed parts.
 - Creating a resource requires write access to its target parent; updating an existing explicit `to` requires write access to that target. These checks run before the task is queued. Automatic naming uses actual URI occupancy, so an unreadable collision selects `_1`, `_2`, and so on instead of attempting an overwrite.
 - With `wait=false`, `status=accepted` means that preflight passed and the task was queued; it does not mean resource processing has completed. Use the returned `task_id` for the final status.
@@ -493,8 +488,9 @@ ov add-resource https://github.com/example/repo.git --to viking://resources/guid
 # Enable scheduled updates and bind to the URI created by this import
 ov add-resource https://github.com/example/repo.git --watch-interval 60
 
-# Cancel scheduled updates
-ov add-resource https://github.com/example/repo.git --to viking://resources/guide.md --watch-interval 0
+# Pause a Watch through PATCH /api/v1/watches/{task_id} with {"is_active": false}.
+# For a native import, --watch-interval 0 also pauses a single accessible target Watch.
+# One-off Connector imports leave existing Watches untouched.
 
 # Add a Feishu document with a one-time user access token
 ov add-resource https://example.feishu.cn/docx/doc_token --args feishu_access_token:u-...
@@ -591,7 +587,7 @@ task_id      uuid-xxx
 **Field Description**
 
 | Field | Type | Description |
-| ------- | ------ | ------------- |
+|-------|------|-------------|
 | `status` | string | Processing status: `accepted` means queued, `success` means completed successfully, and `error` means failed. |
 | `root_uri` | string | Final URI of the resource in OpenViking |
 | `task_id` | string | (Optional, only when `wait=false`) Task ID for polling `/api/v1/tasks/{task_id}`. Non-Git imports use it for queue tracking; Git repository imports use it for full background import tracking. |
@@ -646,14 +642,12 @@ Upload a temporary file for subsequent importing of local files via [add_resourc
 This endpoint uploads a local file into temporary server-managed storage and returns a `temp_file_id` for subsequent API calls. This is a helper endpoint typically not called directly but used automatically via the SDK or CLI.
 
 **Processing Flow**:
-
 1. Receive uploaded file
 2. Choose temporary upload backend based on `upload_mode`
 3. Save the file and record original filename
 4. Return temporary file ID
 
 **Code Entry Points**:
-
 - `openviking/server/routers/resources.py:temp_upload` - HTTP router
 - `openviking/service/resource_service.py` - Service implementation
 
@@ -662,7 +656,7 @@ This endpoint uploads a local file into temporary server-managed storage and ret
 **Parameters**
 
 | Parameter | Type | Required | Default | Description |
-| ----------- | ------ | ---------- | --------- | ------------- |
+|-----------|------|----------|---------|-------------|
 | file | UploadFile | Yes | - | Uploaded file (multipart/form-data) |
 | telemetry | bool | No | False | Whether to return telemetry data |
 | upload_mode | string | No | `"local"` | Temporary upload mode. `local` keeps the existing single-node behavior. `shared` uploads to shared temporary storage for distributed deployments. |

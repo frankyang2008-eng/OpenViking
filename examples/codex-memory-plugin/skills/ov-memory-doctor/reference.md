@@ -8,13 +8,13 @@ and `CODEX_CONFIG_FILE` relocate individual pieces.
 ## Where things live
 
 | Path | What |
-| --- | --- |
+|---|---|
 | `~/.openviking/ovcli.conf` | Client connection: `url`, `api_key`, `account`, `user`, optional `plugin.codex.*` tuning. Mode 0600. |
 | `~/.openviking/ov.conf` | Server config. The plugin reads only `server.url/host/port`, `server.root_api_key` (last-resort key) and the legacy `codex` block. |
 | `~/.openviking/ovcli.conf.<name>` | Saved CLI profiles (`ov config switch` copies one over `ovcli.conf`). `ovcli.conf.bak.<epoch>` are installer backups. |
 | `<repo root>/.openviking/config.json` / `config.local.json` | Workspace config layers, `version: 1` required: `peer.source`, `peer.id`, `recall.*`, `capture.*`, `bypass.session_patterns`, `labels`. `config.json` is committed and shared; `config.local.json` is private and gitignored. Trusted without a prompt, but connection and credential keys (`url`, `api_key`, `account`, `user`, `extra_headers`, …) are stripped with a warning and `${VAR}` is never expanded. A blanket `.openviking/` rule in `.gitignore` stops `config.json` from ever being committed — narrow it to `.openviking/media/` and `.openviking/downloads/`. |
 | `~/.openviking/workspaces/<slot>.json` | Per-machine workspace registry, one file per workspace (`<dir name>-<hash>.json`, mode 0600). Outranks both workspace files, and nothing writes it — a user creates the file by hand. An entry recorded for a different repository is ignored, not inherited. |
-| `~/.codex/config.toml` | `[features] plugin_hooks`, `[plugins."openviking-memory@openviking"] enabled`, `[marketplaces.openviking]` (source, ref), `[hooks.state."openviking-memory@openviking:hooks/hooks.json:<event>:0:0"] trusted_hash` for `session_start`, `user_prompt_submit`, `stop`, `session_end`, `pre_compact`. |
+| `~/.codex/config.toml` | `[features] hooks` (or legacy `plugin_hooks`), `[plugins."openviking-memory@openviking"] enabled`, `[marketplaces.openviking]` (source, ref), `[hooks.state."openviking-memory@openviking:hooks/hooks.json:<event>:0:0"] trusted_hash` for `session_start`, `user_prompt_submit`, `stop`, `session_end`, `pre_compact`. |
 | `~/.codex/plugins/cache/openviking/openviking-memory/<version>/` | The copy Codex runs hooks from. Keyed by `plugin.json` version. |
 | `~/.codex/.tmp/marketplaces/openviking/` | Git clone of the marketplace (GitHub/TOS dist); `examples/codex-memory-plugin` inside it is what `codex plugin list` reports as the source path. |
 | `~/.openviking/codex-plugin-state/<session_id>.json` | Per-session state: `ovSessionId` (`cx-<session_id>`, null once committed), `transcriptPath` (last rollout seen, used by the SessionStart sweep to catch up unsent turns), `capturedTurnCount`, `lastUpdatedAt`. |
@@ -31,7 +31,7 @@ any credential var is set, else ovcli.conf, else ov.conf/defaults). The
 doctor prints the effective mode as `credential source`.
 
 | Field | Order (auto mode) |
-| --- | --- |
+|---|---|
 | url | `OPENVIKING_URL` → `OPENVIKING_BASE_URL` → `ovcli.conf url` → `ov.conf server.url` → `http://{server.host\|127.0.0.1}:{server.port\|1933}` |
 | api_key | `OPENVIKING_BEARER_TOKEN` → `OPENVIKING_API_KEY` → `ovcli.conf api_key` → `ov.conf codex.apiKey` → `ov.conf server.root_api_key` |
 | account / user | `OPENVIKING_ACCOUNT` / `OPENVIKING_USER` → `ovcli.conf account/account_id`, `user/user_id` → `ov.conf codex.accountId/userId` |
@@ -59,6 +59,11 @@ mode only), `X-OpenViking-Actor-Peer`, `User-Agent: openviking-memory-codex/<ver
 The open-source server also accepts `X-API-Key` (and prefers it when both are
 sent); the Volcengine-hosted OpenViking Service (`https://api.vikingdb.cn-beijing.volces.com/openviking`) accepts Bearer only.
 
+The doctor checks explicit `features.hooks` first, then the live `hooks` entry
+from `codex features list`. Legacy `plugin_hooks` only decides the result when
+neither supplies a modern feature state. An unavailable probe with no configured
+flag is informational; a live enabled result needs no configuration change.
+
 ## Peer: giving a directory its own memory
 
 ```json
@@ -68,7 +73,7 @@ sent); the Volcengine-hosted OpenViking Service (`https://api.vikingdb.cn-beijin
 Stored as `.openviking/config.json` in the directory to be named; that directory and everything below it then writes to that peer, repository or not.
 
 | What the user says | What to do |
-| --- | --- |
+|---|---|
 | "make this folder remember separately" | Write `peer.id` in `.openviking/config.json` in that folder |
 | "these two repos should share memory" | Write the same `peer.id` in `.openviking/config.json` in both |
 | "only recall this project's memories" | Set `recall.peer_scope` to `"actor"` in the same file |
@@ -80,7 +85,7 @@ That file and the registry file whose path the doctor prints are the whole surfa
 ## Server auth modes (from `GET /health` → `auth_mode`)
 
 | Mode | Credential | Identity |
-| --- | --- | --- |
+|---|---|---|
 | `dev` | none needed, any key accepted | `X-OpenViking-Account/User` headers, else `default`; role root |
 | `api_key` | key required | from the key; account/user headers are silently stripped |
 | `trusted` | root key optional | from the headers; missing → 400 `Trusted mode requests must include X-OpenViking-Account …` |
@@ -99,7 +104,7 @@ account" error.
 Server (REST): `{"status":"error","error":{"code":…,"message":…}}`
 
 | HTTP | code | message | Meaning |
-| --- | --- | --- | --- |
+|---|---|---|---|
 | 401 | UNAUTHENTICATED | `Missing API Key when resolving identity.` | No credential reached the server (gateway stripped `Authorization`, or `bearer` lowercase) |
 | 401 | UNAUTHENTICATED | `Invalid API Key` | Unknown/revoked key, or a well-formed key for a non-existent account/user |
 | 403 | PERMISSION_DENIED | `ROOT API keys cannot access tenant-scoped data APIs …` | Root key used as the plugin key |
@@ -114,7 +119,7 @@ with the server message; `404` → no MCP endpoint at that url.
 Plugin MCP proxy (what Codex shows for a failing tool call):
 
 | JSON-RPC | Message | Meaning |
-| --- | --- | --- |
+|---|---|---|
 | `-32001` | `OpenViking MCP authentication failed (HTTP 401\|403). Check ~/.openviking/ovcli.conf or OPENVIKING_API_KEY …` | Credentials; `data.serverMessage` carries the server text |
 | `-32001` | `OpenViking MCP request failed. Check the configured URL (<mcpUrl>) …` | Transport: `data.cause` = `fetch failed` (refused/DNS/TLS), `This operation was aborted` (timeout). The url in the message is the one actually used. |
 | `-32002` | `OpenViking MCP upstream returned HTTP <n>.` | Any other status; HTML in `data.serverMessage` means the url is not an OpenViking endpoint |
@@ -130,7 +135,7 @@ on stdout is the artifact.
 ## Local server (loopback url only)
 
 | Path | What |
-| --- | --- |
+|---|---|
 | `~/.openviking/ov.conf` (or `OPENVIKING_CONFIG_FILE`, then `/etc/openviking/ov.conf`) | The server's config. The doctor checks the copy the plugin resolves for plugin-only keys; a server started with another `--config` runs from that file instead. |
 | `<storage.workspace>/` | Data: `viking/` (content), `vectordb/context/` (index), `_system/queue/queue.db`. `storage.workspace` defaults to `./data` relative to the server's cwd. |
 | `<workspace>/log/openviking.log` | Only with `log.output: "file"`. Default is stdout (terminal / tmux / nohup file / `journalctl -u openviking` / `docker logs openviking`). Time-rotated as `openviking.log.YYYY-MM-DD`. |
@@ -153,7 +158,7 @@ until it has an ov.conf.
 Startup failures (printed by the server; exit 1 unless noted):
 
 | Text | Cause |
-| --- | --- |
+|---|---|
 | `OpenViking configuration file not found.` | No ov.conf at any resolved path |
 | `Unknown config field '…' in OpenVikingConfig` / `Extra inputs are not permitted` | Unknown key — including `claude_code`, `codex` and `server.url`, which only the plugins read |
 | `SECURITY: server.auth_mode='dev' requires server.host to be localhost` | Dev mode (no `auth_mode`, no `root_api_key`) on a non-loopback bind |
@@ -177,8 +182,8 @@ reports `unknown command`.
 ## Symptom catalogue
 
 | Symptom | Likely cause | Detect | Fix |
-| --- | --- | --- | --- |
-| Plugin listed and enabled, but no `<openviking-context>` ever, no log | `plugin_hooks` off, hooks never trusted, or no parseable config | doctor Plugin install + Configuration sections | Enable hooks / approve the prompt / fix config |
+|---|---|---|---|
+| Plugin listed and enabled, but no `<openviking-context>` ever, no log | `hooks` / `plugin_hooks` off, hooks never trusted, or no parseable config | doctor Plugin install + Configuration sections | Enable hooks / approve the prompt / fix config |
 | Worked until an edit to `ovcli.conf` | JSON broken by the edit | doctor "cannot be parsed" | Fix JSON |
 | Edits to `ovcli.conf` or `ov config switch` have no effect | Env var or rc-file export wins (`credential source: env`) | doctor "← env"; `env \| grep OPENVIKING_` | Remove the export |
 | Recall empty on a healthy server | Wrong key (401 reads as no results), wrong user space, peer scope, threshold | `/health` with key; `/api/v1/system/status` → `result.user` | Fix key; `OPENVIKING_PEER_ID`; lower `OPENVIKING_SCORE_THRESHOLD` |
