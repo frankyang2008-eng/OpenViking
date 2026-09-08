@@ -189,68 +189,57 @@ async function runEndpointCompressionCase({
   );
   let requestBody = null;
   try {
-    return await withFakeCodex(
-      compressorOutput,
-      async ({ callLog, argsLog, env }) => {
-        const result = await withMockOpenViking(
-          async (req, res) => {
-            const url = new URL(req.url, "http://127.0.0.1");
-            if (req.method === "GET" && url.pathname === "/health") {
-              writeJson(res, { status: "ok", result: { ok: true } });
-              return;
-            }
-            if (
-              req.method === "POST" &&
-              url.pathname === "/api/v1/search/recall"
-            ) {
-              requestBody = await readRequestBody(req);
-              writeJson(res, {
-                status: "ok",
-                result: { entries: [entry], rendered, stats: { returned: 1 } },
-              });
-              return;
-            }
-            res.writeHead(404, { "Content-Type": "application/json" });
-            res.end(JSON.stringify({ status: "error", error: "not found" }));
-          },
-          async (baseUrl) =>
-            runAutoRecall(
-              { prompt, session_id: "codex:endpoint-compress" },
-              {
-                ...env,
-                OPENVIKING_AUTO_RECALL: "1",
-                OPENVIKING_CODEX_STATE_DIR: stateDir,
-                OPENVIKING_STATE_DIR: stateDir,
-                OPENVIKING_CONFIG_FILE: join(stateDir, "missing-ov.conf"),
-                OPENVIKING_CLI_CONFIG_FILE: join(
-                  stateDir,
-                  "missing-ovcli.conf",
-                ),
-                OPENVIKING_CREDENTIAL_SOURCE: "env",
-                OPENVIKING_RECALL_COMPRESS: "1",
-                OPENVIKING_RECALL_TIMEOUT_MS: "10000",
-                OPENVIKING_MIN_QUERY_LENGTH: "1",
-                OPENVIKING_SCORE_THRESHOLD: "0",
-                OPENVIKING_TIMEOUT_MS: "5000",
-                OPENVIKING_URL: baseUrl,
-                ...extraEnv,
-              },
-            ),
-        );
-        const compressorCallLog = await readFile(callLog, "utf-8").catch(
-          () => "",
-        );
-        const compressorArgs = await readFile(argsLog, "utf-8").catch(() => "");
-        return {
-          output: JSON.parse(result.stdout.trim()),
-          compressorCalls: compressorCallLog.trim().split("\n").filter(Boolean)
-            .length,
-          compressorArgs: compressorArgs.trim().split("\n").filter(Boolean),
-          requestBody,
-        };
-      },
-      { exitCode },
-    );
+    return await withFakeCodex(compressorOutput, async ({ callLog, argsLog, env }) => {
+      const result = await withMockOpenViking(async (req, res) => {
+        const url = new URL(req.url, "http://127.0.0.1");
+        if (req.method === "GET" && url.pathname === "/health") {
+          writeJson(res, { status: "ok", result: { ok: true } });
+          return;
+        }
+        if (req.method === "POST" && url.pathname === "/api/v1/search/recall") {
+          requestBody = await readRequestBody(req);
+          writeJson(res, {
+            status: "ok",
+            result: { entries: [entry], rendered, stats: { returned: 1 } },
+          });
+          return;
+        }
+        res.writeHead(404, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ status: "error", error: "not found" }));
+      }, async (baseUrl) => runAutoRecall(
+        { prompt, session_id: "codex:endpoint-compress" },
+        {
+          ...env,
+          OPENVIKING_AUTO_RECALL: "1",
+          OPENVIKING_CODEX_STATE_DIR: stateDir,
+          OPENVIKING_STATE_DIR: stateDir,
+          OPENVIKING_CONFIG_FILE: join(stateDir, "missing-ov.conf"),
+          OPENVIKING_CLI_CONFIG_FILE: join(stateDir, "missing-ovcli.conf"),
+          OPENVIKING_CREDENTIAL_SOURCE: "env",
+          OPENVIKING_RECALL_COMPRESS: "1",
+          // With recallTimeoutMs=10000 the compressor child inherits only
+          // max(1000, recallTimeoutMs - 10000) = 1000ms, which a fresh
+          // `node` cold start intermittently exceeds (seen in CI as
+          // compress_timeout → SIGKILL → empty args log). Give the fake
+          // codex subprocess a budget that cannot race with process startup.
+          OPENVIKING_RECALL_TIMEOUT_MS: "60000",
+          OPENVIKING_RECALL_COMPRESS_TIMEOUT_MS: "30000",
+          OPENVIKING_MIN_QUERY_LENGTH: "1",
+          OPENVIKING_SCORE_THRESHOLD: "0",
+          OPENVIKING_TIMEOUT_MS: "5000",
+          OPENVIKING_URL: baseUrl,
+          ...extraEnv,
+        },
+      ));
+      const compressorCallLog = await readFile(callLog, "utf-8").catch(() => "");
+      const compressorArgs = await readFile(argsLog, "utf-8").catch(() => "");
+      return {
+        output: JSON.parse(result.stdout.trim()),
+        compressorCalls: compressorCallLog.trim().split("\n").filter(Boolean).length,
+        compressorArgs: compressorArgs.trim().split("\n").filter(Boolean),
+        requestBody,
+      };
+    }, { exitCode });
   } finally {
     await rm(stateDir, { recursive: true, force: true });
   }
