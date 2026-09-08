@@ -40,6 +40,7 @@ def init_queue_manager(
     max_concurrent_external_parse: int = 4,
     max_concurrent_add_resource: int = 4,
     max_concurrent_session_commit: int = DEFAULT_MAX_CONCURRENT_SESSION_COMMIT,
+    max_concurrent_external_task: int = 10,
 ) -> "QueueManager":
     """Initialize QueueManager singleton.
 
@@ -58,6 +59,7 @@ def init_queue_manager(
         max_concurrent_external_parse: Max concurrent ExternalParse tasks.
         max_concurrent_add_resource: Max concurrent AddResource tasks.
         max_concurrent_session_commit: Max concurrent SessionCommit tasks.
+        max_concurrent_external_task: Max concurrent ExternalTask tasks.
     """
     with _init_lock:
         global _instance
@@ -71,6 +73,7 @@ def init_queue_manager(
             max_concurrent_external_parse=max_concurrent_external_parse,
             max_concurrent_add_resource=max_concurrent_add_resource,
             max_concurrent_session_commit=max_concurrent_session_commit,
+            max_concurrent_external_task=max_concurrent_external_task,
         )
         if previous is not None and previous is not _instance:
             try:
@@ -103,6 +106,7 @@ class QueueManager:
     EXTERNAL_PARSE = "ExternalParse"
     ADD_RESOURCE = "AddResource"
     SESSION_COMMIT = "SessionCommit"
+    EXTERNAL_TASK = "ExternalTask"
     USER_DELETION = "UserDeletion"
     # A deferred archive re-enqueues itself; throttle the next scheduling round.
     _SESSION_COMMIT_POLL_INTERVAL = 1.0
@@ -117,6 +121,7 @@ class QueueManager:
         max_concurrent_external_parse: int = 4,
         max_concurrent_add_resource: int = 4,
         max_concurrent_session_commit: int = DEFAULT_MAX_CONCURRENT_SESSION_COMMIT,
+        max_concurrent_external_task: int = 10,
     ):
         """Initialize QueueManager."""
         self._agfs = agfs
@@ -127,6 +132,7 @@ class QueueManager:
         self._max_concurrent_external_parse = max_concurrent_external_parse
         self._max_concurrent_add_resource = max_concurrent_add_resource
         self._max_concurrent_session_commit = max_concurrent_session_commit
+        self._max_concurrent_external_task = max_concurrent_external_task
         self._queues: Dict[str, NamedQueue] = {}
         self._started = False
         self._queue_threads: Dict[str, threading.Thread] = {}
@@ -233,6 +239,8 @@ class QueueManager:
             return self._max_concurrent_add_resource
         if queue_name == self.SESSION_COMMIT:
             return self._max_concurrent_session_commit
+        if queue_name == self.EXTERNAL_TASK:
+            return self._max_concurrent_external_task
         return self._max_concurrent_semantic
 
     def _queue_worker_loop(
