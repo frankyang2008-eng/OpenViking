@@ -3,6 +3,7 @@
 
 """Unit tests for TaskTracker."""
 
+import asyncio
 import json
 import time
 from copy import deepcopy
@@ -827,3 +828,132 @@ async def test_feishu_response_checkpoint_survives_reload(tracker):
     restored = TaskTracker(store=tracker._store)
     record = await restored.get(task.task_id, **_owner_kwargs())
     assert record.meta["feishu_responses"] == {"nested/doc": "response-1"}
+
+
+async def test_execution_events_survive_restart_and_preserve_reported_facts():
+    store = PersistentTaskStore(_FakeAgfs())
+    tracker = TaskTracker(store=store)
+    owner = _owner_kwargs()
+    task = await tracker.create("add_resource", **owner)
+    await tracker.start(task.task_id, stage="parsing", **owner)
+    await tracker.start(task.task_id, stage="parsing", **owner)
+    await tracker.record_event(task.task_id, "waiting_for_descendants", operation="work-1", **owner)
+    await tracker.fail(task.task_id, "provider rejected sk-testsecret123", **owner)
+    before = (await tracker.get(task.task_id, **owner)).to_dict(include_events=True)
+    restored = (await TaskTracker(store=store).get(task.task_id, **owner)).to_dict(
+        include_events=True
+    )
+    assert restored == before
+    events = restored["execution_events"]["items"]
+    assert [event["kind"] for event in events] == [
+        "created",
+        "status_changed",
+        "stage_changed",
+        "waiting_for_descendants",
+        "error_recorded",
+        "status_changed",
+    ]
+    assert [event["seq"] for event in events] == list(range(1, 7))
+    assert events[-1]["status"] == "failed"
+    assert events[-1]["stage"] == "parsing"
+    assert "[REDACTED]" in events[-2]["error"]
+    assert "testsecret123" not in json.dumps(restored)
+    assert "execution_events" not in (await tracker.get(task.task_id, **owner)).to_dict()
+
+
+@pytest.mark.parametrize("outcome", ["complete", "fail"])
+async def test_terminal_event_waits_for_owned_work(tracker, outcome):
+    from openviking.service.task_work_index import QueueTaskMetadata, TaskWorkIndex
+
+    owner = _owner_kwargs()
+    task = await tracker.create("add_resource", **owner)
+    await tracker.start(task.task_id, **owner)
+    work_index = TaskWorkIndex()
+    tracker.attach_work_index(work_index)
+    child = QueueTaskMetadata(task.task_id, "child-work", "acme", "alice")
+    work_index.register("Semantic", child)
+    await getattr(tracker, outcome)(
+        task.task_id, {"done": True} if outcome == "complete" else "error", **owner
+    )
+    snapshot = await tracker.get(task.task_id, **owner)
+    assert snapshot.status == TaskStatus.RUNNING
+    waiting = asyncio.create_task(tracker.wait_for_descendants(task.task_id, "parent-work"))
+
+    # Observe the public history while work remains, not a helper call sequence.
+    async def observed_wait():
+        while True:
+            record = await tracker.get(task.task_id, **owner)
+            if record.execution_events["items"][-1]["kind"] == "waiting_for_descendants":
+                return
+            await asyncio.sleep(0)
+
+    try:
+        await asyncio.wait_for(observed_wait(), timeout=2)
+    finally:
+        await work_index.prepare_ack("Semantic", child)
+        await waiting
+    snapshot = await tracker.get(task.task_id, **owner)
+    last = snapshot.execution_events["items"][-1]
+    assert last["kind"] == "status_changed"
+    assert last["status"] == ("completed" if outcome == "complete" else "failed")
+    await tracker.wait_for_descendants(task.task_id, "parent-work")
+    assert (await tracker.get(task.task_id, **owner)).execution_events == snapshot.execution_events
+
+
+async def test_legacy_tasks_do_not_get_invented_history():
+    agfs = _FakeAgfs()
+    store = PersistentTaskStore(agfs)
+    task = await TaskTracker(store=store).create("session_commit", **_owner_kwargs())
+    path = f"/local/acme/_system/tasks/alice/{task.task_id}.json"
+    payload = json.loads(agfs.files[path])
+    payload.pop("execution_events")
+    agfs.files[path] = json.dumps(payload).encode()
+    reader = TaskTracker(store=store)
+    assert (await reader.get(task.task_id, **_owner_kwargs())).execution_events is None
+    await reader.start(task.task_id, **_owner_kwargs())
+    history = (await reader.get(task.task_id, **_owner_kwargs())).execution_events
+    assert history["started_mid_task"] is True
+    assert [event["kind"] for event in history["items"]] == ["status_changed"]
+
+
+@pytest.mark.parametrize("stage_prefix", ["stage", "阶段" * 64])
+async def test_event_history_is_bounded_and_reports_truncation(tracker, stage_prefix):
+    from openviking.service.task_events import MAX_TASK_EVENT_BYTES, MAX_TASK_EVENTS
+
+    task = await tracker.create("add_resource", **_owner_kwargs())
+    for index in range(80):
+        await tracker.update_stage(task.task_id, f"{index}:{stage_prefix}", **_owner_kwargs())
+    await tracker.complete(task.task_id, {"done": True}, **_owner_kwargs())
+    history = (await tracker.get(task.task_id, **_owner_kwargs())).execution_events
+    assert len(history["items"]) <= MAX_TASK_EVENTS
+    assert len(json.dumps(history).encode()) <= MAX_TASK_EVENT_BYTES
+    assert history["dropped_count"] + len(history["items"]) == 82
+    assert history["items"][0]["seq"] == history["dropped_count"] + 1
+    assert history["items"][-1]["status"] == "completed"
+
+
+async def test_process_events_respect_owner_and_terminal_boundaries(tracker):
+    task = await tracker.create("add_resource", **_owner_kwargs())
+    await tracker.record_event(
+        task.task_id, "waiting_for_descendants", account_id="acme", user_id="bob"
+    )
+    assert (
+        await tracker.get(task.task_id, **_owner_kwargs())
+    ).execution_events == task.execution_events
+    with pytest.raises(ValueError, match="Unknown task process event"):
+        await tracker.record_event(task.task_id, "completed", **_owner_kwargs())
+    with pytest.raises(ValueError, match="operation"):
+        await tracker.record_event(
+            task.task_id, "waiting_for_descendants", operation="Bearer secret", **_owner_kwargs()
+        )
+    await tracker.cancel(task.task_id, **_owner_kwargs())
+    cancelled = await tracker.get(task.task_id, **_owner_kwargs())
+    assert [event["status"] for event in cancelled.execution_events["items"]] == [
+        "pending",
+        "cancelling",
+        "cancelled",
+    ]
+    await tracker.record_event(task.task_id, "waiting_for_descendants", **_owner_kwargs())
+    assert (
+        await tracker.get(task.task_id, **_owner_kwargs())
+    ).execution_events == cancelled.execution_events
