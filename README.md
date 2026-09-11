@@ -145,6 +145,7 @@ Build your own integration with the [Python](sdk/python/README.md), [Go](sdk/go/
 Connect your agent to OpenViking for cross-session memory. Choose a native integration for automatic recall and session capture, or use MCP to give your agent memory and context tools.
 
 <table>
+<tbody>
 <tr>
 <td align="center" valign="bottom" width="16%">
 <a href="https://docs.openviking.ai/en/agent-integrations/02-claude-code"><img src="docs/images/integrations/logos/claude-code.png" width="32" height="32" alt=""><br><strong>Claude</strong></a><br>
@@ -171,6 +172,8 @@ Connect your agent to OpenViking for cross-session memory. Choose a native integ
 <sub>Built-in</sub>
 </td>
 </tr>
+</tbody>
+<tbody>
 <tr>
 <td align="center" valign="bottom" width="16%">
 <a href="https://docs.openviking.ai/en/agent-integrations/10-opencode"><img src="docs/images/integrations/logos/opencode.png" width="32" height="32" alt=""><br><strong>OpenCode</strong></a><br>
@@ -197,6 +200,7 @@ Connect your agent to OpenViking for cross-session memory. Choose a native integ
 <sub>Tools&nbsp;+&nbsp;store</sub>
 </td>
 </tr>
+</tbody>
 </table>
 
 **General integrations**
@@ -297,13 +301,17 @@ The server supports [accounts and user isolation](https://docs.openviking.ai/en/
 
 To propose a partnership, [open an issue](https://github.com/volcengine/OpenViking/issues).
 
-## Community & contributing
+## Community & Contributing
 
 - **Docs**: [docs.openviking.ai](https://docs.openviking.ai/) · [FAQ](https://docs.openviking.ai/en/faq/faq)
 - **Blog**: [blog.openviking.ai](https://blog.openviking.ai/)
 - **Team**: [About us](https://docs.openviking.ai/en/about/01-about-us)
 - **Chat**: 📱 [Lark Group](https://docs.openviking.ai/en/about/01-about-us#lark-group) · 💬 [WeChat](https://docs.openviking.ai/en/about/01-about-us#wechat-group) · 🎮 [Discord](https://discord.com/invite/eHvx8E9XF3) · 🐦 [X](https://x.com/openvikingai)
 - **Contribute**: bug fixes and new features are both welcome — see [CONTRIBUTING.md](CONTRIBUTING.md)
+
+<a href="https://github.com/volcengine/OpenViking/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=volcengine/OpenViking&amp;columns=15&amp;max=120" alt="OpenViking contributors" />
+</a>
 
 ## Security and privacy
 

@@ -145,6 +145,7 @@ ov grep "openviking" --uri viking://resources/volcengine/OpenViking/docs/en
 OpenViking を接続して、セッションをまたいで記憶を引き継ぎます。ネイティブ統合で自動想起とセッション収集を使うか、MCP で記憶とコンテキストのツールを提供できます。
 
 <table>
+<tbody>
 <tr>
 <td align="center" valign="bottom" width="16%">
 <a href="https://docs.openviking.ai/en/agent-integrations/02-claude-code"><img src="docs/images/integrations/logos/claude-code.png" width="32" height="32" alt=""><br><strong>Claude</strong></a><br>
@@ -171,6 +172,8 @@ OpenViking を接続して、セッションをまたいで記憶を引き継ぎ
 <sub>内蔵メモリ</sub>
 </td>
 </tr>
+</tbody>
+<tbody>
 <tr>
 <td align="center" valign="bottom" width="16%">
 <a href="https://docs.openviking.ai/en/agent-integrations/10-opencode"><img src="docs/images/integrations/logos/opencode.png" width="32" height="32" alt=""><br><strong>OpenCode</strong></a><br>
@@ -197,6 +200,7 @@ OpenViking を接続して、セッションをまたいで記憶を引き継ぎ
 <sub>ツール&nbsp;+&nbsp;ストア</sub>
 </td>
 </tr>
+</tbody>
 </table>
 
 **汎用接続**
@@ -304,6 +308,10 @@ ov chat   # 別のターミナルで実行
 - **チーム**: [About us](https://docs.openviking.ai/en/about/01-about-us)
 - **チャット**: 📱 [Larkグループ](https://docs.openviking.ai/en/about/01-about-us#lark-group) · 💬 [WeChat](https://docs.openviking.ai/en/about/01-about-us#wechat-group) · 🎮 [Discord](https://discord.com/invite/eHvx8E9XF3) · 🐦 [X](https://x.com/openvikingai)
 - **コントリビュート**: バグ修正も新機能も歓迎します — [CONTRIBUTING_JA.md](CONTRIBUTING_JA.md) を参照してください
+
+<a href="https://github.com/volcengine/OpenViking/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=volcengine/OpenViking&amp;columns=15&amp;max=120" alt="OpenViking contributors" />
+</a>
 
 ## セキュリティとプライバシー
 

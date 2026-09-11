@@ -145,6 +145,7 @@ ov grep "openviking" --uri viking://resources/volcengine/OpenViking/docs/zh
 将 Agent 接入 OpenViking，跨会话保留记忆。原生集成支持自动召回与会话采集；也可通过 MCP 提供记忆和上下文工具。
 
 <table>
+<tbody>
 <tr>
 <td align="center" valign="bottom" width="16%">
 <a href="https://docs.openviking.ai/zh/agent-integrations/02-claude-code"><img src="docs/images/integrations/logos/claude-code.png" width="32" height="32" alt=""><br><strong>Claude</strong></a><br>
@@ -171,6 +172,8 @@ ov grep "openviking" --uri viking://resources/volcengine/OpenViking/docs/zh
 <sub>内置记忆</sub>
 </td>
 </tr>
+</tbody>
+<tbody>
 <tr>
 <td align="center" valign="bottom" width="16%">
 <a href="https://docs.openviking.ai/zh/agent-integrations/10-opencode"><img src="docs/images/integrations/logos/opencode.png" width="32" height="32" alt=""><br><strong>OpenCode</strong></a><br>
@@ -197,6 +200,7 @@ ov grep "openviking" --uri viking://resources/volcengine/OpenViking/docs/zh
 <sub>工具&nbsp;+&nbsp;存储</sub>
 </td>
 </tr>
+</tbody>
 </table>
 
 **通用接入**
@@ -304,6 +308,10 @@ ov chat   # 在另一个终端运行
 - **团队**：[关于我们](https://docs.openviking.ai/zh/about/01-about-us)
 - **交流**：📱 [飞书群](https://docs.openviking.ai/zh/about/01-about-us#飞书群) · 💬 [微信群](https://docs.openviking.ai/zh/about/01-about-us#微信群) · 🎮 [Discord](https://discord.com/invite/eHvx8E9XF3) · 🐦 [X](https://x.com/openvikingai)
 - **贡献**：修 bug、加新功能都欢迎——见 [CONTRIBUTING_CN.md](CONTRIBUTING_CN.md)
+
+<a href="https://github.com/volcengine/OpenViking/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=volcengine/OpenViking&amp;columns=15&amp;max=120" alt="OpenViking contributors" />
+</a>
 
 ## 安全与隐私
 
