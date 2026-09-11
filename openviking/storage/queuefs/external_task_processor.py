@@ -10,7 +10,7 @@ from typing import Any, Dict, Optional
 
 from openviking.service.external_task_service import ExternalTaskService
 from openviking.service.task_tracker_concurrency import OwnerLoopDispatcher
-from openviking.service.task_work_index import TaskWorkRejected
+from openviking.storage.queuefs.task_work_index import TaskWorkRejected
 from openviking.storage.queuefs import QueueManager, get_queue_manager
 from openviking.storage.queuefs.named_queue import DequeueHandlerBase
 
