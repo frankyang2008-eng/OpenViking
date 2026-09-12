@@ -447,7 +447,7 @@ class OpenVikingBuildExt(build_ext):
         ]
 
         if sys.platform == "darwin":
-            cmake_args.append("-DCMAKE_OSX_DEPLOYMENT_TARGET=10.15")
+            cmake_args.append("-DCMAKE_OSX_DEPLOYMENT_TARGET=11.0")
             target_arch = os.environ.get("CMAKE_OSX_ARCHITECTURES")
             if target_arch:
                 cmake_args.append(f"-DCMAKE_OSX_ARCHITECTURES={target_arch}")
