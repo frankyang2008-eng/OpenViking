@@ -232,10 +232,12 @@ impl FilesystemPathLockProvider {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
+
     use crate::core::{Error, FileSystem, WriteFlag};
     use crate::plugins::memfs::MemFileSystem;
+
+    use super::*;
 
     /// Verify legacy encrypted lock files are treated as removable upgrade leftovers.
     #[tokio::test]

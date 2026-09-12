@@ -460,6 +460,7 @@ export async function commitOpenVikingSession({
     const commitResult = await client.commitSession(ovId, {
       wait: true,
       keepRecentCount: 0,
+      resetContext: true,
     });
     const memCount = totalExtractedMemories(commitResult.memories_extracted);
     if (commitResult.status === "failed") {
