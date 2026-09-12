@@ -359,7 +359,9 @@ class ExternalTaskService:
             meta = snapshot.meta or {}
             if task is not None and (
                 task.stage != stage
-                or any(key not in task.meta or task.meta[key] != value for key, value in meta.items())
+                or any(
+                    key not in task.meta or task.meta[key] != value for key, value in meta.items()
+                )
             ):
                 await tracker.update_stage(
                     task_id,

@@ -27,7 +27,11 @@ export type OpenVikingContextEngineCreateParams<
   cfg: TCfg;
   logger: TLogger;
   getClient: () => Promise<TClient>;
-  resolveAgentId: (sessionId: string, sessionKey?: string, ovSessionId?: string) => string;
+  resolveAgentId: (
+    sessionId: string,
+    sessionKey?: string,
+    ovSessionId?: string,
+  ) => string;
   rememberSessionAgentId: (ctx: {
     agentId?: string;
     sessionId?: string;
@@ -52,11 +56,23 @@ export type OpenVikingContextEngineRegistrationDeps<
   cfg: TCfg;
   logger: TLogger;
   getClient: () => Promise<TClient>;
-  resolveAgentId: (sessionId: string, sessionKey?: string, ovSessionId?: string) => string;
+  resolveAgentId: (
+    sessionId: string,
+    sessionKey?: string,
+    ovSessionId?: string,
+  ) => string;
   rememberSessionAgentId: OpenVikingContextEngineCreateParams["rememberSessionAgentId"];
   queryConfigStore: TQueryConfigStore;
   traceRecorder: TTraceRecorder;
-  createContextEngine: (params: OpenVikingContextEngineCreateParams<TCfg, TClient, TQueryConfigStore, TTraceRecorder, TLogger>) => TEngine;
+  createContextEngine: (
+    params: OpenVikingContextEngineCreateParams<
+      TCfg,
+      TClient,
+      TQueryConfigStore,
+      TTraceRecorder,
+      TLogger
+    >,
+  ) => TEngine;
   setContextEngineRef: (engine: TEngine) => void;
 };
 
@@ -68,7 +84,14 @@ export function registerOpenVikingContextEngine<
   TTraceRecorder,
   TLogger extends OpenVikingContextEngineLogger,
 >(
-  deps: OpenVikingContextEngineRegistrationDeps<TEngine, TCfg, TClient, TQueryConfigStore, TTraceRecorder, TLogger>,
+  deps: OpenVikingContextEngineRegistrationDeps<
+    TEngine,
+    TCfg,
+    TClient,
+    TQueryConfigStore,
+    TTraceRecorder,
+    TLogger
+  >,
 ): void {
   if (typeof deps.api.registerContextEngine !== "function") {
     deps.logger.warn(

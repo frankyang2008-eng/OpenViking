@@ -155,6 +155,7 @@ def test_compile_limit_defaults_match_the_resource_envelope():
     assert limits.output_operations == 256
     assert DirectBackendConfig().allow_compile_exec is True
 
+
 def test_wiki_page_requires_exactly_one_body_source():
     body = _page(1, "One")
     body.pop("body_markdown")
@@ -3054,6 +3055,7 @@ async def test_request_normalization_uses_default_instruction_and_canonical_skil
     assert raised.value.code == "SKILL_INVALID"
     assert Client.created == set()
 
+
 def test_compile_target_accepts_only_exact_skill_namespaces():
     directory = {"isDir": True}
 
@@ -4727,9 +4729,7 @@ async def test_salvage_skips_oversized_file_before_reading(tmp_path: Path):
 
 
 @pytest.mark.asyncio
-async def test_salvage_grace_returns_when_cancellation_is_suppressed(
-    monkeypatch, tmp_path: Path
-):
+async def test_salvage_grace_returns_when_cancellation_is_suppressed(monkeypatch, tmp_path: Path):
     service = _compile_service(
         tmp_path,
         auth_mode="api_key",
@@ -4786,9 +4786,7 @@ async def test_salvage_grace_returns_when_cancellation_is_suppressed(
 
 
 @pytest.mark.asyncio
-async def test_salvage_keeps_its_grace_period_when_parent_is_cancelled(
-    monkeypatch, tmp_path: Path
-):
+async def test_salvage_keeps_its_grace_period_when_parent_is_cancelled(monkeypatch, tmp_path: Path):
     service = _compile_service(
         tmp_path,
         auth_mode="api_key",

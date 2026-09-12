@@ -238,9 +238,7 @@ async def _write_initial_user_config(
     await write_user_config(service.viking_fs, user_ctx, user_config)
 
 
-async def _check_user_exists(
-    request: Request, account_id: str, user_id: str, manager=None
-) -> None:
+async def _check_user_exists(request: Request, account_id: str, user_id: str, manager=None) -> None:
     manager = manager or _get_api_key_manager(request)
     if not manager.has_user(account_id, user_id):
         raise NotFoundError(user_id, "user")
@@ -721,9 +719,7 @@ async def add_group_member(
     ctx: RequestContext = Depends(get_request_context),
 ):
     _check_account_access(ctx, account_id)
-    added = await _get_api_key_manager(request).add_group_member(
-        account_id, group_id, user_id
-    )
+    added = await _get_api_key_manager(request).add_group_member(account_id, group_id, user_id)
     return Response(status="ok", result={"added": added})
 
 
@@ -737,7 +733,5 @@ async def remove_group_member(
     ctx: RequestContext = Depends(get_request_context),
 ):
     _check_account_access(ctx, account_id)
-    removed = await _get_api_key_manager(request).remove_group_member(
-        account_id, group_id, user_id
-    )
+    removed = await _get_api_key_manager(request).remove_group_member(account_id, group_id, user_id)
     return Response(status="ok", result={"removed": removed})

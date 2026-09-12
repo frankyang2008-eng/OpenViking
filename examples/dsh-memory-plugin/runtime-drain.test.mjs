@@ -11,11 +11,15 @@ const originalDrainInterval = process.env.OPENVIKING_PENDING_DRAIN_INTERVAL_MS;
 const tempDirs = [];
 
 afterEach(async () => {
-  if (originalPendingDir === undefined) delete process.env.OPENVIKING_PENDING_DIR;
+  if (originalPendingDir === undefined)
+    delete process.env.OPENVIKING_PENDING_DIR;
   else process.env.OPENVIKING_PENDING_DIR = originalPendingDir;
-  if (originalDrainInterval === undefined) delete process.env.OPENVIKING_PENDING_DRAIN_INTERVAL_MS;
+  if (originalDrainInterval === undefined)
+    delete process.env.OPENVIKING_PENDING_DRAIN_INTERVAL_MS;
   else process.env.OPENVIKING_PENDING_DRAIN_INTERVAL_MS = originalDrainInterval;
-  await Promise.all(tempDirs.splice(0).map(dir => rm(dir, { recursive: true, force: true })));
+  await Promise.all(
+    tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })),
+  );
 });
 
 test("drainTick sends queued messages once the server recovers and clears the latch", async () => {
@@ -25,24 +29,28 @@ test("drainTick sends queued messages once the server recovers and clears the la
 
   let healthy = false;
   let addCalls = 0;
-  const runtime = new OpenVikingRuntime({
-    async addMessage() {
-      addCalls += 1;
-      return healthy
-        ? { ok: true }
-        : { ok: false, status: 503, error: { message: "down" } };
+  const runtime = new OpenVikingRuntime(
+    {
+      async addMessage() {
+        addCalls += 1;
+        return healthy
+          ? { ok: true }
+          : { ok: false, status: 503, error: { message: "down" } };
+      },
+      async fetchJSON() {
+        return healthy
+          ? { ok: true }
+          : { ok: false, status: 503, error: { message: "down" } };
+      },
+      async healthResult() {
+        return healthy
+          ? { ok: true }
+          : { ok: false, status: 503, error: { message: "down" } };
+      },
     },
-    async fetchJSON() {
-      return healthy
-        ? { ok: true }
-        : { ok: false, status: 503, error: { message: "down" } };
-    },
-    async healthResult() {
-      return healthy
-        ? { ok: true }
-        : { ok: false, status: 503, error: { message: "down" } };
-    },
-  }, config(), { debug() {} });
+    config(),
+    { debug() {} },
+  );
   const session = { id: "recover", header: { cwd: "/workspace" } };
   runtime.stateFor(session).ready = true;
 
@@ -69,18 +77,22 @@ test("drainTick keeps the latch while the server stays down and leaves the entry
   process.env.OPENVIKING_PENDING_DIR = pendingDir;
 
   let addCalls = 0;
-  const runtime = new OpenVikingRuntime({
-    async addMessage() {
-      addCalls += 1;
-      return { ok: false, status: 503, error: { message: "down" } };
+  const runtime = new OpenVikingRuntime(
+    {
+      async addMessage() {
+        addCalls += 1;
+        return { ok: false, status: 503, error: { message: "down" } };
+      },
+      async fetchJSON() {
+        return { ok: false, status: 503, error: { message: "down" } };
+      },
+      async healthResult() {
+        return { ok: false, status: 503, error: { message: "down" } };
+      },
     },
-    async fetchJSON() {
-      return { ok: false, status: 503, error: { message: "down" } };
-    },
-    async healthResult() {
-      return { ok: false, status: 503, error: { message: "down" } };
-    },
-  }, config(), { debug() {} });
+    config(),
+    { debug() {} },
+  );
   const session = { id: "still-down", header: { cwd: "/workspace" } };
   runtime.stateFor(session).ready = true;
 
@@ -101,12 +113,16 @@ test("drainTick keeps the latch while the server stays down and leaves the entry
 
 test("drainTick does not hit the network while the queue is empty", async () => {
   let fetchCalls = 0;
-  const runtime = new OpenVikingRuntime({
-    async fetchJSON() {
-      fetchCalls += 1;
-      return { ok: true };
+  const runtime = new OpenVikingRuntime(
+    {
+      async fetchJSON() {
+        fetchCalls += 1;
+        return { ok: true };
+      },
     },
-  }, config(), { debug() {} });
+    config(),
+    { debug() {} },
+  );
   runtime.stateFor({ id: "idle", header: { cwd: "/workspace" } });
 
   await runtime.drainTick();
@@ -121,30 +137,34 @@ test("commit resumes once the drain clears the backlog", async () => {
 
   let healthy = false;
   let commitCalls = 0;
-  const runtime = new OpenVikingRuntime({
-    async addMessage() {
-      return healthy
-        ? { ok: true }
-        : { ok: false, status: 503, error: { message: "down" } };
+  const runtime = new OpenVikingRuntime(
+    {
+      async addMessage() {
+        return healthy
+          ? { ok: true }
+          : { ok: false, status: 503, error: { message: "down" } };
+      },
+      async fetchJSON() {
+        return healthy
+          ? { ok: true }
+          : { ok: false, status: 503, error: { message: "down" } };
+      },
+      async healthResult() {
+        return healthy
+          ? { ok: true }
+          : { ok: false, status: 503, error: { message: "down" } };
+      },
+      async getSession() {
+        return { pending_tokens: 20000 };
+      },
+      async commitSession() {
+        commitCalls += 1;
+        return { ok: true };
+      },
     },
-    async fetchJSON() {
-      return healthy
-        ? { ok: true }
-        : { ok: false, status: 503, error: { message: "down" } };
-    },
-    async healthResult() {
-      return healthy
-        ? { ok: true }
-        : { ok: false, status: 503, error: { message: "down" } };
-    },
-    async getSession() {
-      return { pending_tokens: 20000 };
-    },
-    async commitSession() {
-      commitCalls += 1;
-      return { ok: true };
-    },
-  }, config(), { debug() {} });
+    config(),
+    { debug() {} },
+  );
   const session = { id: "commit-resume", header: { cwd: "/workspace" } };
   const state = runtime.stateFor(session);
   state.ready = true;
@@ -168,7 +188,7 @@ test("commit resumes once the drain clears the backlog", async () => {
   assert.equal(commitCalls, 1);
 });
 
-test("startDrainer drains the queue on its interval", async t => {
+test("startDrainer drains the queue on its interval", async (t) => {
   t.mock.timers.enable({ apis: ["setInterval"] });
   const pendingDir = await mkdtemp(join(tmpdir(), "dsh-drain-interval-"));
   tempDirs.push(pendingDir);
@@ -176,23 +196,27 @@ test("startDrainer drains the queue on its interval", async t => {
   process.env.OPENVIKING_PENDING_DRAIN_INTERVAL_MS = "60000";
 
   let healthy = false;
-  const runtime = new OpenVikingRuntime({
-    async addMessage() {
-      return healthy
-        ? { ok: true }
-        : { ok: false, status: 503, error: { message: "down" } };
+  const runtime = new OpenVikingRuntime(
+    {
+      async addMessage() {
+        return healthy
+          ? { ok: true }
+          : { ok: false, status: 503, error: { message: "down" } };
+      },
+      async fetchJSON() {
+        return healthy
+          ? { ok: true }
+          : { ok: false, status: 503, error: { message: "down" } };
+      },
+      async healthResult() {
+        return healthy
+          ? { ok: true }
+          : { ok: false, status: 503, error: { message: "down" } };
+      },
     },
-    async fetchJSON() {
-      return healthy
-        ? { ok: true }
-        : { ok: false, status: 503, error: { message: "down" } };
-    },
-    async healthResult() {
-      return healthy
-        ? { ok: true }
-        : { ok: false, status: 503, error: { message: "down" } };
-    },
-  }, config(), { debug() {} });
+    config(),
+    { debug() {} },
+  );
   const session = { id: "interval", header: { cwd: "/workspace" } };
   runtime.stateFor(session).ready = true;
 
@@ -219,24 +243,31 @@ test("drainTick runs single-flight", async () => {
 
   let release;
   let startedResolve;
-  const started = new Promise(resolve => {
+  const started = new Promise((resolve) => {
     startedResolve = resolve;
   });
   let fetchCalls = 0;
-  const runtime = new OpenVikingRuntime({
-    async healthResult() {
-      return { ok: true };
+  const runtime = new OpenVikingRuntime(
+    {
+      async healthResult() {
+        return { ok: true };
+      },
+      async fetchJSON() {
+        fetchCalls += 1;
+        startedResolve();
+        await new Promise((resolve) => {
+          release = resolve;
+        });
+        return { ok: true };
+      },
     },
-    async fetchJSON() {
-      fetchCalls += 1;
-      startedResolve();
-      await new Promise(resolve => {
-        release = resolve;
-      });
-      return { ok: true };
-    },
-  }, config(), { debug() {} });
-  runtime.stateFor({ id: "single", header: { cwd: "/workspace" } }).ready = true;
+    config(),
+    { debug() {} },
+  );
+  runtime.stateFor({
+    id: "single",
+    header: { cwd: "/workspace" },
+  }).ready = true;
 
   const first = runtime.drainTick();
   await started;
@@ -252,17 +283,21 @@ test("drainTick derives each session's latch from its own entries", async () => 
   tempDirs.push(pendingDir);
   process.env.OPENVIKING_PENDING_DIR = pendingDir;
 
-  const runtime = new OpenVikingRuntime({
-    async addMessage() {
-      return { ok: false, status: 503, error: { message: "down" } };
+  const runtime = new OpenVikingRuntime(
+    {
+      async addMessage() {
+        return { ok: false, status: 503, error: { message: "down" } };
+      },
+      async healthResult() {
+        return { ok: true };
+      },
+      async fetchJSON() {
+        return { ok: false, status: 503, error: { message: "down" } };
+      },
     },
-    async healthResult() {
-      return { ok: true };
-    },
-    async fetchJSON() {
-      return { ok: false, status: 503, error: { message: "down" } };
-    },
-  }, config(), { debug() {} });
+    config(),
+    { debug() {} },
+  );
   const backlogged = { id: "backlogged", header: { cwd: "/workspace" } };
   const clean = { id: "clean", header: { cwd: "/workspace" } };
   runtime.stateFor(backlogged).ready = true;
@@ -276,7 +311,7 @@ test("drainTick derives each session's latch from its own entries", async () => 
   assert.equal(runtime.stateFor(clean).hasPendingWrites, false);
 });
 
-test("startDrainer is idempotent, stopDrainer is safe, and an invalid env falls back to 60s", async t => {
+test("startDrainer is idempotent, stopDrainer is safe, and an invalid env falls back to 60s", async (t) => {
   t.mock.timers.enable({ apis: ["setInterval"] });
   const pendingDir = await mkdtemp(join(tmpdir(), "dsh-drain-fallback-"));
   tempDirs.push(pendingDir);
@@ -285,16 +320,23 @@ test("startDrainer is idempotent, stopDrainer is safe, and an invalid env falls 
   await enqueue("addMessage", "dsh-fallback", { content: "held" });
 
   let fetchCalls = 0;
-  const runtime = new OpenVikingRuntime({
-    async healthResult() {
-      return { ok: true };
+  const runtime = new OpenVikingRuntime(
+    {
+      async healthResult() {
+        return { ok: true };
+      },
+      async fetchJSON() {
+        fetchCalls += 1;
+        return { ok: true };
+      },
     },
-    async fetchJSON() {
-      fetchCalls += 1;
-      return { ok: true };
-    },
-  }, config(), { debug() {} });
-  runtime.stateFor({ id: "fallback", header: { cwd: "/workspace" } }).ready = true;
+    config(),
+    { debug() {} },
+  );
+  runtime.stateFor({
+    id: "fallback",
+    header: { cwd: "/workspace" },
+  }).ready = true;
 
   const timer = runtime.startDrainer();
   assert.equal(runtime.startDrainer(), timer);

@@ -1089,7 +1089,7 @@ impl FileSystem for MountableFS {
             m.file
                 .rsplit('/')
                 .next()
-                .map_or(true, |name| !is_hidden_internal_name(name))
+                .is_none_or(|name| !is_hidden_internal_name(name))
         });
         result.count = result.matches.len();
         Ok(result)
@@ -1141,7 +1141,7 @@ impl FileSystem for MountableFS {
             e.path
                 .rsplit('/')
                 .next()
-                .map_or(true, |name| !is_hidden_internal_name(name))
+                .is_none_or(|name| !is_hidden_internal_name(name))
         });
 
         Ok(paginate_entries(entries, offset, node_limit))
@@ -1191,7 +1191,7 @@ impl FileSystem for MountableFS {
                 .path
                 .rsplit('/')
                 .next()
-                .map_or(true, |name| !is_hidden_internal_name(name))
+                .is_none_or(|name| !is_hidden_internal_name(name))
         });
 
         Ok(page)

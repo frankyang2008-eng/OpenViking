@@ -549,7 +549,7 @@ impl FileSystem for QueueFileSystem {
                 Ok(FileInfo {
                     name: queue_name
                         .split('/')
-                        .last()
+                        .next_back()
                         .unwrap_or(&queue_name)
                         .to_string(),
                     size: 0,

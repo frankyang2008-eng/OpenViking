@@ -97,7 +97,10 @@ export function parseInputFilterRule(source) {
   let flagsRaw = "";
   if (op === "s") {
     if (first.end < 0) {
-      return { source: raw, error: `missing ${JSON.stringify(delim)} after the pattern` };
+      return {
+        source: raw,
+        error: `missing ${JSON.stringify(delim)} after the pattern`,
+      };
     }
     const second = scanField(rest, first.end + 1, delim);
     if (second.end < 0) {
@@ -117,9 +120,13 @@ export function parseInputFilterRule(source) {
   const flags = new Set();
   for (const flag of flagsRaw) {
     if (!ALLOWED_FLAGS.includes(flag)) {
-      return { source: raw, error: `unknown flag "${flag}" — allowed flags are i, m, s, u, g` };
+      return {
+        source: raw,
+        error: `unknown flag "${flag}" — allowed flags are i, m, s, u, g`,
+      };
     }
-    if (flags.has(flag)) return { source: raw, error: `duplicate flag "${flag}"` };
+    if (flags.has(flag))
+      return { source: raw, error: `duplicate flag "${flag}"` };
     flags.add(flag);
   }
   // d/k decide with .test(), which advances lastIndex on a global regex and
@@ -150,12 +157,17 @@ export function compileInputFilters(rules) {
   const list = Array.isArray(rules) ? rules : [];
   list.forEach((entry, index) => {
     if (typeof entry !== "string") {
-      errors.push({ index, source: String(entry ?? ""), message: "rule must be a string" });
+      errors.push({
+        index,
+        source: String(entry ?? ""),
+        message: "rule must be a string",
+      });
       return;
     }
     if (!entry.trim()) return;
     const parsed = parseInputFilterRule(entry);
-    if (parsed.error) errors.push({ index, source: parsed.source, message: parsed.error });
+    if (parsed.error)
+      errors.push({ index, source: parsed.source, message: parsed.error });
     else compiled.push({ ...parsed, index });
   });
   return { rules: compiled, errors };
@@ -168,7 +180,11 @@ export function compileInputFilters(rules) {
  * drop decision for a turn can rewrite its individual pieces without taking a
  * second, possibly contradictory one.
  */
-export function applyInputFilters(text, compiled, { role = "", substituteOnly = false } = {}) {
+export function applyInputFilters(
+  text,
+  compiled,
+  { role = "", substituteOnly = false } = {},
+) {
   const original = typeof text === "string" ? text : String(text ?? "");
   let current = original;
   for (const rule of Array.isArray(compiled) ? compiled : []) {
@@ -180,7 +196,13 @@ export function applyInputFilters(text, compiled, { role = "", substituteOnly = 
     if (substituteOnly) continue;
     const matched = rule.re.test(current);
     if ((rule.op === "d" && matched) || (rule.op === "k" && !matched)) {
-      return { text: "", changed: false, dropped: true, ruleIndex: rule.index, op: rule.op };
+      return {
+        text: "",
+        changed: false,
+        dropped: true,
+        ruleIndex: rule.index,
+        op: rule.op,
+      };
     }
   }
   const finalText = current.trim();

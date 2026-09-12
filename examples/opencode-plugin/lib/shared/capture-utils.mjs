@@ -24,7 +24,8 @@ const TOOL_RESULT_TYPES = new Set([
 // guards against pathological payloads.
 const DEFAULT_TOOL_MAX_CHARS = 1000000;
 
-const ACK_RE = /^(?:ok|okay|k|yes|yep|no|nope|thanks|thank you|thx|done|收到|好的|好|嗯|可以|继续|不用|不需要|没了|好了)[.!?。！？\s]*$/i;
+const ACK_RE =
+  /^(?:ok|okay|k|yes|yep|no|nope|thanks|thank you|thx|done|收到|好的|好|嗯|可以|继续|不用|不需要|没了|好了)[.!?。！？\s]*$/i;
 const SLASH_COMMAND_RE = /^\/[a-z0-9_-]{1,64}\b/i;
 const METADATA_KEYS = [
   "session_id",
@@ -46,12 +47,18 @@ const METADATA_KEYS = [
 ];
 
 function normalizeType(value) {
-  return String(value || "").toLowerCase().replace(/[-\s]/g, "_");
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[-\s]/g, "_");
 }
 
 function isToolCallBlock(block) {
   const type = normalizeType(block?.type || block?.kind || block?.role);
-  return TOOL_CALL_TYPES.has(type) || Boolean(block?.tool_calls) || Boolean(block?.function?.name);
+  return (
+    TOOL_CALL_TYPES.has(type) ||
+    Boolean(block?.tool_calls) ||
+    Boolean(block?.function?.name)
+  );
 }
 
 function isToolResultBlock(block) {
@@ -60,12 +67,15 @@ function isToolResultBlock(block) {
 }
 
 function oneLine(text) {
-  return String(text || "").replace(/\s+/g, " ").trim();
+  return String(text || "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 export function truncateCaptureText(text, maxChars = 2000) {
   const value = String(text || "").trim();
-  if (!Number.isFinite(maxChars) || maxChars <= 0 || value.length <= maxChars) return value;
+  if (!Number.isFinite(maxChars) || maxChars <= 0 || value.length <= maxChars)
+    return value;
   return `${value.slice(0, Math.max(0, maxChars - 20)).trimEnd()}\n[truncated]`;
 }
 
@@ -102,19 +112,20 @@ function blockText(block) {
 function toolName(block) {
   return oneLine(
     block?.name ||
-    block?.tool_name ||
-    block?.toolName ||
-    block?.tool ||
-    block?.function?.name ||
-    block?.call?.name ||
-    "",
+      block?.tool_name ||
+      block?.toolName ||
+      block?.tool ||
+      block?.function?.name ||
+      block?.call?.name ||
+      "",
   );
 }
 
 function toolPayload(block, kind) {
   if (!block || typeof block !== "object") return "";
   if (kind === "call") {
-    return block.input ??
+    return (
+      block.input ??
       block.state?.input ??
       block.arguments ??
       block.args ??
@@ -123,9 +134,11 @@ function toolPayload(block, kind) {
       block.command ??
       block.call?.input ??
       block.call?.arguments ??
-      "";
+      ""
+    );
   }
-  return block.output ??
+  return (
+    block.output ??
     block.state?.output ??
     block.result ??
     block.error ??
@@ -133,28 +146,36 @@ function toolPayload(block, kind) {
     block.data ??
     block.content ??
     block.text ??
-    "";
+    ""
+  );
 }
 
 function toolId(block) {
   return oneLine(
     block?.call_id ||
-    block?.callId ||
-    block?.callID ||
-    block?.tool_call_id ||
-    block?.toolCallId ||
-    block?.tool_use_id ||
-    block?.toolUseId ||
-    block?.function_call_id ||
-    block?.functionCallId ||
-    block?.id ||
-    "",
+      block?.callId ||
+      block?.callID ||
+      block?.tool_call_id ||
+      block?.toolCallId ||
+      block?.tool_use_id ||
+      block?.toolUseId ||
+      block?.function_call_id ||
+      block?.functionCallId ||
+      block?.id ||
+      "",
   );
 }
 
 function toolStatus(block, kind) {
   if (kind === "call") return "running";
-  if (block?.is_error || block?.isError || block?.state?.isError || block?.error || block?.state?.error) return "error";
+  if (
+    block?.is_error ||
+    block?.isError ||
+    block?.state?.isError ||
+    block?.error ||
+    block?.state?.error
+  )
+    return "error";
   const status = oneLine(block?.status || block?.state?.status || "");
   return status || "completed";
 }
@@ -162,12 +183,17 @@ function toolStatus(block, kind) {
 function setToolInput(part, payload) {
   const input = parseMaybeJson(payload);
   if (input === "" || input == null) return;
-  part.tool_input = typeof input === "object" && !Array.isArray(input)
-    ? input
-    : { value: input };
+  part.tool_input =
+    typeof input === "object" && !Array.isArray(input)
+      ? input
+      : { value: input };
 }
 
-function buildToolPart(block, kind, { toolMaxChars = DEFAULT_TOOL_MAX_CHARS, toolNameById = {} } = {}) {
+function buildToolPart(
+  block,
+  kind,
+  { toolMaxChars = DEFAULT_TOOL_MAX_CHARS, toolNameById = {} } = {},
+) {
   const id = toolId(block);
   const name = toolName(block) || (id ? toolNameById[id] : "");
   const payload = toolPayload(block, kind);
@@ -211,9 +237,12 @@ function blockToText(block, options) {
 
   const type = normalizeType(block.type || block.kind || block.role);
   if (TEXT_BLOCK_TYPES.has(type)) return blockText(block);
-  if (isToolCallBlock(block)) return formatToolBlock(block, "call", options.toolMaxChars);
-  if (isToolResultBlock(block)) return formatToolBlock(block, "result", options.toolMaxChars);
-  if (Array.isArray(block.content)) return extractTextFromContent(block.content, options);
+  if (isToolCallBlock(block))
+    return formatToolBlock(block, "call", options.toolMaxChars);
+  if (isToolResultBlock(block))
+    return formatToolBlock(block, "result", options.toolMaxChars);
+  if (Array.isArray(block.content))
+    return extractTextFromContent(block.content, options);
   if (!type) return blockText(block);
   return "";
 }
@@ -229,7 +258,9 @@ export function extractTextFromContent(content, options = {}) {
       .join("\n\n");
   }
   if (typeof content === "object") {
-    return blockToText(content, opts) || stringifyCompact(content, opts.toolMaxChars);
+    return (
+      blockToText(content, opts) || stringifyCompact(content, opts.toolMaxChars)
+    );
   }
   return "";
 }
@@ -237,9 +268,18 @@ export function extractTextFromContent(content, options = {}) {
 export function extractTextFromPayload(payload, options = {}) {
   if (!payload || typeof payload !== "object") return "";
   const chunks = [];
-  const directType = normalizeType(payload.type || payload.kind || payload.role);
-  if (TOOL_RESULT_TYPES.has(directType) || directType === "tool" || TOOL_CALL_TYPES.has(directType)) {
-    const direct = blockToText(payload, { toolMaxChars: DEFAULT_TOOL_MAX_CHARS, ...options });
+  const directType = normalizeType(
+    payload.type || payload.kind || payload.role,
+  );
+  if (
+    TOOL_RESULT_TYPES.has(directType) ||
+    directType === "tool" ||
+    TOOL_CALL_TYPES.has(directType)
+  ) {
+    const direct = blockToText(payload, {
+      toolMaxChars: DEFAULT_TOOL_MAX_CHARS,
+      ...options,
+    });
     if (direct) return direct;
   }
 
@@ -251,7 +291,14 @@ export function extractTextFromPayload(payload, options = {}) {
     if (contentText) chunks.push(contentText);
   }
 
-  for (const key of ["tool_calls", "toolCalls", "function_call", "functionCall", "tool_call", "toolCall"]) {
+  for (const key of [
+    "tool_calls",
+    "toolCalls",
+    "function_call",
+    "functionCall",
+    "tool_call",
+    "toolCall",
+  ]) {
     const value = payload[key];
     if (!value) continue;
     const toolText = extractTextFromContent(value, options);
@@ -259,7 +306,10 @@ export function extractTextFromPayload(payload, options = {}) {
   }
 
   if (chunks.length === 0) {
-    const direct = blockToText(payload, { toolMaxChars: DEFAULT_TOOL_MAX_CHARS, ...options });
+    const direct = blockToText(payload, {
+      toolMaxChars: DEFAULT_TOOL_MAX_CHARS,
+      ...options,
+    });
     if (direct) chunks.push(direct);
   }
 
@@ -269,7 +319,10 @@ export function extractTextFromPayload(payload, options = {}) {
 function collectToolNamesByIdFromEntries(entries) {
   const map = {};
   for (const entry of entries || []) {
-    const payload = entry?.payload && typeof entry.payload === "object" ? entry.payload : entry;
+    const payload =
+      entry?.payload && typeof entry.payload === "object"
+        ? entry.payload
+        : entry;
     collectToolNamesByIdFromPayload(payload, map);
   }
   return map;
@@ -282,7 +335,14 @@ function collectToolNamesByIdFromPayload(payload, out) {
   }
   const candidates = [];
   if (Array.isArray(payload.content)) candidates.push(...payload.content);
-  for (const key of ["tool_calls", "toolCalls", "function_call", "functionCall", "tool_call", "toolCall"]) {
+  for (const key of [
+    "tool_calls",
+    "toolCalls",
+    "function_call",
+    "functionCall",
+    "tool_call",
+    "toolCall",
+  ]) {
     const value = payload[key];
     if (!value) continue;
     if (Array.isArray(value)) candidates.push(...value);
@@ -299,7 +359,11 @@ function collectToolNamesByIdFromPayload(payload, out) {
 }
 
 function extractPartsFromContent(content, options = {}) {
-  const opts = { toolMaxChars: DEFAULT_TOOL_MAX_CHARS, toolNameById: {}, ...options };
+  const opts = {
+    toolMaxChars: DEFAULT_TOOL_MAX_CHARS,
+    toolNameById: {},
+    ...options,
+  };
   const parts = [];
   if (!content) return parts;
   if (typeof content === "string") {
@@ -327,16 +391,26 @@ function extractPartsFromContent(content, options = {}) {
 
 export function extractPartsFromPayload(payload, options = {}) {
   if (!payload || typeof payload !== "object") return [];
-  const opts = { toolMaxChars: DEFAULT_TOOL_MAX_CHARS, toolNameById: {}, ...options };
+  const opts = {
+    toolMaxChars: DEFAULT_TOOL_MAX_CHARS,
+    toolNameById: {},
+    ...options,
+  };
   if (payload.message && typeof payload.message === "object") {
     return extractPartsFromPayload(payload.message, opts);
   }
 
-  const directType = normalizeType(payload.type || payload.kind || payload.role);
+  const directType = normalizeType(
+    payload.type || payload.kind || payload.role,
+  );
   if (TOOL_CALL_TYPES.has(directType) || isToolCallBlock(payload)) {
     return [buildToolPart(payload, "call", opts)];
   }
-  if (TOOL_RESULT_TYPES.has(directType) || directType === "tool" || directType === "function") {
+  if (
+    TOOL_RESULT_TYPES.has(directType) ||
+    directType === "tool" ||
+    directType === "function"
+  ) {
     return [buildToolPart(payload, "result", opts)];
   }
 
@@ -344,11 +418,19 @@ export function extractPartsFromPayload(payload, options = {}) {
   if (payload.content !== undefined) {
     parts.push(...extractPartsFromContent(payload.content, opts));
   }
-  for (const key of ["tool_calls", "toolCalls", "function_call", "functionCall", "tool_call", "toolCall"]) {
+  for (const key of [
+    "tool_calls",
+    "toolCalls",
+    "function_call",
+    "functionCall",
+    "tool_call",
+    "toolCall",
+  ]) {
     const value = payload[key];
     if (!value) continue;
     if (Array.isArray(value)) {
-      for (const block of value) parts.push(...extractPartsFromPayload(block, opts));
+      for (const block of value)
+        parts.push(...extractPartsFromPayload(block, opts));
     } else {
       parts.push(...extractPartsFromPayload(value, opts));
     }
@@ -385,9 +467,13 @@ export function filterCaptureParts(parts, role, cfg = {}) {
   const textParts = kept.filter((part) => part.type === "text");
   if (textParts.length === 0) return blank;
 
-  const verdict = applyInputFilters(textParts.map((part) => part.text).join("\n\n"), compiled.rules, {
-    role,
-  });
+  const verdict = applyInputFilters(
+    textParts.map((part) => part.text).join("\n\n"),
+    compiled.rules,
+    {
+      role,
+    },
+  );
   if (verdict.dropped) return { parts: [], dropped: true };
 
   const out = [];
@@ -396,7 +482,10 @@ export function filterCaptureParts(parts, role, cfg = {}) {
       out.push(part);
       continue;
     }
-    const shaped = applyInputFilters(part.text, compiled.rules, { role, substituteOnly: true });
+    const shaped = applyInputFilters(part.text, compiled.rules, {
+      role,
+      substituteOnly: true,
+    });
     if (!shaped.text) continue;
     out.push(shaped.text === part.text ? part : { ...part, text: shaped.text });
   }
@@ -408,14 +497,24 @@ export function extractCaptureTurns(rolloutEntries, cfg = {}) {
   const turns = [];
   for (const entry of rolloutEntries || []) {
     if (!entry || typeof entry !== "object") continue;
-    const payload = entry.payload && typeof entry.payload === "object" ? entry.payload : entry;
-    const message = payload.message && typeof payload.message === "object" ? payload.message : null;
-    const rawRole = message?.role || payload.role || payload.type || payload.kind;
+    const payload =
+      entry.payload && typeof entry.payload === "object"
+        ? entry.payload
+        : entry;
+    const message =
+      payload.message && typeof payload.message === "object"
+        ? payload.message
+        : null;
+    const rawRole =
+      message?.role || payload.role || payload.type || payload.kind;
     const role = normalizeCaptureRole(rawRole);
     if (!role) continue;
-    if (isAssistantSideCaptureRole(rawRole) && !cfg.captureAssistantTurns) continue;
+    if (isAssistantSideCaptureRole(rawRole) && !cfg.captureAssistantTurns)
+      continue;
 
-    const rawText = extractTextFromPayload(payload, { toolMaxChars: cfg.captureToolMaxChars });
+    const rawText = extractTextFromPayload(payload, {
+      toolMaxChars: cfg.captureToolMaxChars,
+    });
     const parts = extractPartsFromPayload(payload, {
       toolMaxChars: cfg.captureToolMaxChars,
       toolNameById,
@@ -425,7 +524,9 @@ export function extractCaptureTurns(rolloutEntries, cfg = {}) {
     // With parts on the wire the drop decision was already taken above, so the
     // text path only runs the filters for the `content` fallback. That also
     // keeps `turn.text` faithful for callers that scan it for trigger words.
-    const decision = shouldCaptureText(rawText, role, cfg, { filters: shaped.parts.length === 0 });
+    const decision = shouldCaptureText(rawText, role, cfg, {
+      filters: shaped.parts.length === 0,
+    });
     if (!decision.shouldCapture && shaped.parts.length === 0) continue;
     const text = decision.shouldCapture ? decision.text : "";
     turns.push({ role, text, parts: shaped.parts });
@@ -437,7 +538,12 @@ export function normalizeCaptureRole(role) {
   const value = normalizeType(role);
   if (value === "user") return "user";
   if (value === "assistant") return "assistant";
-  if (value === "tool" || value === "tool_result" || value === "function" || value === "function_call_output") {
+  if (
+    value === "tool" ||
+    value === "tool_result" ||
+    value === "function" ||
+    value === "function_call_output"
+  ) {
     return "user";
   }
   if (value === "tool_call" || value === "function_call") return "assistant";
@@ -446,25 +552,30 @@ export function normalizeCaptureRole(role) {
 
 export function isAssistantSideCaptureRole(role) {
   const value = normalizeType(role);
-  return value === "assistant" ||
+  return (
+    value === "assistant" ||
     value === "tool" ||
     value === "tool_result" ||
     value === "tool_call" ||
     value === "function" ||
     value === "function_call" ||
-    value === "function_call_output";
+    value === "function_call_output"
+  );
 }
 
 function stripMetadataFences(text) {
-  return String(text || "").replace(/```(?:json)?\s*([\s\S]*?)```/gi, (match, body) => {
-    const lower = body.toLowerCase();
-    let hits = 0;
-    for (const key of METADATA_KEYS) {
-      const re = new RegExp(`["']?${key}["']?\\s*:`, "i");
-      if (re.test(lower)) hits += 1;
-    }
-    return hits >= 3 ? "" : match;
-  });
+  return String(text || "").replace(
+    /```(?:json)?\s*([\s\S]*?)```/gi,
+    (match, body) => {
+      const lower = body.toLowerCase();
+      let hits = 0;
+      for (const key of METADATA_KEYS) {
+        const re = new RegExp(`["']?${key}["']?\\s*:`, "i");
+        if (re.test(lower)) hits += 1;
+      }
+      return hits >= 3 ? "" : match;
+    },
+  );
 }
 
 function stripInjectedDigestBlocks(text) {
@@ -498,7 +609,9 @@ function stripInjectedDigestBlocks(text) {
         continue;
       }
       if (
-        /^(?:[-*]\s+|#{1,6}\s+|More detail:|Use OpenViking MCP|Latest committed archive|Resume continuity|viking:\/\/)/i.test(trimmed) ||
+        /^(?:[-*]\s+|#{1,6}\s+|More detail:|Use OpenViking MCP|Latest committed archive|Resume continuity|viking:\/\/)/i.test(
+          trimmed,
+        ) ||
         /^\s{2,}\S/.test(line)
       ) {
         continue;
@@ -516,7 +629,10 @@ export function sanitizeCapturedText(text) {
   value = value
     .replace(/\u0000/g, "")
     .replace(/<openviking-context\b[^>]*>[\s\S]*?<\/openviking-context>/gi, " ")
-    .replace(/<relevant-memor(?:y|ies)\b[^>]*>[\s\S]*?<\/relevant-memor(?:y|ies)>/gi, " ")
+    .replace(
+      /<relevant-memor(?:y|ies)\b[^>]*>[\s\S]*?<\/relevant-memor(?:y|ies)>/gi,
+      " ",
+    )
     .replace(/^\s*Sender\s*\([^)]+\)\s*```[\s\S]*?```\s*/gim, " ")
     .replace(/^\s*Conversation (?:metadata|info):\s*```[\s\S]*?```\s*/gim, " ")
     .replace(/^\s*\[?\d{4}-\d{2}-\d{2}[T ][^\]\n]{3,80}\]?\s*/gm, "")
@@ -540,7 +656,12 @@ function isPunctuationOnly(text) {
   return !/[a-z0-9\u3400-\u9fff]/i.test(text);
 }
 
-export function shouldCaptureText(text, role, cfg = {}, { filters = true } = {}) {
+export function shouldCaptureText(
+  text,
+  role,
+  cfg = {},
+  { filters = true } = {},
+) {
   const maxLength = cfg.captureMaxLength || 24000;
   const sanitized = sanitizeCapturedText(text);
   if (!sanitized) return { shouldCapture: false, reason: "empty", text: "" };
@@ -550,7 +671,8 @@ export function shouldCaptureText(text, role, cfg = {}, { filters = true } = {})
     const compiled = compileInputFilters(cfg?.captureFilters);
     if (compiled.rules.length) {
       const verdict = applyInputFilters(capped, compiled.rules, { role });
-      if (verdict.dropped) return { shouldCapture: false, reason: "filtered", text: "" };
+      if (verdict.dropped)
+        return { shouldCapture: false, reason: "filtered", text: "" };
       capped = verdict.text;
       if (!capped) return { shouldCapture: false, reason: "empty", text: "" };
     }

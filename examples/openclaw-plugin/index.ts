@@ -48,23 +48,17 @@ import {
   pickMemoriesForInjection,
 } from "./memory-ranking.js";
 import { withTimeout } from "./process-manager.js";
-import {
-  createMemoryOpenVikingContextEngine,
-} from "./context-engine.js";
+import { createMemoryOpenVikingContextEngine } from "./context-engine.js";
 import {
   openClawSessionRefToOvStorageId,
   openClawSessionToOvStorageId,
 } from "./routing/identity-routing.js";
-import {
-  buildMemoryLinesWithBudget,
-} from "./auto-recall.js";
+import { buildMemoryLinesWithBudget } from "./auto-recall.js";
 import {
   normalizeRecallResourceTypes as normalizeResourceTypes,
   resolveRecallSearchPlan,
 } from "./registries/recall-resource-types.js";
-import {
-  normalizeRuntimeQueryParams,
-} from "./query-config.js";
+import { normalizeRuntimeQueryParams } from "./query-config.js";
 
 type PluginLogger = {
   debug?: (message: string) => void;
@@ -84,7 +78,10 @@ type ToolDefinition = {
   label: string;
   description: string;
   parameters: unknown;
-  execute: (_toolCallId: string, params: Record<string, unknown>) => Promise<unknown>;
+  execute: (
+    _toolCallId: string,
+    params: Record<string, unknown>,
+  ) => Promise<unknown>;
 };
 
 type ToolContext = {
@@ -124,11 +121,14 @@ type OpenClawPluginApi = {
     path: string;
     auth: "gateway" | "plugin";
     match?: "exact" | "prefix";
-    handler: (req: { method?: string; url?: string }, res: {
-      statusCode?: number;
-      setHeader?: (name: string, value: string) => void;
-      end?: (body?: string) => void;
-    }) => Promise<boolean> | boolean;
+    handler: (
+      req: { method?: string; url?: string },
+      res: {
+        statusCode?: number;
+        setHeader?: (name: string, value: string) => void;
+        end?: (body?: string) => void;
+      },
+    ) => Promise<boolean> | boolean;
   }) => void;
   registerCli?: (
     factory: (ctx: { program: unknown; workspaceDir?: string }) => void,
@@ -145,7 +145,11 @@ type RecallTraceRouteAdapter = {
   registerRoute?: (route: {
     method: "GET";
     path: string;
-    handler: (request?: { query?: Record<string, unknown>; params?: Record<string, unknown>; url?: string }) => Promise<unknown>;
+    handler: (request?: {
+      query?: Record<string, unknown>;
+      params?: Record<string, unknown>;
+      url?: string;
+    }) => Promise<unknown>;
   }) => void;
   registerHttpRoute?: OpenClawPluginApi["registerHttpRoute"];
 };
@@ -153,7 +157,8 @@ type RecallTraceRouteAdapter = {
 const contextEnginePlugin = {
   id: "openviking",
   name: "Context Engine (OpenViking)",
-  description: "OpenViking-backed context-engine memory with auto-recall/capture",
+  description:
+    "OpenViking-backed context-engine memory with auto-recall/capture",
   kind: "context-engine" as const,
   configSchema: memoryOpenVikingConfigSchema,
 
@@ -161,7 +166,9 @@ const contextEnginePlugin = {
     registerOpenVikingFeatureGatesMethod(api);
 
     const rawCfg =
-      api.pluginConfig && typeof api.pluginConfig === "object" && !Array.isArray(api.pluginConfig)
+      api.pluginConfig &&
+      typeof api.pluginConfig === "object" &&
+      !Array.isArray(api.pluginConfig)
         ? (api.pluginConfig as Record<string, unknown>)
         : {};
 
@@ -190,14 +197,16 @@ const contextEnginePlugin = {
     }
 
     const { isBypassedSession } = createOpenVikingBypassRuntime({ cfg });
-	    const { getClient, verboseRoutingInfo } = createOpenVikingClientRuntime({
-	      cfg,
-	      rawPeerPrefix: rawCfg.peer_prefix,
-	      logger: api.logger,
-	      transport: api.openVikingTransport,
-	    });
+    const { getClient, verboseRoutingInfo } = createOpenVikingClientRuntime({
+      cfg,
+      rawPeerPrefix: rawCfg.peer_prefix,
+      logger: api.logger,
+      transport: api.openVikingTransport,
+    });
     const { registerOpenVikingTool } = createOpenVikingToolRegistrationRuntime({
-      api: api as { registerTool: (toolOrFactory: unknown, opts: { name: string }) => void },
+      api: api as {
+        registerTool: (toolOrFactory: unknown, opts: { name: string }) => void;
+      },
       cfg,
       logger: api.logger,
     });
@@ -229,7 +238,11 @@ const contextEnginePlugin = {
       previewText,
       cfg,
     });
-    const { queryRecallTraces, formatRecallTraceText, registerRecallTraceRoutes } = recallTraceRuntime;
+    const {
+      queryRecallTraces,
+      formatRecallTraceText,
+      registerRecallTraceRoutes,
+    } = recallTraceRuntime;
 
     const handleQueryConfigCommand = createOpenVikingQueryConfigCommandHandler({
       resolvePluginSessionRouting,
@@ -238,9 +251,10 @@ const contextEnginePlugin = {
       normalizeRuntimeQueryParams,
     });
 
-    const { addResourceOpenViking, addSkillOpenViking } = createOpenVikingImportRuntime({
-      getClient,
-    });
+    const { addResourceOpenViking, addSkillOpenViking } =
+      createOpenVikingImportRuntime({
+        getClient,
+      });
 
     const queryRuntime = createOpenVikingQueryRuntime({
       getClient,
@@ -311,20 +325,23 @@ const contextEnginePlugin = {
       makeBypassedToolResult,
     });
 
-    registerOpenVikingCommands(api, createOpenVikingCommandDefinitions({
-      resolvePluginSessionRouting,
-      isBypassedSession,
-      makeBypassedToolResult,
-      parseAddResourceCommandArgs,
-      parseAddSkillCommandArgs,
-      parseOVSearchCommandArgs,
-      addResourceOpenViking,
-      addSkillOpenViking,
-      searchOpenViking,
-      handleQueryConfigCommand,
-      queryRecallTraces,
-      formatRecallTraceText,
-    }));
+    registerOpenVikingCommands(
+      api,
+      createOpenVikingCommandDefinitions({
+        resolvePluginSessionRouting,
+        isBypassedSession,
+        makeBypassedToolResult,
+        parseAddResourceCommandArgs,
+        parseAddSkillCommandArgs,
+        parseOVSearchCommandArgs,
+        addResourceOpenViking,
+        addSkillOpenViking,
+        searchOpenViking,
+        handleQueryConfigCommand,
+        queryRecallTraces,
+        formatRecallTraceText,
+      }),
+    );
 
     registerOpenVikingMemoryTools({
       registerTool: registerOpenVikingTool,
@@ -367,7 +384,8 @@ const contextEnginePlugin = {
       logger: api.logger,
     });
 
-    const { getContextEngine, setContextEngineRef } = createOpenVikingContextEngineRef();
+    const { getContextEngine, setContextEngineRef } =
+      createOpenVikingContextEngineRef();
 
     registerOpenVikingLifecycleHooks({
       api,
@@ -396,13 +414,15 @@ const contextEnginePlugin = {
     registerSetupCli(api);
     const recallTraceHttpRoutesRegistered = registerRecallTraceRoutes(api);
 
-    api.registerService(createOpenVikingService({
-      cfg,
-      getClient,
-      logger: api.logger,
-      recallTraceHttpRoutesRegistered,
-      registerRecallTraceRoutes,
-    }));
+    api.registerService(
+      createOpenVikingService({
+        cfg,
+        getClient,
+        logger: api.logger,
+        recallTraceHttpRoutesRegistered,
+        registerRecallTraceRoutes,
+      }),
+    );
   },
 };
 

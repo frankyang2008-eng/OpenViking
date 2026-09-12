@@ -197,7 +197,7 @@ impl LocalFileSystem {
             )
             .map_err(|e| Self::map_lock_error("compare_and_write", &e.to_string()))?;
         let file = lock.file_mut();
-        if !Self::open_file_matches_path(&file, &local_path)? {
+        if !Self::open_file_matches_path(file, &local_path)? {
             return Ok(false);
         }
 
@@ -251,7 +251,7 @@ impl LocalFileSystem {
             )
             .map_err(|e| Self::map_lock_error("compare_and_remove", &e.to_string()))?;
         let file = lock.file_mut();
-        if !Self::open_file_matches_path(&file, &local_path)? {
+        if !Self::open_file_matches_path(file, &local_path)? {
             return Ok(false);
         }
 
@@ -619,7 +619,7 @@ impl LocalFileSystem {
                 }
                 out.add_match(
                     file_virtual.clone(),
-                    lnum as u64,
+                    lnum,
                     line.trim_end().to_string(),
                 );
                 remaining -= 1;
@@ -693,7 +693,7 @@ impl LocalFileSystem {
                 }
                 out.add_match(
                     file_virtual.clone(),
-                    lnum as u64,
+                    lnum,
                     line.trim_end().to_string(),
                 );
                 remaining -= 1;
@@ -813,7 +813,7 @@ impl LocalFileSystem {
         let mut entries = Vec::new();
         let mut next_offset = None;
 
-        while let Some(dent) = walker.next() {
+        for dent in walker {
             if entries.len() >= limit {
                 next_offset = Some(raw_seen);
                 break;

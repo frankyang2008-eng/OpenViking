@@ -1178,7 +1178,12 @@ export class OpenVikingClient {
   /** List users in an account, in creation order. `name` supports wildcard (* and ?) matching. */
   adminListUsers(
     accountId: string,
-    options: { limit?: number; name?: string; role?: string; page?: number } = {},
+    options: {
+      limit?: number;
+      name?: string;
+      role?: string;
+      page?: number;
+    } = {},
   ): Promise<unknown[]> {
     return this.request(
       "GET",

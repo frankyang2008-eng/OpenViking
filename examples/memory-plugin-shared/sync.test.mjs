@@ -150,7 +150,10 @@ test("skills scoping the Experience root document the explicit-root fallback", a
       `${relative(ROOT, file)} scopes by viking://~ without naming the viking://user/<user_id> fallback`,
     );
   }
-  assert.ok(scoped.length > 0, "expected at least one skill scoping the Experience root");
+  assert.ok(
+    scoped.length > 0,
+    "expected at least one skill scoping the Experience root",
+  );
 });
 
 test("shipped skill descriptions stay within the loader limit", async () => {

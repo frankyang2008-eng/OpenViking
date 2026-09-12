@@ -312,11 +312,25 @@ export function loadConfig(cwd = process.cwd()) {
   // to come from the array, since the env value is split on it.
   const filterList = (envName, configured) => {
     const raw = str(process.env[envName], null);
-    const list = raw !== null ? raw.split(",") : (Array.isArray(configured) ? configured : []);
-    return list.filter((r) => typeof r === "string").map((r) => r.trim()).filter(Boolean);
+    const list =
+      raw !== null
+        ? raw.split(",")
+        : Array.isArray(configured)
+          ? configured
+          : [];
+    return list
+      .filter((r) => typeof r === "string")
+      .map((r) => r.trim())
+      .filter(Boolean);
   };
-  const recallQueryFilters = filterList("OPENVIKING_RECALL_QUERY_FILTERS", cc.recallQueryFilters);
-  const captureFilters = filterList("OPENVIKING_CAPTURE_FILTERS", cc.captureFilters);
+  const recallQueryFilters = filterList(
+    "OPENVIKING_RECALL_QUERY_FILTERS",
+    cc.recallQueryFilters,
+  );
+  const captureFilters = filterList(
+    "OPENVIKING_CAPTURE_FILTERS",
+    cc.captureFilters,
+  );
 
   return {
     configPath,

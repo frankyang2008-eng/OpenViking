@@ -374,14 +374,12 @@ describe("OpenVikingClient resource and skill import", () => {
       description: "demo",
       inputSchema: { type: "object", properties: {} },
     };
-    const transport = vi
-      .fn()
-      .mockResolvedValue(
-        okResponse({
-          uri: "viking://user/skills/demo-tool",
-          name: "demo-tool",
-        }),
-      );
+    const transport = vi.fn().mockResolvedValue(
+      okResponse({
+        uri: "viking://user/skills/demo-tool",
+        name: "demo-tool",
+      }),
+    );
 
     const client = new OpenVikingClient(
       "http://127.0.0.1:1933",
@@ -840,14 +838,30 @@ describe("OpenVikingClient tenant headers (advanced accountId / userId overrides
 
 describe("OpenVikingClient canonical namespace policy", () => {
   it("sends an explicit zero cooldown instead of inheriting the server default", async () => {
-    const transport = vi.fn().mockResolvedValue(okResponse({ entries: [], rendered: "", stats: {} }));
+    const transport = vi
+      .fn()
+      .mockResolvedValue(okResponse({ entries: [], rendered: "", stats: {} }));
     const client = new OpenVikingClient(
-      "http://127.0.0.1:1933", "", "agent", 5000,
-      "", "", undefined, false, true, { transport },
+      "http://127.0.0.1:1933",
+      "",
+      "agent",
+      5000,
+      "",
+      "",
+      undefined,
+      false,
+      true,
+      { transport },
     );
-    await client.searchContext("What region should I deploy in?", { sessionId: "session", dedupTurns: 0 });
+    await client.searchContext("What region should I deploy in?", {
+      sessionId: "session",
+      dedupTurns: 0,
+    });
     const [, init] = transport.mock.calls[0] as [string, RequestInit];
-    expect(JSON.parse(String(init.body))).toMatchObject({ session_id: "session", dedup_turns: 0 });
+    expect(JSON.parse(String(init.body))).toMatchObject({
+      session_id: "session",
+      dedup_turns: 0,
+    });
   });
 
   it("keeps server-assembled context requests aligned with the shared contract", async () => {

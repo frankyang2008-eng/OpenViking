@@ -57,17 +57,26 @@ function runAutoRecall(input, env) {
     for (const key of Object.keys(cleanEnv)) {
       if (key.startsWith("OPENVIKING_")) delete cleanEnv[key];
     }
-    const child = spawn(process.execPath, [join(SCRIPT_DIR, "auto-recall.mjs")], {
-      env: { ...cleanEnv, ...env },
-      stdio: ["pipe", "pipe", "pipe"],
-    });
+    const child = spawn(
+      process.execPath,
+      [join(SCRIPT_DIR, "auto-recall.mjs")],
+      {
+        env: { ...cleanEnv, ...env },
+        stdio: ["pipe", "pipe", "pipe"],
+      },
+    );
     let stdout = "";
     let stderr = "";
-    child.stdout.on("data", (chunk) => { stdout += chunk.toString(); });
-    child.stderr.on("data", (chunk) => { stderr += chunk.toString(); });
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk.toString();
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk.toString();
+    });
     child.on("error", reject);
     child.on("close", (code) => {
-      if (code !== 0) reject(new Error(`auto-recall exited ${code}: ${stderr}`));
+      if (code !== 0)
+        reject(new Error(`auto-recall exited ${code}: ${stderr}`));
       else resolve({ stdout, stderr });
     });
     child.stdin.end(JSON.stringify(input));
@@ -88,7 +97,12 @@ function hookEnv(root, baseUrl, extra) {
 }
 
 async function lastRecall(root) {
-  return JSON.parse(await readFile(join(root, ".openviking", "state", "last-recall.json"), "utf-8"));
+  return JSON.parse(
+    await readFile(
+      join(root, ".openviking", "state", "last-recall.json"),
+      "utf-8",
+    ),
+  );
 }
 
 test("a drop rule ends the turn before any request is made", async () => {
@@ -97,7 +111,9 @@ test("a drop rule ends the turn before any request is made", async () => {
     await withRecordedServer(async (baseUrl, seen) => {
       const { stdout } = await runAutoRecall(
         { session_id: "filter-drop", prompt: "/help me out here", cwd: root },
-        hookEnv(root, baseUrl, { OPENVIKING_RECALL_QUERY_FILTERS: "d|^\\s*[/!]|" }),
+        hookEnv(root, baseUrl, {
+          OPENVIKING_RECALL_QUERY_FILTERS: "d|^\\s*[/!]|",
+        }),
       );
       assert.deepEqual(JSON.parse(stdout), { decision: "approve" });
       assert.deepEqual(seen, []);
@@ -116,11 +132,20 @@ test("a substitute rule rewrites the query the server is asked for", async () =>
   try {
     await withRecordedServer(async (baseUrl, seen) => {
       await runAutoRecall(
-        { session_id: "filter-sub", prompt: "ultrathink what did we decide about retries", cwd: root },
-        hookEnv(root, baseUrl, { OPENVIKING_RECALL_QUERY_FILTERS: "s/^\\s*ultrathink\\s+//i" }),
+        {
+          session_id: "filter-sub",
+          prompt: "ultrathink what did we decide about retries",
+          cwd: root,
+        },
+        hookEnv(root, baseUrl, {
+          OPENVIKING_RECALL_QUERY_FILTERS: "s/^\\s*ultrathink\\s+//i",
+        }),
       );
       const queries = seen.map((call) => call.body?.query).filter(Boolean);
-      assert.ok(queries.length > 0, `no query was sent: ${JSON.stringify(seen)}`);
+      assert.ok(
+        queries.length > 0,
+        `no query was sent: ${JSON.stringify(seen)}`,
+      );
       for (const query of queries) {
         assert.equal(query, "what did we decide about retries");
       }
@@ -135,10 +160,17 @@ test("an unparsable rule is skipped and the turn proceeds", async () => {
   try {
     await withRecordedServer(async (baseUrl, seen) => {
       await runAutoRecall(
-        { session_id: "filter-bad", prompt: "what did we decide about retries", cwd: root },
+        {
+          session_id: "filter-bad",
+          prompt: "what did we decide about retries",
+          cwd: root,
+        },
         hookEnv(root, baseUrl, { OPENVIKING_RECALL_QUERY_FILTERS: "s/(/x/" }),
       );
-      assert.ok(seen.some((call) => call.path === "/health"), "the turn should have proceeded");
+      assert.ok(
+        seen.some((call) => call.path === "/health"),
+        "the turn should have proceeded",
+      );
     });
     assert.notEqual((await lastRecall(root)).reason, "query_filtered");
   } finally {

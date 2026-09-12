@@ -20,7 +20,16 @@
  *                                  (default: 50)
  */
 
-import { mkdir, readdir, readFile, rename, writeFile, unlink, stat, chmod } from "node:fs/promises";
+import {
+  mkdir,
+  readdir,
+  readFile,
+  rename,
+  writeFile,
+  unlink,
+  stat,
+  chmod,
+} from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { join } from "node:path";
 import { homedir } from "node:os";
@@ -186,7 +195,9 @@ async function recoverStaleProcessing(dir) {
  */
 export async function enqueue(type, sessionId, payload, options = {}) {
   const dir = getPendingDir();
-  const now = Number.isFinite(options.createdAt) ? options.createdAt : Date.now();
+  const now = Number.isFinite(options.createdAt)
+    ? options.createdAt
+    : Date.now();
   const dedupKey = makeDedupKey(type, sessionId, payload);
   const filename = pendingFilename(dedupKey, 0);
   const entry = {
@@ -226,7 +237,11 @@ export async function enqueue(type, sessionId, payload, options = {}) {
   if (duplicate) {
     return { ok: true, path: duplicate.filename, deduped: true, dedupKey };
   }
-  return { ok: false, error: `pending file exists but dedup entry was not readable: ${filename}`, dedupKey };
+  return {
+    ok: false,
+    error: `pending file exists but dedup entry was not readable: ${filename}`,
+    dedupKey,
+  };
 }
 
 /**
@@ -384,7 +399,11 @@ export async function replayPending(fetchJSON, log, options = {}) {
   }
 
   const replayLimit = getReplayLimit();
-  log("pending-queue", { count: pending.length, replayLimit, action: "replay-start" });
+  log("pending-queue", {
+    count: pending.length,
+    replayLimit,
+    action: "replay-start",
+  });
 
   let replayed = 0;
   let failed = 0;

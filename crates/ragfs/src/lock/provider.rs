@@ -350,7 +350,7 @@ impl PathLockProvider for FilesystemPathLockProvider {
                     let raw = String::from_utf8_lossy(&data).trim().to_string();
                     match LockTokenCodec::decode(&raw) {
                         Ok(token) => return Ok(Some(token)),
-                        Err(error) if crypto::is_encrypted(&data) => {
+                        Err(_error) if crypto::is_encrypted(&data) => {
                             if self
                                 .fs
                                 .compare_and_remove(lock_path, &data)
@@ -440,7 +440,7 @@ impl PathLockProvider for FilesystemPathLockProvider {
         let Some(raw) = self.read_token_raw(lock_path).await? else {
             return Ok(false);
         };
-        let token = LockTokenCodec::decode(&String::from_utf8_lossy(&raw).trim())?;
+        let token = LockTokenCodec::decode(String::from_utf8_lossy(&raw).trim())?;
         if token.owner_id != owner_id {
             return Ok(false);
         }
@@ -465,7 +465,7 @@ impl PathLockProvider for FilesystemPathLockProvider {
         let Some(raw) = self.read_token_raw(lock_path).await? else {
             return Ok(false);
         };
-        let token = LockTokenCodec::decode(&String::from_utf8_lossy(&raw).trim())?;
+        let token = LockTokenCodec::decode(String::from_utf8_lossy(&raw).trim())?;
         if token.owner_id != owner_id {
             return Ok(false);
         }

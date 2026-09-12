@@ -497,41 +497,63 @@ test("capture filters rewrite and drop turns at the send site", async () => {
     await writeFile(
       transcriptPath,
       [
-        JSON.stringify({ role: "user", content: "the token is sk_LIVE_ABCDEF, remember it" }),
-        JSON.stringify({ role: "user", content: "scratch: ignore this throwaway note" }),
-        JSON.stringify({ role: "assistant", content: "noted, I will retain that context" }),
+        JSON.stringify({
+          role: "user",
+          content: "the token is sk_LIVE_ABCDEF, remember it",
+        }),
+        JSON.stringify({
+          role: "user",
+          content: "scratch: ignore this throwaway note",
+        }),
+        JSON.stringify({
+          role: "assistant",
+          content: "noted, I will retain that context",
+        }),
       ].join("\n"),
     );
-    await withMockOpenViking(async (req, res) => {
-      const url = new URL(req.url, "http://127.0.0.1");
-      if (req.method === "GET" && url.pathname === "/health") {
-        writeJson(res, 200, { status: "ok", result: { healthy: true } });
-        return;
-      }
-      if (req.method === "POST" && url.pathname.endsWith("/messages/batch")) {
-        const body = await readRequestBody(req);
-        batches.push(body);
-        writeJson(res, 200, { status: "ok", result: { added: body.messages.length } });
-        return;
-      }
-      writeJson(res, 200, { status: "ok", result: {} });
-    }, async (baseUrl) => {
-      await runAutoCapture({ session_id: sessionId, transcript_path: transcriptPath, cwd: root }, {
-        ...hookEnv(root, baseUrl),
-        OPENVIKING_CAPTURE_FILTERS: "s/sk_[A-Za-z0-9_]+/[redacted]/g,user:d/^scratch:/",
-      });
-    });
+    await withMockOpenViking(
+      async (req, res) => {
+        const url = new URL(req.url, "http://127.0.0.1");
+        if (req.method === "GET" && url.pathname === "/health") {
+          writeJson(res, 200, { status: "ok", result: { healthy: true } });
+          return;
+        }
+        if (req.method === "POST" && url.pathname.endsWith("/messages/batch")) {
+          const body = await readRequestBody(req);
+          batches.push(body);
+          writeJson(res, 200, {
+            status: "ok",
+            result: { added: body.messages.length },
+          });
+          return;
+        }
+        writeJson(res, 200, { status: "ok", result: {} });
+      },
+      async (baseUrl) => {
+        await runAutoCapture(
+          { session_id: sessionId, transcript_path: transcriptPath, cwd: root },
+          {
+            ...hookEnv(root, baseUrl),
+            OPENVIKING_CAPTURE_FILTERS:
+              "s/sk_[A-Za-z0-9_]+/[redacted]/g,user:d/^scratch:/",
+          },
+        );
+      },
+    );
 
     assert.equal(batches.length, 1);
-    const texts = batches[0].messages.flatMap(
-      (message) => message.parts.filter((p) => p.type === "text").map((p) => p.text),
+    const texts = batches[0].messages.flatMap((message) =>
+      message.parts.filter((p) => p.type === "text").map((p) => p.text),
     );
     assert.deepEqual(texts, [
       "the token is [redacted], remember it",
       "noted, I will retain that context",
     ]);
     const state = JSON.parse(
-      await readFile(join(root, "openviking-cc-capture-state", `${sessionId}.json`), "utf-8"),
+      await readFile(
+        join(root, "openviking-cc-capture-state", `${sessionId}.json`),
+        "utf-8",
+      ),
     );
     // The cursor counts extracted turns, so the dropped one still advances it.
     assert.equal(state.capturedTurnCount, 3);

@@ -114,7 +114,7 @@ impl MemFileSystem {
         }
 
         let normalized = Self::normalize_path(path);
-        normalized.split('/').last().unwrap_or("").to_string()
+        normalized.split('/').next_back().unwrap_or("").to_string()
     }
 
     /// List entries in a directory
@@ -451,7 +451,7 @@ impl FileSystem for MemFileSystem {
         };
 
         let mut to_move = Vec::new();
-        for (path, _) in entries.iter() {
+        for path in entries.keys() {
             if path == &old_normalized {
                 continue;
             }

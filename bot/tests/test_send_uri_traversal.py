@@ -43,9 +43,7 @@ def images_dir(tmp_path: Path, monkeypatch) -> Path:
 
     import vikingbot.channels.base as base_mod
 
-    monkeypatch.setattr(
-        base_mod, "get_data_path", lambda: (tmp_path / "data")
-    )
+    monkeypatch.setattr(base_mod, "get_data_path", lambda: tmp_path / "data")
     return images
 
 

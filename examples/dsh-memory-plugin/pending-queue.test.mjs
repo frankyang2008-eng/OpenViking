@@ -26,13 +26,17 @@ async function withPendingDir(fn) {
   try {
     return await fn(dir);
   } finally {
-    if (originalEnv.dir === undefined) delete process.env.OPENVIKING_PENDING_DIR;
+    if (originalEnv.dir === undefined)
+      delete process.env.OPENVIKING_PENDING_DIR;
     else process.env.OPENVIKING_PENDING_DIR = originalEnv.dir;
-    if (originalEnv.maxRetries === undefined) delete process.env.OPENVIKING_PENDING_MAX_RETRIES;
+    if (originalEnv.maxRetries === undefined)
+      delete process.env.OPENVIKING_PENDING_MAX_RETRIES;
     else process.env.OPENVIKING_PENDING_MAX_RETRIES = originalEnv.maxRetries;
-    if (originalEnv.replayLimit === undefined) delete process.env.OPENVIKING_PENDING_REPLAY_LIMIT;
+    if (originalEnv.replayLimit === undefined)
+      delete process.env.OPENVIKING_PENDING_REPLAY_LIMIT;
     else process.env.OPENVIKING_PENDING_REPLAY_LIMIT = originalEnv.replayLimit;
-    if (originalEnv.ttlDays === undefined) delete process.env.OPENVIKING_PENDING_TTL_DAYS;
+    if (originalEnv.ttlDays === undefined)
+      delete process.env.OPENVIKING_PENDING_TTL_DAYS;
     else process.env.OPENVIKING_PENDING_TTL_DAYS = originalEnv.ttlDays;
     await rm(dir, { recursive: true, force: true });
   }
@@ -125,7 +129,7 @@ test("replay with consumeRetries:false stops at the first retryable failure and 
     assert.equal(result.failed, 1);
     const pending = await listPending();
     assert.deepEqual(
-      pending.map(item => item.entry.payload.content),
+      pending.map((item) => item.entry.payload.content),
       ["first", "second"],
     );
     assert.equal(pending[0].entry.retries, 0);
@@ -155,7 +159,7 @@ test("replay with consumeRetries:false keeps going after a failed commitSession"
     assert.equal(result.replayed, 1);
     const pending = await listPending();
     assert.deepEqual(
-      pending.map(item => item.entry.type),
+      pending.map((item) => item.entry.type),
       ["commitSession"],
     );
     assert.equal(pending[0].entry.retries, 0);
@@ -167,7 +171,11 @@ test("replay still consumes retries by default", async () => {
     await enqueue("addMessage", "dsh-default", { content: "flaky" });
 
     const result = await replayPending(
-      async () => ({ ok: false, status: 503, error: { message: "unavailable" } }),
+      async () => ({
+        ok: false,
+        status: 503,
+        error: { message: "unavailable" },
+      }),
       () => {},
     );
 

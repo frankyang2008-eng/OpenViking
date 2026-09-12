@@ -62,7 +62,9 @@ class CompileRequest(BaseModel):
         self.from_ = sources
         self.to = self.to.strip().rstrip("/")
         self.skill = self.skill.strip().rstrip("/")
-        self.instruction = self.instruction.strip() if self.instruction and self.instruction.strip() else None
+        self.instruction = (
+            self.instruction.strip() if self.instruction and self.instruction.strip() else None
+        )
         self.args = dict(self.args) if self.args else None
         if not self.to:
             raise ValueError("to must not be empty")
@@ -487,6 +489,7 @@ class CompileService:
             error_code=error_code,
             error_message=error_message,
         )
+
 
 __all__ = [
     "CompileAPIClient",

@@ -38,6 +38,7 @@ use crate::plugins::{
 ///
 /// New capabilities are added as new optional sections here, without changing
 /// `build_default_stack`'s signature.
+#[derive(Default)]
 pub struct RagfsConfig {
     /// Encryption section: `None` → plaintext stack; `Some` → per-backend encryption wrapping.
     pub encryption: Option<EncryptionConfig>,
@@ -45,14 +46,6 @@ pub struct RagfsConfig {
     pub pathlock: PathLockConfig,
 }
 
-impl Default for RagfsConfig {
-    fn default() -> Self {
-        Self {
-            encryption: None,
-            pathlock: PathLockConfig::default(),
-        }
-    }
-}
 
 /// Encryption section: root key fixed and immutable at construction time.
 pub struct EncryptionConfig {

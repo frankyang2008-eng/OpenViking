@@ -282,13 +282,15 @@ def test_worker_factory_replays_bot_overrides(monkeypatch):
     monkeypatch.setattr(
         app_module,
         "create_app",
-        lambda worker_config, config_path: captured.update(
-            {
-                "app_config": worker_config,
-                "app_config_path": config_path,
-            }
-        )
-        or worker_config,
+        lambda worker_config, config_path: (
+            captured.update(
+                {
+                    "app_config": worker_config,
+                    "app_config_path": config_path,
+                }
+            )
+            or worker_config
+        ),
     )
 
     worker_config = app_module.create_worker_app()

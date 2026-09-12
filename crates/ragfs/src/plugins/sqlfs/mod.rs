@@ -509,11 +509,10 @@ impl FileSystem for SQLFileSystem {
 
         // Check new parent exists
         let new_parent = backend.parent_path(&new_normalized);
-        if new_parent != "/" {
-            if !backend.is_directory(&new_parent)? {
+        if new_parent != "/"
+            && !backend.is_directory(&new_parent)? {
                 return Err(Error::not_found(&new_parent));
             }
-        }
 
         // Rename entry
         backend.rename_path(&old_normalized, &new_normalized)?;

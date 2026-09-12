@@ -206,6 +206,7 @@ impl FileInfo {
 
 /// Write operation flags
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default)]
 pub enum WriteFlag {
     /// Create new file or truncate existing.
     ///
@@ -224,14 +225,10 @@ pub enum WriteFlag {
     Truncate,
 
     /// Write at specific offset (default)
+    #[default]
     None,
 }
 
-impl Default for WriteFlag {
-    fn default() -> Self {
-        Self::None
-    }
-}
 
 /// Plugin configuration parameter metadata
 #[derive(Debug, Clone, Serialize, Deserialize)]

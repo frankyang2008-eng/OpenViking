@@ -8,9 +8,7 @@ from openviking.storage.viking_fs._ops import _OpsMixin
 
 
 def test_normalize_ls_entry_fills_missing_directory_metadata():
-    entry = _OpsMixin._normalize_ls_entry(
-        {"name": "my-doc", "isDir": True, "mode": 0o755}
-    )
+    entry = _OpsMixin._normalize_ls_entry({"name": "my-doc", "isDir": True, "mode": 0o755})
 
     assert entry["isDir"] is True
     assert entry["size"] == 0
@@ -18,9 +16,7 @@ def test_normalize_ls_entry_fills_missing_directory_metadata():
 
 
 def test_normalize_ls_entry_infers_directory_from_mode_bits():
-    entry = _OpsMixin._normalize_ls_entry(
-        {"name": "my-doc", "mode": 0o040755, "size": 0}
-    )
+    entry = _OpsMixin._normalize_ls_entry({"name": "my-doc", "mode": 0o040755, "size": 0})
 
     assert entry["isDir"] is True
     assert entry.get("modTime")

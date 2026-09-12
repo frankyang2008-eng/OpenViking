@@ -134,7 +134,10 @@ function TasksRoute() {
       if (task.task_type === 'session_commit') {
         const res = await commitSession(task.resource_id)
         const resAny = res as any
-        if (resAny?.result?.reason === 'no_messages' || resAny?.reason === 'no_messages') {
+        if (
+          resAny?.result?.reason === 'no_messages' ||
+          resAny?.reason === 'no_messages'
+        ) {
           toast.info(
             i18n.language.startsWith('zh')
               ? '该会话无未提交消息，已无需重复入队'
@@ -230,7 +233,10 @@ function TasksRoute() {
     if (status === 'pending') return 0
 
     // Extract real queue metrics from task.result
-    const resObj = (task.result && typeof task.result === 'object') ? (task.result as Record<string, any>) : {}
+    const resObj =
+      task.result && typeof task.result === 'object'
+        ? (task.result as Record<string, any>)
+        : {}
     const qStatus = resObj.queue_status
     const embeddingProcessed = qStatus?.Embedding?.processed
     const semanticProcessed = qStatus?.Semantic?.processed
@@ -239,14 +245,14 @@ function TasksRoute() {
       const totalEmbedding = 20
       const embedRatio = Math.min(1, embeddingProcessed / totalEmbedding)
       // Step 1 (20%) + Step 2 (30%) + Step 3 (50% * embedRatio)
-      return Math.round(20 + 30 + (50 * embedRatio))
+      return Math.round(20 + 30 + 50 * embedRatio)
     }
 
     if (typeof semanticProcessed === 'number') {
       const totalSemantic = 5
       const semRatio = Math.min(1, semanticProcessed / totalSemantic)
       // Step 1 (20%) + Step 2 (30% * semRatio)
-      return Math.round(20 + (30 * semRatio))
+      return Math.round(20 + 30 * semRatio)
     }
 
     const stage = task.stage?.toLowerCase()
@@ -258,7 +264,8 @@ function TasksRoute() {
 
   const getTaskTotalSteps = (taskType?: string): number => {
     if (taskType === 'session_commit') return 1
-    if (taskType === 'admin_reindex' || taskType === 'snapshot_restore_reindex') return 2
+    if (taskType === 'admin_reindex' || taskType === 'snapshot_restore_reindex')
+      return 2
     if (taskType === 'connector_import') return 4
     return 3
   }
@@ -267,7 +274,8 @@ function TasksRoute() {
     const taskId = task.task_id
     const status = normalizeTaskStatus(task.status)
     const pct = getTaskProgressPct(task)
-    const isRetrying = retryMutation.isPending && retryMutation.variables.task_id === taskId
+    const isRetrying =
+      retryMutation.isPending && retryMutation.variables.task_id === taskId
     const Icon =
       status === 'completed'
         ? CheckCircle2Icon
@@ -297,16 +305,18 @@ function TasksRoute() {
         />
         <span>{t(`status.${status}`)}</span>
         {status === 'running' && (
-          <span className="font-mono font-semibold ml-0.5">
-            {pct}%
-          </span>
+          <span className="font-mono font-semibold ml-0.5">{pct}%</span>
         )}
         {status === 'failed' && (
           <button
             type="button"
             disabled={isRetrying}
             className="ml-1 inline-flex items-center justify-center rounded p-0.5 hover:bg-white/25 active:scale-95 transition-all cursor-pointer text-destructive-foreground disabled:opacity-50"
-            title={i18n.language.startsWith('zh') ? '重新发起任务' : 'Re-trigger Task'}
+            title={
+              i18n.language.startsWith('zh')
+                ? '重新发起任务'
+                : 'Re-trigger Task'
+            }
             onClick={(e) => {
               e.stopPropagation()
               retryMutation.mutate(task)
@@ -352,7 +362,9 @@ function TasksRoute() {
               )}
               <span
                 className="inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-[11px] font-medium leading-none shrink-0 border border-border/60 bg-secondary/80 text-foreground shadow-2xs transition-all"
-                title={grp.type === 'parallel' ? '并发执行工序批次' : '串行工序批次'}
+                title={
+                  grp.type === 'parallel' ? '并发执行工序批次' : '串行工序批次'
+                }
               >
                 {stepsInGroup.map((st: StepItem, j: number) => {
                   const isDone = st.state === 'completed'
@@ -365,10 +377,18 @@ function TasksRoute() {
                       key={j}
                       className="inline-flex items-center gap-1 shrink-0 transition-colors text-foreground/90 font-medium"
                     >
-                      {isDone && <CheckIcon className="size-3 text-foreground/75 shrink-0" />}
-                      {isRun && <LoaderCircleIcon className="size-3 text-foreground/75 animate-spin shrink-0" />}
-                      {isPend && <CircleDashedIcon className="size-3 text-foreground/75 shrink-0" />}
-                      {isFail && <XIcon className="size-3 text-foreground/75 shrink-0" />}
+                      {isDone && (
+                        <CheckIcon className="size-3 text-foreground/75 shrink-0" />
+                      )}
+                      {isRun && (
+                        <LoaderCircleIcon className="size-3 text-foreground/75 animate-spin shrink-0" />
+                      )}
+                      {isPend && (
+                        <CircleDashedIcon className="size-3 text-foreground/75 shrink-0" />
+                      )}
+                      {isFail && (
+                        <XIcon className="size-3 text-foreground/75 shrink-0" />
+                      )}
                       <span>{st.name}</span>
                     </span>
                   )
@@ -531,7 +551,9 @@ function TasksRoute() {
 
     const baseTypeRows = Object.entries(typeCounts)
       .map(([typeKey, count]) => {
-        const matchingTasks = allTasks.filter((taskItem) => taskItem.task_type === typeKey)
+        const matchingTasks = allTasks.filter(
+          (taskItem) => taskItem.task_type === typeKey,
+        )
         const processing = matchingTasks.filter(
           (taskItem) => normalizeTaskStatus(taskItem.status) === 'running',
         ).length
@@ -559,7 +581,10 @@ function TasksRoute() {
       ...baseTypeRows,
       {
         name: 'TOTAL',
-        processing: baseTypeRows.reduce((sum, item) => sum + item.processing, 0),
+        processing: baseTypeRows.reduce(
+          (sum, item) => sum + item.processing,
+          0,
+        ),
         pending: baseTypeRows.reduce((sum, item) => sum + item.pending, 0),
         completed: baseTypeRows.reduce((sum, item) => sum + item.completed, 0),
         errors: baseTypeRows.reduce((sum, item) => sum + item.errors, 0),
@@ -690,7 +715,11 @@ function TasksRoute() {
         {/* 左侧 (50% 宽度 - 优先看上层任务): 任务队列状态 (Task Queues) */}
         <div>
           <QueueStatusCard
-            title={i18n.language.startsWith('zh') ? '任务队列状态' : 'Task Queue Status'}
+            title={
+              i18n.language.startsWith('zh')
+                ? '任务队列状态'
+                : 'Task Queue Status'
+            }
             customRows={kpiData.typeRows}
             isHealthy={kpiData.failed === 0}
           />
@@ -699,7 +728,11 @@ function TasksRoute() {
         {/* 右侧 (50% 宽度 - 拆分出的下层工序): 工序队列状态 (Process Queues) */}
         <div>
           <QueueStatusCard
-            title={i18n.language.startsWith('zh') ? '工序队列状态' : 'Process Queue Status'}
+            title={
+              i18n.language.startsWith('zh')
+                ? '工序队列状态'
+                : 'Process Queue Status'
+            }
             customRows={queueRows}
             isHealthy={kpiData.failed === 0}
           />
@@ -843,9 +876,15 @@ function TasksRoute() {
                   <TableHead>{t('table.task')}</TableHead>
                   <TableHead>{t('table.type')}</TableHead>
                   <TableHead>{t('table.resource')}</TableHead>
-                  <TableHead>{i18n.language.startsWith('zh') ? '工序队列流转' : 'Queue Pipeline'}</TableHead>
+                  <TableHead>
+                    {i18n.language.startsWith('zh')
+                      ? '工序队列流转'
+                      : 'Queue Pipeline'}
+                  </TableHead>
                   <TableHead>{t('table.status')}</TableHead>
-                  <TableHead>{i18n.language.startsWith('zh') ? '耗时' : 'Duration'}</TableHead>
+                  <TableHead>
+                    {i18n.language.startsWith('zh') ? '耗时' : 'Duration'}
+                  </TableHead>
                   <TableHead className="text-right">
                     {t('table.createdAt')}
                   </TableHead>
@@ -901,7 +940,10 @@ function TasksRoute() {
                       <TableCell>{renderQueuePipeline(task)}</TableCell>
                       <TableCell>{renderStatus(task)}</TableCell>
                       <TableCell className="whitespace-nowrap font-mono text-xs text-muted-foreground">
-                        {formatTaskDuration(task, i18n.language.startsWith('zh'))}
+                        {formatTaskDuration(
+                          task,
+                          i18n.language.startsWith('zh'),
+                        )}
                       </TableCell>
                       <TableCell className="whitespace-nowrap text-right text-muted-foreground">
                         {formatTime(task)}

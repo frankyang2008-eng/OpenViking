@@ -325,9 +325,12 @@ describe("plugin normal flow with healthy backend", () => {
     });
     expect(contextSearchBody).not.toHaveProperty("limit");
     const recallRequests = requests.filter(
-      (entry) => entry.method === "POST" && entry.path === "/api/v1/search/search",
+      (entry) =>
+        entry.method === "POST" && entry.path === "/api/v1/search/search",
     );
-    expect(recallRequests.map((entry) => JSON.parse(entry.body ?? "{}").dedup_turns)).toEqual([0, 5]);
+    expect(
+      recallRequests.map((entry) => JSON.parse(entry.body ?? "{}").dedup_turns),
+    ).toEqual([0, 5]);
     expect(
       requests.some(
         (entry) =>

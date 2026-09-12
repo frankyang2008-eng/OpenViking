@@ -140,9 +140,7 @@ async def test_ensure_trusted_identities_creates_keyless_users_once(
         await original_write(path, data, lease_ref)
 
     monkeypatch.setattr(manager._legacy, "_write_json", _record_write)
-    repeat = await manager.ensure_trusted_identities(
-        {acme: {"alice", "bob"}, globex: {"eve"}}
-    )
+    repeat = await manager.ensure_trusted_identities({acme: {"alice", "bob"}, globex: {"eve"}})
 
     assert repeat == {"created_accounts": 0, "created_users": 0}
     assert writes == []
@@ -165,9 +163,7 @@ async def test_trusted_identity_merge_serializes_with_user_registration(
         return await original_merge(identities)
 
     monkeypatch.setattr(manager._legacy, "_ensure_trusted_identities_unlocked", _blocked_merge)
-    merge_task = asyncio.create_task(
-        manager.ensure_trusted_identities({acct: {"trusted-user"}})
-    )
+    merge_task = asyncio.create_task(manager.ensure_trusted_identities({acct: {"trusted-user"}}))
     await entered_merge.wait()
 
     register_task = asyncio.create_task(manager.register_user(acct, "bob"))
@@ -330,7 +326,11 @@ async def test_management_registration_does_not_replace_a_trusted_user(
     verifier = APIKeyManager(root_key=ROOT_KEY, viking_fs=manager_service.viking_fs)
     await verifier.load()
     assert verifier.get_users(acct, expose_key=True) == [
-        {"user_id": "admin", "role": "admin", "api_key": manager._accounts[acct].users["admin"]["key"]},
+        {
+            "user_id": "admin",
+            "role": "admin",
+            "api_key": manager._accounts[acct].users["admin"]["key"],
+        },
         {"user_id": "alice", "role": "user"},
     ]
 
@@ -424,9 +424,7 @@ async def test_recreated_account_does_not_restore_deleted_users(manager: APIKeyM
     with pytest.raises(UnauthenticatedError):
         manager.resolve(old_key)
     assert manager.resolve(new_key).user_id == "new-admin"
-    assert manager.get_users(acct, expose_key=False) == [
-        {"user_id": "new-admin", "role": "admin"}
-    ]
+    assert manager.get_users(acct, expose_key=False) == [{"user_id": "new-admin", "role": "admin"}]
 
 
 async def test_delete_nonexistent_account_raises(manager: APIKeyManager):
@@ -552,6 +550,8 @@ async def test_user_deletion_fence_revokes_key_and_rejects_stale_finish(
     new_key = await manager.register_user(acct, "bob", "user")
     assert await manager.finish_user_deletion(acct, "bob", "delete-1") is False
     assert manager.resolve(new_key).user_id == "bob"
+
+
 async def test_regenerate_key(manager: APIKeyManager):
     """Regenerating key should invalidate old key and return new valid key."""
     acct = _uid()
@@ -727,11 +727,15 @@ async def test_get_accounts_pagination_and_ordering(manager: APIKeyManager):
     assert got == ids
 
     # First page of 2 (creation order).
-    page1 = [a["account_id"] for a in manager.get_accounts(name_filter=f"{prefix}*", limit=2, page=1)]
+    page1 = [
+        a["account_id"] for a in manager.get_accounts(name_filter=f"{prefix}*", limit=2, page=1)
+    ]
     assert page1 == ids[:2]
 
     # Second page of 2 (creation order).
-    page2 = [a["account_id"] for a in manager.get_accounts(name_filter=f"{prefix}*", limit=2, page=2)]
+    page2 = [
+        a["account_id"] for a in manager.get_accounts(name_filter=f"{prefix}*", limit=2, page=2)
+    ]
     assert page2 == ids[2:]
 
     # Page past the end is empty.

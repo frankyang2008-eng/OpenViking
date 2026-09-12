@@ -424,7 +424,9 @@ export async function buildAutoRecallContext(params: {
           queryExpansion: "auto",
           maxTokens,
           detail: recallPreferAbstract ? "abstract" : undefined,
-          dedupTurns: params.dedupTurns ?? (params.ovSessionId ? AUTO_RECALL_DEDUP_TURNS : undefined),
+          dedupTurns:
+            params.dedupTurns ??
+            (params.ovSessionId ? AUTO_RECALL_DEDUP_TURNS : undefined),
           peerScope: "actor",
           actorPeerId,
           requestTimeoutMs: cfg.autoRecallTimeoutMs,

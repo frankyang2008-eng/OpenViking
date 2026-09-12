@@ -78,19 +78,15 @@ describe("plugin module seams", () => {
       content: [{ type: "text" as const, text: "search result" }],
       details: { action: "searched" },
     });
-    const handleQueryConfigCommand = vi
-      .fn()
-      .mockResolvedValue({
-        text: "query config",
-        details: { action: "query_config" },
-      });
-    const queryRecallTraces = vi
-      .fn()
-      .mockResolvedValue({
-        entries: [{ traceId: "trace-1" }],
-        lookupLayer: "memory",
-        warnings: [],
-      });
+    const handleQueryConfigCommand = vi.fn().mockResolvedValue({
+      text: "query config",
+      details: { action: "query_config" },
+    });
+    const queryRecallTraces = vi.fn().mockResolvedValue({
+      entries: [{ traceId: "trace-1" }],
+      lookupLayer: "memory",
+      warnings: [],
+    });
     const formatRecallTraceText = vi.fn().mockReturnValue("trace text");
     const deps = {
       resolvePluginSessionRouting: () => ({
@@ -108,13 +104,11 @@ describe("plugin module seams", () => {
         .fn()
         .mockReturnValue({ source: "https://example.com/doc", wait: true }),
       parseAddSkillCommandArgs: vi.fn().mockReturnValue({ source: "skill.md" }),
-      parseOVSearchCommandArgs: vi
-        .fn()
-        .mockReturnValue({
-          query: "docs",
-          uri: "viking://resources",
-          limit: 3,
-        }),
+      parseOVSearchCommandArgs: vi.fn().mockReturnValue({
+        query: "docs",
+        uri: "viking://resources",
+        limit: 3,
+      }),
       addResourceOpenViking,
       addSkillOpenViking,
       searchOpenViking,
@@ -296,13 +290,11 @@ describe("plugin module seams", () => {
       stats: { candidateCount: 2, selectedCount: 1, injectedCount: 0 },
     };
     const traceRecorder = {
-      queryWithFallback: vi
-        .fn()
-        .mockResolvedValue({
-          entries: [entry],
-          lookupLayer: "memory",
-          warnings: [],
-        }),
+      queryWithFallback: vi.fn().mockResolvedValue({
+        entries: [entry],
+        lookupLayer: "memory",
+        warnings: [],
+      }),
     };
     const read = vi
       .fn()
@@ -526,12 +518,10 @@ describe("plugin module seams", () => {
       unset: vi.fn().mockResolvedValue(undefined),
       reset: vi.fn().mockResolvedValue(undefined),
     };
-    const normalizeRuntimeQueryParams = vi
-      .fn()
-      .mockReturnValue({
-        params: { ovSearchLimit: 3 },
-        warnings: ["normalized"],
-      });
+    const normalizeRuntimeQueryParams = vi.fn().mockReturnValue({
+      params: { ovSearchLimit: 3 },
+      warnings: ["normalized"],
+    });
     const handler = createOpenVikingQueryConfigCommandHandler({
       resolvePluginSessionRouting: vi.fn().mockReturnValue(session),
       toQueryConfigContext: vi.fn().mockReturnValue(queryCtx),
@@ -773,7 +763,10 @@ describe("plugin module seams", () => {
 
   it("registers the context engine through a dedicated plugin module", () => {
     const engine = { id: "openviking", commitOVSession: vi.fn() };
-    const api = { runtime: { version: "2026.9.3" }, registerContextEngine: vi.fn() };
+    const api = {
+      runtime: { version: "2026.9.3" },
+      registerContextEngine: vi.fn(),
+    };
     const logger = { info: vi.fn(), warn: vi.fn() };
     const getClient = vi.fn();
     const resolveAgentId = vi.fn();
@@ -1012,12 +1005,10 @@ describe("plugin module seams", () => {
 
   it("registers import tools through a dedicated plugin module", async () => {
     const registerTool = vi.fn();
-    const addResource = vi
-      .fn()
-      .mockResolvedValue({
-        root_uri: "viking://resources/docs",
-        warnings: ["warn"],
-      });
+    const addResource = vi.fn().mockResolvedValue({
+      root_uri: "viking://resources/docs",
+      warnings: ["warn"],
+    });
     const addSkill = vi
       .fn()
       .mockResolvedValue({ uri: "viking://user/skills/demo", name: "demo" });

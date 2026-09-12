@@ -4,7 +4,9 @@ export type JsonObject = Record<string, unknown>;
 export type TargetURI = string | string[];
 /** Header values accepted without requiring the DOM-only `HeadersInit` alias. */
 export type ClientHeaders =
-  Headers | Record<string, string> | [string, string][];
+  | Headers
+  | Record<string, string>
+  | [string, string][];
 /** Temporary upload storage mode supported by the OpenViking server. */
 export type UploadMode = "local" | "shared";
 /** Resource post-ingest processing modes accepted by addResource. */
@@ -236,7 +238,10 @@ export interface Message {
   peerId?: string;
   turnId?: string;
   messageKind?:
-    "user_query" | "assistant_step" | "tool_transport" | "checkpoint";
+    | "user_query"
+    | "assistant_step"
+    | "tool_transport"
+    | "checkpoint";
   sourceMessageIds?: string[];
   telemetry?: unknown;
 }

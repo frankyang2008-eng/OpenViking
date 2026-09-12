@@ -136,7 +136,7 @@ impl TreeEditor {
                         &mut self.root
                     } else {
                         let parent_key = Self::join_prefix(&parent_dirs[..depth - 1]);
-                        self.subtrees.entry(parent_key).or_insert_with(BTreeMap::new)
+                        self.subtrees.entry(parent_key).or_default()
                     };
                     parent.insert(
                         dir_name.into(),
@@ -181,7 +181,7 @@ impl TreeEditor {
             .await?;
 
         let leaf_key = Self::join_prefix(parent_dirs);
-        let subtree = self.subtrees.entry(leaf_key).or_insert_with(BTreeMap::new);
+        let subtree = self.subtrees.entry(leaf_key).or_default();
         subtree.insert((*filename).into(), leaf);
 
         Ok(())
@@ -260,7 +260,7 @@ impl TreeEditor {
             &mut self.root
         } else {
             let key = Self::join_prefix(parent_dirs);
-            self.subtrees.entry(key).or_insert_with(BTreeMap::new)
+            self.subtrees.entry(key).or_default()
         };
         leaf_parent.insert((*dirname).into(), leaf_entry);
 

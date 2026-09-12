@@ -518,18 +518,14 @@ class OpenVikingBuildPy(build_py):
         for asset_name in ("workspace", "bridge"):
             source = SETUP_DIR / "bot" / asset_name
             if not source.is_dir():
-                raise FileNotFoundError(
-                    f"required VikingBot asset directory not found: {source}"
-                )
+                raise FileNotFoundError(f"required VikingBot asset directory not found: {source}")
             destination = package_root / asset_name
             if destination.exists():
                 shutil.rmtree(destination)
             shutil.copytree(
                 source,
                 destination,
-                ignore=shutil.ignore_patterns(
-                    "node_modules", "dist", "__pycache__", "*.pyc"
-                ),
+                ignore=shutil.ignore_patterns("node_modules", "dist", "__pycache__", "*.pyc"),
             )
 
 

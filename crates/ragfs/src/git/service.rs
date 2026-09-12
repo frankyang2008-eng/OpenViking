@@ -1112,7 +1112,7 @@ impl GitService {
 
         // 8. Construct the new commit. parent = head_oid (NOT source_oid).
         let msg = req.message.clone().unwrap_or_else(|| {
-            let short = &source_oid.to_hex().to_string()[..12.min(40)];
+            let short = &source_oid.to_hex().to_string()[..12];
             match &req.project_dir {
                 Some(project_dir) => format!("restore {} from {}", project_dir, short),
                 None => format!("restore full tree from {}", short),
@@ -1164,7 +1164,7 @@ impl GitService {
         let project_dir_for_writes = project_dir.clone();
 
         let write_results: Vec<(String, Result<(), GitError>)> =
-            stream::iter(diff.to_write.clone().into_iter())
+            stream::iter(diff.to_write.clone())
                 .map(|(rel, blob_oid)| {
                     let object_store = object_store_ref.clone();
                     let vfs = vfs_ref.clone();
@@ -1213,7 +1213,7 @@ impl GitService {
         let vfs_for_deletes = self.vfs.clone();
         let project_dir_for_deletes = project_dir.clone();
         let delete_results: Vec<(String, Result<(), GitError>)> =
-            stream::iter(diff.to_delete.clone().into_iter())
+            stream::iter(diff.to_delete.clone())
                 .map(|rel| {
                     let vfs = vfs_for_deletes.clone();
                     let abs_prefix = abs_prefix_for_deletes.clone();

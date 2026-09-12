@@ -277,7 +277,7 @@ impl FileSystem for KVFileSystem {
 
         for k in keys {
             if let Some(entry) = store.get(&k) {
-                let name = k.split('/').last().unwrap_or(&k).to_string();
+                let name = k.split('/').next_back().unwrap_or(&k).to_string();
                 result.push(FileInfo {
                     name,
                     size: entry.value.len() as u64,
@@ -299,7 +299,7 @@ impl FileSystem for KVFileSystem {
 
         match store.get(&key) {
             Some(entry) => {
-                let name = key.split('/').last().unwrap_or(&key).to_string();
+                let name = key.split('/').next_back().unwrap_or(&key).to_string();
                 Ok(FileInfo {
                     name,
                     size: entry.value.len() as u64,

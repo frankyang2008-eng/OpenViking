@@ -1208,9 +1208,7 @@ async def test_trusted_identity_registration_keeps_rootless_admin_api_disabled(a
     from openviking.server.auth.plugins import TrustedAuthPlugin
 
     config = ServerConfig(auth_mode="trusted")
-    app = _build_auth_http_test_app(
-        identity=None, auth_enabled=False, auth_mode="trusted"
-    )
+    app = _build_auth_http_test_app(identity=None, auth_enabled=False, auth_mode="trusted")
     app.state.config = config
 
     @app.get("/api/v1/admin/guarded")
@@ -1262,9 +1260,7 @@ async def test_disabled_trusted_identity_registration_and_admin_paths_do_not_enq
                 "X-OpenViking-Account": "acme",
                 "X-OpenViking-User": "alice",
             }
-            request = _make_request(
-                path, headers=headers, auth_enabled=False, auth_mode="trusted"
-            )
+            request = _make_request(path, headers=headers, auth_enabled=False, auth_mode="trusted")
             request.app.state.config = config
             request.app.state.api_key_manager = app.state.api_key_manager
             await plugin.resolve_identity(
@@ -1335,7 +1331,9 @@ async def test_trusted_identity_registration_retries_failed_batch_without_exceed
         original_ensure = plugin._api_key_manager.ensure_trusted_identities
 
         async def _fail_once(identities):
-            monkeypatch.setattr(plugin._api_key_manager, "ensure_trusted_identities", original_ensure)
+            monkeypatch.setattr(
+                plugin._api_key_manager, "ensure_trusted_identities", original_ensure
+            )
             raise RuntimeError("temporary storage failure")
 
         monkeypatch.setattr(plugin._api_key_manager, "ensure_trusted_identities", _fail_once)
@@ -1351,7 +1349,12 @@ async def test_trusted_identity_registration_retries_failed_batch_without_exceed
 
 def test_trusted_identity_registration_config_allows_disabling():
     """A zero interval disables registration; negative values remain invalid."""
-    assert ServerConfig(trusted_identity_flush_interval_seconds=0).trusted_identity_flush_interval_seconds == 0
+    assert (
+        ServerConfig(
+            trusted_identity_flush_interval_seconds=0
+        ).trusted_identity_flush_interval_seconds
+        == 0
+    )
     with pytest.raises(ValueError):
         ServerConfig(trusted_identity_flush_interval_seconds=-1)
     with pytest.raises(ValueError):

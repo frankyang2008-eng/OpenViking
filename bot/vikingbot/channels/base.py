@@ -242,9 +242,7 @@ class BaseChannel(ABC):
             # "../../secrets.txt" would otherwise read an arbitrary server file
             # and (via channel image delivery) exfiltrate it.
             if not _SEND_FILENAME_RE.fullmatch(filename):
-                raise ValueError(
-                    f"send:// URI must be a bare filename, got {filename!r}"
-                )
+                raise ValueError(f"send:// URI must be a bare filename, got {filename!r}")
             path_obj = get_data_path() / "images" / filename
             return False, path_obj.read_bytes()
         else:
