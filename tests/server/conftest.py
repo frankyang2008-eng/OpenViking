@@ -202,6 +202,27 @@ async def _shutdown_default_executor():
         pass
 
 
+@pytest.fixture(autouse=True)
+def _fast_queue_polling(monkeypatch):
+    """Shrink queue worker poll intervals so tests stop paying wall-clock granularity.
+
+    Ingestion fixtures (``client_with_resource``) block on queue stage handoffs.
+    The production intervals (1.0s for deferred queues, 0.2s otherwise) turn the
+    ~0.5s of real work in ``add_resource(wait=True)`` into ~17s of pure waiting:
+    a cProfile of that call attributes 16.4s of 18.5s to ``select.kqueue`` idling
+    with under 0.5s of actual compute. Measured on test_search_basic: 16.8s ->
+    8.8s setup. Lowering the intervals costs only idle CPU in workers.
+    """
+    monkeypatch.setattr(QueueManager, "_REQUEUE_POLL_INTERVAL", 0.01)
+    original_init = QueueManager.__init__
+
+    def init(self, *args, **kwargs):
+        original_init(self, *args, **kwargs)
+        self._poll_interval = 0.005
+
+    monkeypatch.setattr(QueueManager, "__init__", init)
+
+
 @pytest_asyncio.fixture(scope="function")
 async def service(temp_dir: Path, monkeypatch):
     """Create and initialize an OpenVikingService for in-process API tests."""
