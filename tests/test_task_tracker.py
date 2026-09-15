@@ -870,7 +870,7 @@ async def test_execution_events_survive_restart_and_preserve_reported_facts():
 
 @pytest.mark.parametrize("outcome", ["complete", "fail"])
 async def test_terminal_event_waits_for_owned_work(tracker, outcome):
-    from openviking.service.task_work_index import QueueTaskMetadata, TaskWorkIndex
+    from openviking.storage.queuefs.task_work_index import QueueTaskMetadata, TaskWorkIndex
 
     owner = _owner_kwargs()
     task = await tracker.create("add_resource", **owner)
