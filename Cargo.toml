@@ -10,6 +10,10 @@ resolver = "2"
 opt-level = 3
 lto = true
 strip = true
+# ponytail: strip requires rustc >= 1.98. Older toolchains (<= 1.97.1) have the
+# llvm-objcopy Mach-O bug (rust#157750, fix rust#158410 / llvm#203680): stripped
+# .so gets a 4-mod-8 LINKEDIT string pool and macOS 27 dyld rejects it at dlopen
+# ("mis-aligned LINKEDIT string pool"). Verified OK on rustc 1.98.1.
 
 [profile.release.package.ragfs]
 codegen-units = 1
