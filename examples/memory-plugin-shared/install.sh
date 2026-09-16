@@ -1173,6 +1173,7 @@ validate_selected_harnesses() {
   while IFS= read -r h; do
     case "$h" in
       claude|codex|cursor|trae|trae-cn|opencode|pi|zcode|dsh) ;;
+      qoder|codebuddy|omp|agy) ;;
       trae-cli) [ "$UNINSTALL" -eq 1 ] || bad=1 ;;
       *) err "Unsupported harness: $h"; bad=1 ;;
     esac
