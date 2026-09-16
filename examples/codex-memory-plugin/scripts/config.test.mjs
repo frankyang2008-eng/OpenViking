@@ -4,17 +4,22 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { loadConfig } from "./config.mjs";
+import { isBypassed } from "./shared/session-model.mjs";
 
+// The layers, the knobs and the peer are the shared loader's, and
+// memory-plugin-shared/plugin-config.test.mjs holds this harness to them. What
+// is left here is the compression switch this harness reads as a boolean, and
+// the bypass patterns it is the only harness to resolve from every layer.
 const OVERRIDES = [
   "OPENVIKING_CONFIG_FILE",
   "OPENVIKING_CLI_CONFIG_FILE",
   "OPENVIKING_HOME",
   "OPENVIKING_STATE_DIR",
-  "OPENVIKING_CREDENTIAL_SOURCE",
-  "OPENVIKING_CREDENTIALS_SOURCE",
-  "OPENVIKING_PEER_ID",
-  "OPENVIKING_PEER_SOURCE",
-  "OPENVIKING_AUTO_CAPTURE",
+  "OPENVIKING_BYPASS_SESSION",
+  "OPENVIKING_BYPASS_SESSION_PATTERNS",
+  "OPENVIKING_RECALL_COMPRESS",
+  "OPENVIKING_RECALL_COMPRESS_MODEL",
+  "OPENVIKING_RECALL_COMPRESS_THINKING",
   "OPENVIKING_URL",
   "OPENVIKING_BASE_URL",
   "OPENVIKING_API_KEY",
@@ -34,9 +39,7 @@ function withConfigs({ ov, cli, workspace, env = {} }, fn) {
   const cliPath = join(dir, "ovcli.conf");
   const workspaceDir = join(dir, "workspace");
   const otherDir = join(dir, "other");
-  const saved = Object.fromEntries(
-    OVERRIDES.map((key) => [key, process.env[key]]),
-  );
+  const saved = Object.fromEntries(OVERRIDES.map((key) => [key, process.env[key]]));
   try {
     for (const key of OVERRIDES) delete process.env[key];
     if (ov) writeFileSync(ovPath, JSON.stringify(ov));
@@ -45,10 +48,7 @@ function withConfigs({ ov, cli, workspace, env = {} }, fn) {
     mkdirSync(join(workspaceDir, ".git"), { recursive: true });
     mkdirSync(otherDir, { recursive: true });
     if (workspace) {
-      writeFileSync(
-        join(workspaceDir, ".openviking", "config.json"),
-        JSON.stringify(workspace),
-      );
+      writeFileSync(join(workspaceDir, ".openviking", "config.json"), JSON.stringify(workspace));
     }
     process.env.OPENVIKING_CONFIG_FILE = ovPath;
     process.env.OPENVIKING_CLI_CONFIG_FILE = cliPath;
@@ -65,131 +65,74 @@ function withConfigs({ ov, cli, workspace, env = {} }, fn) {
   }
 }
 
-test("a workspace file's peer.id is the peer this directory writes under", () => {
-  withConfigs(
-    {
-      cli: {
-        url: "http://127.0.0.1:1933",
-        api_key: "sk-cli",
-        actor_peer_id: "cli-peer",
-      },
-      workspace: { version: 1, peer: { id: "team-a" } },
-    },
-    ({ workspaceDir, otherDir }) => {
-      assert.equal(loadConfig(workspaceDir).peerId, "team-a");
-      // Same process, another directory: the ovcli.conf peer is untouched.
-      assert.equal(loadConfig(otherDir).peerId, "cli-peer");
-    },
-  );
+test("a repository can carry the bypass patterns its contributors share", () => {
+  withConfigs({
+    cli: { url: "http://127.0.0.1:1933", api_key: "sk-cli" },
+    workspace: { version: 1, bypass: { session_patterns: ["**/workspace"] } },
+  }, ({ workspaceDir, otherDir }) => {
+    const inside = loadConfig(workspaceDir);
+    assert.deepEqual(inside.bypassSessionPatterns, ["**/workspace"]);
+    assert.equal(isBypassed(inside, { cwd: workspaceDir }), true);
+
+    const outside = loadConfig(otherDir);
+    assert.deepEqual(outside.bypassSessionPatterns, []);
+    assert.equal(isBypassed(outside, { cwd: otherDir }), false);
+  });
 });
 
-test("OPENVIKING_PEER_ID still outranks a workspace peer.id", () => {
-  withConfigs(
-    {
-      cli: {
-        url: "http://127.0.0.1:1933",
-        api_key: "sk-cli",
-        actor_peer_id: "cli-peer",
-      },
-      workspace: { version: 1, peer: { id: "team-a" } },
-      env: { OPENVIKING_PEER_ID: "env-peer" },
+test("the bypass env vars override the file, matching every other harness", () => {
+  withConfigs({
+    ov: { codex: { bypassSessionPatterns: ["/from/ov-conf"] } },
+    cli: { url: "http://127.0.0.1:1933", api_key: "sk-cli" },
+    env: {
+      OPENVIKING_BYPASS_SESSION_PATTERNS: "/from/env, /also/env ,",
+      OPENVIKING_BYPASS_SESSION: "1",
     },
-    ({ workspaceDir }) => {
-      assert.equal(loadConfig(workspaceDir).peerId, "env-peer");
-    },
-  );
+  }, ({ otherDir }) => {
+    const cfg = loadConfig(otherDir);
+    assert.deepEqual(cfg.bypassSessionPatterns, ["/from/env", "/also/env"]);
+    assert.equal(cfg.bypassSession, true);
+    assert.equal(isBypassed(cfg, { cwd: "/anywhere" }), true, "the switch wins regardless of cwd");
+  });
 });
 
-test("a credential source pinned to ovcli.conf ignores the env peer", () => {
-  withConfigs(
-    {
-      cli: {
-        url: "http://127.0.0.1:1933",
-        api_key: "sk-cli",
-        actor_peer_id: "cli-peer",
-      },
-      env: {
-        OPENVIKING_PEER_ID: "env-peer",
-        OPENVIKING_CREDENTIAL_SOURCE: "cli",
-      },
-    },
-    ({ otherDir }) => {
-      assert.equal(loadConfig(otherDir).peerId, "cli-peer");
-    },
-  );
+test("ov.conf's codex section still supplies the patterns when no env var does", () => {
+  withConfigs({
+    ov: { codex: { bypassSessionPatterns: ["/scratch/*", 7, "  "] } },
+    cli: { url: "http://127.0.0.1:1933", api_key: "sk-cli" },
+  }, ({ otherDir }) => {
+    const cfg = loadConfig(otherDir);
+    assert.deepEqual(cfg.bypassSessionPatterns, ["/scratch/*"]);
+    assert.equal(cfg.bypassSession, false);
+  });
 });
 
-test("an ovcli.conf plugin.codex.peerId outranks the file's actor peer", () => {
-  withConfigs(
-    {
-      cli: {
-        url: "http://127.0.0.1:1933",
-        api_key: "sk-cli",
-        actor_peer_id: "cli-peer",
-        plugin: { codex: { peerId: "plugin-peer" } },
-      },
-    },
-    ({ otherDir }) => {
-      assert.equal(loadConfig(otherDir).peerId, "plugin-peer");
-    },
-  );
-});
+// This harness reads the shared compression knob as a boolean, and calls a
+// compressor configured only once it has been told what to run.
+test("the compression switch is a boolean here, and a model is what configures one", () => {
+  withConfigs({
+    cli: { url: "http://127.0.0.1:1933", api_key: "sk-cli", plugin: { recallCompress: "auto" } },
+  }, ({ otherDir }) => {
+    const cfg = loadConfig(otherDir);
+    assert.equal(cfg.recallCompress, true, "\"auto\" is the Claude Code spelling of on");
+    assert.equal(cfg.recallCompressConfigured, false, "naming the switch is not naming a compressor");
+  });
 
-test("ov.conf's codex.peerId keeps its place behind ovcli.conf", () => {
-  withConfigs(
-    {
-      ov: { codex: { peerId: "ov-peer" } },
-      cli: {
-        url: "http://127.0.0.1:1933",
-        api_key: "sk-cli",
-        actor_peer_id: "cli-peer",
-      },
-    },
-    ({ otherDir }) => {
-      assert.equal(loadConfig(otherDir).peerId, "cli-peer");
-    },
-  );
-});
+  withConfigs({
+    cli: { url: "http://127.0.0.1:1933", api_key: "sk-cli", plugin: { recallCompress: "off" } },
+  }, ({ otherDir }) => {
+    assert.equal(loadConfig(otherDir).recallCompress, false);
+  });
 
-test("the workspace layer follows the cwd it is handed, not the process's", () => {
-  withConfigs(
-    {
-      cli: { url: "http://127.0.0.1:1933", api_key: "sk-cli" },
-      workspace: {
-        version: 1,
-        capture: { enabled: false },
-        recall: { max_items: 3 },
-      },
+  withConfigs({
+    cli: {
+      url: "http://127.0.0.1:1933",
+      api_key: "sk-cli",
+      plugin: { codex: { recallCompressModel: "gpt-5.5" } },
     },
-    ({ workspaceDir, otherDir }) => {
-      const inside = loadConfig(workspaceDir);
-      assert.equal(inside.autoCapture, false);
-      assert.equal(inside.recallLimit, 3);
-
-      const outside = loadConfig(otherDir);
-      assert.equal(outside.autoCapture, true);
-      assert.equal(outside.recallLimit, 10);
-    },
-  );
-});
-
-test("an omitted cwd falls back to this process's directory", () => {
-  withConfigs(
-    {
-      cli: { url: "http://127.0.0.1:1933", api_key: "sk-cli" },
-      workspace: { version: 1, capture: { enabled: false } },
-    },
-    ({ workspaceDir }) => {
-      const origin = process.cwd();
-      try {
-        process.chdir(workspaceDir);
-        assert.equal(loadConfig().autoCapture, false);
-        assert.equal(loadConfig("").autoCapture, false);
-      } finally {
-        process.chdir(origin);
-      }
-    },
-  );
+  }, ({ otherDir }) => {
+    assert.equal(loadConfig(otherDir).recallCompressConfigured, true);
+  });
 });
 
 test("input filter rules default to empty and read from the legacy ov.conf block", () => {
@@ -197,88 +140,61 @@ test("input filter rules default to empty and read from the legacy ov.conf block
     assert.deepEqual(loadConfig().recallQueryFilters, []);
     assert.deepEqual(loadConfig().captureFilters, []);
   });
-  withConfigs(
-    {
-      ov: {
-        server: { host: "127.0.0.1" },
-        codex: { captureFilters: ["d/^scratch:/"] },
-      },
-    },
-    () => {
-      assert.deepEqual(loadConfig().captureFilters, ["d/^scratch:/"]);
-    },
-  );
+  withConfigs({
+    ov: { server: { host: "127.0.0.1" }, codex: { captureFilters: ["d/^scratch:/"] } },
+  }, () => {
+    assert.deepEqual(loadConfig().captureFilters, ["d/^scratch:/"]);
+  });
 });
 
 test("plugin.codex input filters beat the shared plugin section", () => {
-  withConfigs(
-    {
-      ov: { server: { host: "127.0.0.1" } },
-      cli: {
-        url: "http://127.0.0.1:1933",
-        plugin: {
-          recallQueryFilters: ["s/shared//"],
-          captureFilters: ["d/^shared/"],
-          codex: { recallQueryFilters: ["s/harness//"] },
-        },
+  withConfigs({
+    ov: { server: { host: "127.0.0.1" } },
+    cli: {
+      url: "http://127.0.0.1:1933",
+      plugin: {
+        recallQueryFilters: ["s/shared//"],
+        captureFilters: ["d/^shared/"],
+        codex: { recallQueryFilters: ["s/harness//"] },
       },
     },
-    () => {
-      const cfg = loadConfig();
-      assert.deepEqual(cfg.recallQueryFilters, ["s/harness//"]);
-      assert.deepEqual(cfg.captureFilters, ["d/^shared/"]);
-    },
-  );
+  }, () => {
+    const cfg = loadConfig();
+    assert.deepEqual(cfg.recallQueryFilters, ["s/harness//"]);
+    assert.deepEqual(cfg.captureFilters, ["d/^shared/"]);
+  });
 });
 
 test("an env CSV replaces the configured filter list, trimming every entry", () => {
-  withConfigs(
-    {
-      ov: {
-        server: { host: "127.0.0.1" },
-        codex: { recallQueryFilters: ["s/^hi //"] },
-      },
-      env: { OPENVIKING_RECALL_QUERY_FILTERS: " s/^a// , d/^b/ " },
-    },
-    () => {
-      assert.deepEqual(loadConfig().recallQueryFilters, ["s/^a//", "d/^b/"]);
-    },
-  );
+  withConfigs({
+    ov: { server: { host: "127.0.0.1" }, codex: { recallQueryFilters: ["s/^hi //"] } },
+    env: { OPENVIKING_RECALL_QUERY_FILTERS: " s/^a// , d/^b/ " },
+  }, () => {
+    assert.deepEqual(loadConfig().recallQueryFilters, ["s/^a//", "d/^b/"]);
+  });
 });
 
 test("configured filter entries are trimmed and non-strings dropped", () => {
-  withConfigs(
-    {
-      ov: {
-        server: { host: "127.0.0.1" },
-        codex: { captureFilters: ["  s/^a//  ", "", 7, null, "d/^b/"] },
-      },
+  withConfigs({
+    ov: {
+      server: { host: "127.0.0.1" },
+      codex: { captureFilters: ["  s/^a//  ", "", 7, null, "d/^b/"] },
     },
-    () => {
-      assert.deepEqual(loadConfig().captureFilters, ["s/^a//", "d/^b/"]);
-    },
-  );
+  }, () => {
+    assert.deepEqual(loadConfig().captureFilters, ["s/^a//", "d/^b/"]);
+  });
 });
 
 test("a comma survives in a configured rule but splits an env one", () => {
-  withConfigs(
-    {
-      ov: {
-        server: { host: "127.0.0.1" },
-        codex: { captureFilters: ["s/a{2,}/X/"] },
-      },
-    },
-    () => {
-      assert.deepEqual(loadConfig().captureFilters, ["s/a{2,}/X/"]);
-    },
-  );
-  withConfigs(
-    {
-      ov: { server: { host: "127.0.0.1" } },
-      env: { OPENVIKING_CAPTURE_FILTERS: "s/a{2,}/X/" },
-    },
-    () => {
-      assert.deepEqual(loadConfig().captureFilters, ["s/a{2", "}/X/"]);
-    },
-  );
+  withConfigs({
+    ov: { server: { host: "127.0.0.1" }, codex: { captureFilters: ["s/a{2,}/X/"] } },
+  }, () => {
+    assert.deepEqual(loadConfig().captureFilters, ["s/a{2,}/X/"]);
+  });
+  withConfigs({
+    ov: { server: { host: "127.0.0.1" } },
+    env: { OPENVIKING_CAPTURE_FILTERS: "s/a{2,}/X/" },
+  }, () => {
+    assert.deepEqual(loadConfig().captureFilters, ["s/a{2", "}/X/"]);
+  });
 });

@@ -1,20 +1,12 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import {
-  mkdir,
-  mkdtemp,
-  readFile,
-  readdir,
-  rm,
-  stat,
-  utimes,
-  writeFile,
-} from "node:fs/promises";
-import http from "node:http";
+import { mkdir, mkdtemp, readFile, readdir, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+
+import { readRequestBody, withMockOpenViking, writeJson } from "../../memory-plugin-shared/testing/support.mjs";
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 
@@ -35,68 +27,20 @@ function writeEndedMarker(dir, id, ts) {
   return writeFile(join(dir, `${id}.ended.${ts}`), String(ts));
 }
 
-function readRequestBody(req) {
-  return new Promise((resolve, reject) => {
-    const chunks = [];
-    req.on("data", (chunk) => chunks.push(chunk));
-    req.on("end", () => {
-      const raw = Buffer.concat(chunks).toString("utf-8");
-      try {
-        resolve(raw ? JSON.parse(raw) : null);
-      } catch (err) {
-        reject(err);
-      }
-    });
-    req.on("error", reject);
-  });
-}
-
-function writeJson(res, value) {
-  res.writeHead(200, { "Content-Type": "application/json" });
-  res.end(JSON.stringify(value));
-}
-
-async function withMockOpenViking(handler, fn) {
-  const server = http.createServer((req, res) => {
-    Promise.resolve(handler(req, res)).catch((err) => {
-      res.writeHead(500, { "Content-Type": "application/json" });
-      res.end(
-        JSON.stringify({ status: "error", error: String(err?.stack || err) }),
-      );
-    });
-  });
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-  try {
-    const { port } = server.address();
-    return await fn(`http://127.0.0.1:${port}`);
-  } finally {
-    await new Promise((resolve) => server.close(resolve));
-  }
-}
-
 function runSessionEnd(input, env) {
   return new Promise((resolve, reject) => {
     const cleanEnv = { ...process.env };
     for (const key of Object.keys(cleanEnv)) {
-      if (key.startsWith("OPENVIKING_") || key === "OV_HOOK_WORKER")
-        delete cleanEnv[key];
+      if (key.startsWith("OPENVIKING_") || key === "OV_HOOK_WORKER") delete cleanEnv[key];
     }
-    const child = spawn(
-      process.execPath,
-      [join(SCRIPT_DIR, "session-end.mjs")],
-      {
-        env: { ...cleanEnv, ...env },
-        stdio: ["pipe", "pipe", "pipe"],
-      },
-    );
+    const child = spawn(process.execPath, [join(SCRIPT_DIR, "session-end.mjs")], {
+      env: { ...cleanEnv, ...env },
+      stdio: ["pipe", "pipe", "pipe"],
+    });
     let stdout = "";
     let stderr = "";
-    child.stdout.on("data", (chunk) => {
-      stdout += chunk.toString();
-    });
-    child.stderr.on("data", (chunk) => {
-      stderr += chunk.toString();
-    });
+    child.stdout.on("data", (chunk) => { stdout += chunk.toString(); });
+    child.stderr.on("data", (chunk) => { stderr += chunk.toString(); });
     child.on("error", reject);
     child.on("close", (code) => {
       if (code !== 0) {
@@ -141,17 +85,14 @@ async function writeTranscript(path, count) {
 async function writeState(stateDir, id, patch = {}) {
   const now = Date.now();
   await mkdir(stateDir, { recursive: true });
-  await writeFile(
-    join(stateDir, `${id}.json`),
-    JSON.stringify({
-      codexSessionId: id,
-      ovSessionId: `cx-${id}`,
-      capturedTurnCount: 0,
-      createdAt: now - 1000,
-      lastUpdatedAt: now,
-      ...patch,
-    }),
-  );
+  await writeFile(join(stateDir, `${id}.json`), JSON.stringify({
+    codexSessionId: id,
+    ovSessionId: `cx-${id}`,
+    capturedTurnCount: 0,
+    createdAt: now - 1000,
+    lastUpdatedAt: now,
+    ...patch,
+  }));
 }
 
 function readState(stateDir, id) {
@@ -159,12 +100,7 @@ function readState(stateDir, id) {
 }
 
 async function exists(path) {
-  try {
-    await stat(path);
-    return true;
-  } catch {
-    return false;
-  }
+  try { await stat(path); return true; } catch { return false; }
 }
 
 function mockHandler(calls, { commitStatus = 200 } = {}) {
@@ -185,22 +121,10 @@ function mockHandler(calls, { commitStatus = 200 } = {}) {
       call.body = await readRequestBody(req);
       if (commitStatus !== 200) {
         res.writeHead(commitStatus, { "Content-Type": "application/json" });
-        res.end(
-          JSON.stringify({
-            status: "error",
-            error: {
-              code: "INTERNAL",
-              message: "commit failed",
-              trace_id: "trace-end-error",
-            },
-          }),
-        );
+        res.end(JSON.stringify({ status: "error", error: { code: "INTERNAL", message: "commit failed", trace_id: "trace-end-error" } }));
         return;
       }
-      writeJson(res, {
-        status: "ok",
-        result: { archived: true, task_id: "task-end", trace_id: "trace-end" },
-      });
+      writeJson(res, { status: "ok", result: { archived: true, task_id: "task-end", trace_id: "trace-end" } });
       return;
     }
     res.writeHead(404, { "Content-Type": "application/json" });
@@ -210,9 +134,7 @@ function mockHandler(calls, { commitStatus = 200 } = {}) {
 
 function sentMessages(calls) {
   return calls
-    .filter(
-      (c) => c.path.endsWith("/messages/batch") || c.path.endsWith("/messages"),
-    )
+    .filter((c) => c.path.endsWith("/messages/batch") || c.path.endsWith("/messages"))
     .flatMap((c) => c.body?.messages ?? (c.body ? [c.body] : []));
 }
 
@@ -225,11 +147,7 @@ test("session-end catches up the missing turns then commits", async () => {
     await writeTranscript(transcriptPath, 4);
     await withMockOpenViking(mockHandler(calls), async (baseUrl) => {
       await runSessionEnd(
-        {
-          session_id: "s1",
-          transcript_path: transcriptPath,
-          hook_event_name: "SessionEnd",
-        },
+        { session_id: "s1", transcript_path: transcriptPath, hook_event_name: "SessionEnd" },
         workerEnv(baseUrl, stateDir),
       );
     });
@@ -238,12 +156,7 @@ test("session-end catches up the missing turns then commits", async () => {
     assert.equal(messages.length, 2);
     assert.equal(messages[0].parts?.[0]?.text ?? messages[0].content, "turn-2");
     assert.equal(messages[1].parts?.[0]?.text ?? messages[1].content, "turn-3");
-    assert.ok(
-      calls.some(
-        (c) =>
-          c.method === "POST" && c.path === "/api/v1/sessions/cx-s1/commit",
-      ),
-    );
+    assert.ok(calls.some((c) => c.method === "POST" && c.path === "/api/v1/sessions/cx-s1/commit"));
     assert.deepEqual(calls.find((c) => c.path.endsWith("/commit")).body, {});
 
     const state = await readState(stateDir, "s1");
@@ -260,10 +173,7 @@ test("a second session-end on an unchanged transcript neither sends nor commits"
   const transcriptPath = join(stateDir, "transcript.jsonl");
   const calls = [];
   try {
-    await writeState(stateDir, "s2", {
-      capturedTurnCount: 4,
-      ovSessionId: null,
-    });
+    await writeState(stateDir, "s2", { capturedTurnCount: 4, ovSessionId: null });
     await writeTranscript(transcriptPath, 4);
     await withMockOpenViking(mockHandler(calls), async (baseUrl) => {
       await runSessionEnd(
@@ -273,10 +183,7 @@ test("a second session-end on an unchanged transcript neither sends nor commits"
     });
 
     assert.equal(sentMessages(calls).length, 0);
-    assert.equal(
-      calls.some((c) => c.path.endsWith("/commit")),
-      false,
-    );
+    assert.equal(calls.some((c) => c.path.endsWith("/commit")), false);
     const state = await readState(stateDir, "s2");
     assert.equal(state.capturedTurnCount, 4);
     assert.equal(state.ovSessionId, null);
@@ -293,15 +200,12 @@ test("a failed commit keeps the live session and the end marker", async () => {
   try {
     await writeState(stateDir, "s3", { capturedTurnCount: 0 });
     await writeTranscript(transcriptPath, 2);
-    await withMockOpenViking(
-      mockHandler(calls, { commitStatus: 500 }),
-      async (baseUrl) => {
-        await runSessionEnd(
-          { session_id: "s3", transcript_path: transcriptPath },
-          workerEnv(baseUrl, stateDir),
-        );
-      },
-    );
+    await withMockOpenViking(mockHandler(calls, { commitStatus: 500 }), async (baseUrl) => {
+      await runSessionEnd(
+        { session_id: "s3", transcript_path: transcriptPath },
+        workerEnv(baseUrl, stateDir),
+      );
+    });
 
     const state = await readState(stateDir, "s3");
     assert.equal(state.ovSessionId, "cx-s3");
@@ -318,15 +222,10 @@ test("an unreachable server leaves the cursor and the end marker alone", async (
   try {
     await writeState(stateDir, "s4", { capturedTurnCount: 2 });
     await writeTranscript(transcriptPath, 6);
-    const closedPort = await withMockOpenViking(
-      () => {},
-      async (baseUrl) => baseUrl,
-    );
+    const closedPort = await withMockOpenViking(() => {}, async (baseUrl) => baseUrl);
     await runSessionEnd(
       { session_id: "s4", transcript_path: transcriptPath },
-      workerEnv(closedPort, stateDir, {
-        OPENVIKING_CAPTURE_TIMEOUT_MS: "1500",
-      }),
+      workerEnv(closedPort, stateDir, { OPENVIKING_CAPTURE_TIMEOUT_MS: "1500" }),
     );
 
     const state = await readState(stateDir, "s4");
@@ -339,15 +238,10 @@ test("an unreachable server leaves the cursor and the end marker alone", async (
 });
 
 test("a missing transcript never resets the cursor", async () => {
-  const stateDir = await mkdtemp(
-    join(tmpdir(), "ov-session-end-notranscript-"),
-  );
+  const stateDir = await mkdtemp(join(tmpdir(), "ov-session-end-notranscript-"));
   const calls = [];
   try {
-    await writeState(stateDir, "s5", {
-      capturedTurnCount: 8,
-      ovSessionId: null,
-    });
+    await writeState(stateDir, "s5", { capturedTurnCount: 8, ovSessionId: null });
     await withMockOpenViking(mockHandler(calls), async (baseUrl) => {
       await runSessionEnd(
         { session_id: "s5", transcript_path: join(stateDir, "gone.jsonl") },
@@ -376,10 +270,7 @@ test("an unreadable transcript never commits the live session", async () => {
     });
 
     assert.equal(sentMessages(calls).length, 0);
-    assert.equal(
-      calls.some((c) => c.path.endsWith("/commit")),
-      false,
-    );
+    assert.equal(calls.some((c) => c.path.endsWith("/commit")), false);
     const state = await readState(stateDir, "s13");
     assert.equal(state.ovSessionId, "cx-s13");
     assert.equal(state.capturedTurnCount, 3);
@@ -396,17 +287,14 @@ test("a shrunk transcript resumes at the last human turn", async () => {
   try {
     await writeState(stateDir, "s6", { capturedTurnCount: 8 });
     // 6 turns, last user turn at index 2.
-    await writeFile(
-      transcriptPath,
-      [
-        turn("user", "old-a"),
-        turn("assistant", "old-b"),
-        turn("user", "current request"),
-        turn("assistant", "current reply"),
-        turn("assistant", "more"),
-        turn("assistant", "tail"),
-      ].join("\n"),
-    );
+    await writeFile(transcriptPath, [
+      turn("user", "old-a"),
+      turn("assistant", "old-b"),
+      turn("user", "current request"),
+      turn("assistant", "current reply"),
+      turn("assistant", "more"),
+      turn("assistant", "tail"),
+    ].join("\n"));
 
     await withMockOpenViking(mockHandler(calls), async (baseUrl) => {
       await runSessionEnd(
@@ -417,10 +305,7 @@ test("a shrunk transcript resumes at the last human turn", async () => {
 
     const messages = sentMessages(calls);
     assert.equal(messages.length, 4);
-    assert.equal(
-      messages[0].parts?.[0]?.text ?? messages[0].content,
-      "current request",
-    );
+    assert.equal(messages[0].parts?.[0]?.text ?? messages[0].content, "current request");
     const state = await readState(stateDir, "s6");
     assert.equal(state.capturedTurnCount, 6);
   } finally {
@@ -473,54 +358,32 @@ test("a concurrent Stop worker and session-end worker never double-send a turn",
     await writeState(stateDir, "s8", { capturedTurnCount: 0 });
     await writeTranscript(transcriptPath, 6);
 
-    await withMockOpenViking(
-      async (req, res) => {
-        const url = new URL(req.url, "http://127.0.0.1");
-        if (url.pathname.endsWith("/messages/batch")) {
-          await new Promise((resolve) => setTimeout(resolve, 500));
+    await withMockOpenViking(async (req, res) => {
+      const url = new URL(req.url, "http://127.0.0.1");
+      if (url.pathname.endsWith("/messages/batch")) {
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      }
+      return mockHandler(calls)(req, res);
+    }, async (baseUrl) => {
+      const env = workerEnv(baseUrl, stateDir, { OPENVIKING_WRITE_PATH_ASYNC: "0" });
+      const stop = new Promise((resolve, reject) => {
+        const cleanEnv = { ...process.env };
+        for (const key of Object.keys(cleanEnv)) {
+          if (key.startsWith("OPENVIKING_") || key === "OV_HOOK_WORKER") delete cleanEnv[key];
         }
-        return mockHandler(calls)(req, res);
-      },
-      async (baseUrl) => {
-        const env = workerEnv(baseUrl, stateDir, {
-          OPENVIKING_WRITE_PATH_ASYNC: "0",
+        const child = spawn(process.execPath, [join(SCRIPT_DIR, "auto-capture.mjs")], {
+          env: { ...cleanEnv, ...env },
+          stdio: ["pipe", "ignore", "ignore"],
         });
-        const stop = new Promise((resolve, reject) => {
-          const cleanEnv = { ...process.env };
-          for (const key of Object.keys(cleanEnv)) {
-            if (key.startsWith("OPENVIKING_") || key === "OV_HOOK_WORKER")
-              delete cleanEnv[key];
-          }
-          const child = spawn(
-            process.execPath,
-            [join(SCRIPT_DIR, "auto-capture.mjs")],
-            {
-              env: { ...cleanEnv, ...env },
-              stdio: ["pipe", "ignore", "ignore"],
-            },
-          );
-          child.on("error", reject);
-          child.on("close", resolve);
-          child.stdin.end(
-            JSON.stringify({
-              session_id: "s8",
-              transcript_path: transcriptPath,
-            }),
-          );
-        });
-        const end = runSessionEnd(
-          { session_id: "s8", transcript_path: transcriptPath },
-          env,
-        );
-        await Promise.all([stop, end]);
-      },
-    );
+        child.on("error", reject);
+        child.on("close", resolve);
+        child.stdin.end(JSON.stringify({ session_id: "s8", transcript_path: transcriptPath }));
+      });
+      const end = runSessionEnd({ session_id: "s8", transcript_path: transcriptPath }, env);
+      await Promise.all([stop, end]);
+    });
 
-    assert.equal(
-      sentMessages(calls).length,
-      6,
-      "each transcript turn must be sent exactly once",
-    );
+    assert.equal(sentMessages(calls).length, 6, "each transcript turn must be sent exactly once");
     const state = await readState(stateDir, "s8");
     assert.equal(state.capturedTurnCount, 6);
     // The two hooks race over the end marker. auto-capture clears markers
@@ -533,17 +396,11 @@ test("a concurrent Stop worker and session-end worker never double-send a turn",
     // committed inline. Both convergences are correct as long as no turn is
     // double-sent and no stale marker survives, so accept either one.
     if (state.ovSessionId !== null) {
-      assert.equal(
-        state.ovSessionId,
-        "cx-s8",
-        "only the derived cx-s8 session may remain live",
-      );
+      assert.equal(state.ovSessionId, "cx-s8",
+        "only the derived cx-s8 session may remain live");
     }
-    assert.equal(
-      await endedMarkerExists(stateDir, "s8"),
-      false,
-      "a converged run must not leave a stale end marker",
-    );
+    assert.equal(await endedMarkerExists(stateDir, "s8"), false,
+      "a converged run must not leave a stale end marker");
   } finally {
     await rm(stateDir, { recursive: true, force: true });
   }
@@ -584,10 +441,7 @@ test("the parent hook returns immediately and leaves the end marker behind", asy
       );
       const elapsed = Date.now() - started;
       assert.deepEqual(JSON.parse(stdout.trim()), {});
-      assert.ok(
-        elapsed < 1000,
-        `parent hook took ${elapsed}ms; Codex budgets 1s`,
-      );
+      assert.ok(elapsed < 1000, `parent hook took ${elapsed}ms; Codex budgets 1s`);
       assert.equal(await endedMarkerExists(stateDir, "s10"), true);
     });
   } finally {
@@ -607,12 +461,7 @@ test("session-end without a session_id writes nothing", async () => {
       assert.deepEqual(JSON.parse(stdout.trim()), {});
     });
     assert.equal(calls.length, 0);
-    assert.deepEqual(
-      (await readdir(stateDir)).filter(
-        (n) => n !== "recall-compressor-profile.json",
-      ),
-      [],
-    );
+    assert.deepEqual((await readdir(stateDir)).filter((n) => n !== "recall-compressor-profile.json"), []);
   } finally {
     await rm(stateDir, { recursive: true, force: true });
   }
@@ -629,61 +478,42 @@ test("a partial catch-up keeps the live session and the end marker instead of co
     // Batch is unavailable, so the sender falls back to serial; the second
     // message then fails, leaving the tail turn unsent.
     let serial = 0;
-    await withMockOpenViking(
-      async (req, res) => {
-        const url = new URL(req.url, "http://127.0.0.1");
-        calls.push({ method: req.method, path: url.pathname, body: null });
-        if (req.method === "GET" && url.pathname === "/health") {
+    await withMockOpenViking(async (req, res) => {
+      const url = new URL(req.url, "http://127.0.0.1");
+      calls.push({ method: req.method, path: url.pathname, body: null });
+      if (req.method === "GET" && url.pathname === "/health") {
+        writeJson(res, { status: "ok", result: { ok: true } });
+        return;
+      }
+      if (req.method === "POST" && url.pathname.endsWith("/messages/batch")) {
+        res.writeHead(404, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ status: "error", error: "no batch endpoint" }));
+        return;
+      }
+      if (req.method === "POST" && url.pathname.endsWith("/messages")) {
+        calls[calls.length - 1].body = await readRequestBody(req);
+        serial += 1;
+        if (serial === 1) {
           writeJson(res, { status: "ok", result: { ok: true } });
           return;
         }
-        if (req.method === "POST" && url.pathname.endsWith("/messages/batch")) {
-          res.writeHead(404, { "Content-Type": "application/json" });
-          res.end(
-            JSON.stringify({ status: "error", error: "no batch endpoint" }),
-          );
-          return;
-        }
-        if (req.method === "POST" && url.pathname.endsWith("/messages")) {
-          calls[calls.length - 1].body = await readRequestBody(req);
-          serial += 1;
-          if (serial === 1) {
-            writeJson(res, { status: "ok", result: { ok: true } });
-            return;
-          }
-          res.writeHead(500, { "Content-Type": "application/json" });
-          res.end(
-            JSON.stringify({ status: "error", error: { message: "boom" } }),
-          );
-          return;
-        }
-        writeJson(res, { status: "ok", result: {} });
-      },
-      async (baseUrl) => {
-        await runSessionEnd(
-          { session_id: "s11", transcript_path: transcriptPath },
-          workerEnv(baseUrl, stateDir),
-        );
-      },
-    );
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ status: "error", error: { message: "boom" } }));
+        return;
+      }
+      writeJson(res, { status: "ok", result: {} });
+    }, async (baseUrl) => {
+      await runSessionEnd(
+        { session_id: "s11", transcript_path: transcriptPath },
+        workerEnv(baseUrl, stateDir),
+      );
+    });
 
-    assert.equal(
-      sentMessages(calls).length,
-      2,
-      "both serial attempts are made",
-    );
-    assert.equal(
-      calls.some((c) => c.path.endsWith("/commit")),
-      false,
-      "an incomplete append must not commit",
-    );
+    assert.equal(sentMessages(calls).length, 2, "both serial attempts are made");
+    assert.equal(calls.some((c) => c.path.endsWith("/commit")), false, "an incomplete append must not commit");
     const state = await readState(stateDir, "s11");
     assert.equal(state.ovSessionId, "cx-s11");
-    assert.equal(
-      state.capturedTurnCount,
-      1,
-      "the cursor advances only past what landed",
-    );
+    assert.equal(state.capturedTurnCount, 1, "the cursor advances only past what landed");
     assert.equal(await endedMarkerExists(stateDir, "s11"), true);
   } finally {
     await rm(stateDir, { recursive: true, force: true });
@@ -709,11 +539,7 @@ test("a worker whose end token no longer matches the marker does nothing", async
       );
     });
 
-    assert.equal(
-      calls.length,
-      0,
-      "a superseded worker makes no HTTP calls at all",
-    );
+    assert.equal(calls.length, 0, "a superseded worker makes no HTTP calls at all");
     const state = await readState(stateDir, "s12");
     assert.equal(state.ovSessionId, "cx-s12");
     assert.equal(state.capturedTurnCount, 0);

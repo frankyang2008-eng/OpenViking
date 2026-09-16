@@ -30,6 +30,7 @@ const workspace = {
       defaultTitle: 'OpenViking Studio',
     },
     navigation: {
+      compile: { title: 'Compile' },
       home: {
         title: '首页',
       },
@@ -400,6 +401,14 @@ const workspace = {
       },
       error: '失败原因',
       result: '执行结果',
+      noResultRunning: '任务进行中',
+      noResultRunningDescription:
+        '尚未返回最终结果。可查看上方已上报的阶段和执行日志。',
+      noResultPending: '任务排队中',
+      noResultPendingDescription:
+        '任务尚未开始执行，开始后会显示已上报的阶段和执行日志。',
+      noResultCompleted: '任务已完成',
+      noResultCompletedDescription: '该任务未返回可展示的执行结果。',
       noResult: '暂无执行结果',
       noResultDescription: '任务完成后，接口返回的结果会显示在这里。',
       noResultFailedDescription: '该任务未返回结果，请查看上方失败原因。',
@@ -457,6 +466,7 @@ const workspace = {
       unknown: '未知',
     },
     types: {
+      compile: 'Compile',
       session_commit: '会话提交',
       add_resource: '资源处理',
       add_skill: '技能导入',
@@ -812,6 +822,19 @@ const workspace = {
       title: '新的 API 密钥',
     },
     loading: '正在加载身份...',
+    userList: {
+      search: '按用户名搜索全部用户',
+      noResults: '没有匹配的用户',
+      noResultsDescription: '试试其他用户名，或清空搜索。',
+      pagination: '用户列表分页',
+      summary: '共 {{total}} 个用户 · 第 {{page}} / {{pageCount}} 页',
+      pageSize: '每页用户数',
+      pageSizeValue: '每页 {{count}} 个',
+      first: '首页',
+      previous: '上一页',
+      next: '下一页',
+      last: '末页',
+    },
     management: {
       accountFilter: '账号',
       accessDeniedDescription:
@@ -874,9 +897,9 @@ const workspace = {
     },
     toast: {
       accountCreated: '账号已创建',
-      accountDeleted: '{{account}} 已删除',
-      accountDeletedRecoveryFailed:
-        '账号已删除，但无法加载剩余账号列表：{{error}}',
+      accountDeletionStarted: '{{account}} 已停用，后台清理任务：{{taskId}}',
+      accountDeletionRecoveryFailed:
+        '账号清理已提交，但无法加载剩余账号列表：{{error}}',
       connectionSaved: '连接已保存',
       copyFailed: '复制失败',
       copied: '已复制',

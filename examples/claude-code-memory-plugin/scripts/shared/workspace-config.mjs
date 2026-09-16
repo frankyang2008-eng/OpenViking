@@ -24,11 +24,8 @@
 import { readFileSync, realpathSync, statSync } from "node:fs";
 import { isAbsolute, join, relative } from "node:path";
 
-import {
-  CONFIG_DIR_NAME,
-  LOCAL_FILE,
-  TEAM_FILE,
-} from "./workspace-identity.mjs";
+import { WORKSPACE_ENUMS, WORKSPACE_KNOB_MAP, WORKSPACE_RANGES } from "./config-schema.mjs";
+import { CONFIG_DIR_NAME, LOCAL_FILE, TEAM_FILE } from "./workspace-identity.mjs";
 
 /**
  * `JSON.parse` keeps `__proto__` as an own property, and assigning it walks
@@ -99,50 +96,20 @@ export const FORBIDDEN_KEYS = [
  */
 export const FREE_FORM_SECTIONS = ["labels"];
 
-const ENUMS = {
-  "recall.peer_scope": ["all", "actor"],
-  "peer.source": null, // free-form: preset name, template, or template array
-};
-
-const RANGES = {
-  "recall.dedup_turns": { min: 0, max: 20, integer: true },
-  "recall.max_items": { min: 1, max: 100, integer: true },
-  "recall.score_threshold": { min: 0, max: 1, integer: false },
-  "capture.commit_token_threshold": {
-    min: 1000,
-    max: 1_000_000,
-    integer: true,
-  },
-};
-
 /**
- * The workspace schema in the vocabulary the harness loaders already speak.
- *
- * Only knobs a loader actually reads appear here — the same rule the ovcli
- * `plugin` section follows, so the schema never advertises a setting that
- * silently does nothing. `labels` is metadata for humans and is not projected.
+ * The workspace schema is a projection of `config-schema.mjs`: the dotted key,
+ * its enum members and its range all come from the one knob declaration, so a
+ * knob cannot be spelled one way here and another way in the loaders.
  */
-const KNOB_MAP = {
-  "peer.id": "peerId",
-  "peer.source": "peerSource",
-  "recall.enabled": "autoRecall",
-  "recall.peer_scope": "recallPeerScope",
-  "recall.dedup_turns": "recallDedupTurns",
-  "recall.max_items": "recallLimit",
-  "recall.score_threshold": "scoreThreshold",
-  "capture.enabled": "autoCapture",
-  "capture.commit_token_threshold": "commitTokenThreshold",
-  "bypass.session_patterns": "bypassSessionPatterns",
-};
+const ENUMS = WORKSPACE_ENUMS;
+const RANGES = WORKSPACE_RANGES;
+const KNOB_MAP = WORKSPACE_KNOB_MAP;
 
 export const WORKSPACE_SCHEMA_KEYS = Object.keys(KNOB_MAP);
 
 /** -1, 0 or 1 over dotted numeric versions; a non-numeric tail is ignored. */
 function compareVersions(left, right) {
-  const parse = (value) =>
-    String(value || "")
-      .split(".")
-      .map((part) => Number.parseInt(part, 10) || 0);
+  const parse = (value) => String(value || "").split(".").map((part) => Number.parseInt(part, 10) || 0);
   const a = parse(left);
   const b = parse(right);
   for (let i = 0; i < Math.max(a.length, b.length); i += 1) {
@@ -164,8 +131,8 @@ export function checkMinClientVersion(declared, clientVersion, warnings = []) {
   if (!required || !current) return true;
   if (compareVersions(current, required) >= 0) return true;
   warnings.push(
-    `this workspace asks for OpenViking plugin ${required} and this one is ${current}; ` +
-      "settings it introduced will be ignored rather than blocking the session",
+    `this workspace asks for OpenViking plugin ${required} and this one is ${current}; `
+    + "settings it introduced will be ignored rather than blocking the session",
   );
   return false;
 }
@@ -180,12 +147,9 @@ function isPlainObject(value) {
  * key this layer refuses to honour.
  */
 function stripForbidden(value, banned, warnings, path = "", depth = 0) {
-  if (depth > MAX_DEPTH)
-    throw new RangeError(`nested more than ${MAX_DEPTH} levels at '${path}'`);
+  if (depth > MAX_DEPTH) throw new RangeError(`nested more than ${MAX_DEPTH} levels at '${path}'`);
   if (Array.isArray(value)) {
-    return value.map((item, index) =>
-      stripForbidden(item, banned, warnings, `${path}[${index}]`, depth + 1),
-    );
+    return value.map((item, index) => stripForbidden(item, banned, warnings, `${path}[${index}]`, depth + 1));
   }
   if (!isPlainObject(value)) return value;
 
@@ -193,15 +157,11 @@ function stripForbidden(value, banned, warnings, path = "", depth = 0) {
   for (const [key, child] of Object.entries(value)) {
     const here = path ? `${path}.${key}` : key;
     if (UNSAFE_KEYS.includes(key)) {
-      warnings.push(
-        `ignored '${here}': a config file may not reach the object prototype`,
-      );
+      warnings.push(`ignored '${here}': a config file may not reach the object prototype`);
       continue;
     }
     if (banned.includes(key)) {
-      warnings.push(
-        `ignored '${here}': connection and credential settings belong in ovcli.conf or the environment`,
-      );
+      warnings.push(`ignored '${here}': connection and credential settings belong in ovcli.conf or the environment`);
       continue;
     }
     // Matched on the key itself, not on depth: a registry entry keeps the same
@@ -270,18 +230,11 @@ export function readWorkspaceFile(path, { root = "", layer = "" } = {}) {
     return empty;
   }
   if (parsed.version !== CONFIG_VERSION) {
-    warnings.push(
-      `${path} declares version ${JSON.stringify(parsed.version)}; this client understands ${CONFIG_VERSION}`,
-    );
+    warnings.push(`${path} declares version ${JSON.stringify(parsed.version)}; this client understands ${CONFIG_VERSION}`);
     return empty;
   }
 
-  const {
-    version,
-    $schema,
-    min_client_version: minClientVersion,
-    ...rest
-  } = parsed;
+  const { version, $schema, min_client_version: minClientVersion, ...rest } = parsed;
   let data;
   try {
     data = stripForbidden(rest, FORBIDDEN_KEYS, warnings);
@@ -296,16 +249,13 @@ export function readWorkspaceFile(path, { root = "", layer = "" } = {}) {
 
 function shadow(provenance, here, value, source) {
   const previous = provenance[here];
-  const shadowed = previous
-    ? [{ value: previous.value, source: previous.source }, ...previous.shadowed]
-    : [];
+  const shadowed = previous ? [{ value: previous.value, source: previous.source }, ...previous.shadowed] : [];
   provenance[here] = { value, source, shadowed };
   return provenance[here];
 }
 
 function mergeInto(target, source, layer, provenance, path = "", depth = 0) {
-  if (depth > MAX_DEPTH)
-    throw new RangeError(`nested more than ${MAX_DEPTH} levels at '${path}'`);
+  if (depth > MAX_DEPTH) throw new RangeError(`nested more than ${MAX_DEPTH} levels at '${path}'`);
   for (const [key, value] of Object.entries(source)) {
     if (UNSAFE_KEYS.includes(key)) continue;
     const here = path ? `${path}.${key}` : key;
@@ -315,8 +265,7 @@ function mergeInto(target, source, layer, provenance, path = "", depth = 0) {
       // so the scalar has to be recorded as shadowed rather than left standing
       // in provenance as if it were still in force.
       if (!isPlainObject(target[key])) {
-        if (target[key] !== undefined)
-          shadow(provenance, here, "(section)", layer);
+        if (target[key] !== undefined) shadow(provenance, here, "(section)", layer);
         target[key] = {};
       }
       mergeInto(target[key], value, layer, provenance, here, depth + 1);
@@ -330,8 +279,7 @@ function mergeInto(target, source, layer, provenance, path = "", depth = 0) {
       const incoming = reset ? value.slice(1) : value;
       const inheritable = !reset && Array.isArray(target[key]);
       const merged = inheritable ? [...target[key]] : [];
-      for (const item of incoming)
-        if (!merged.includes(item)) merged.push(item);
+      for (const item of incoming) if (!merged.includes(item)) merged.push(item);
 
       // Only a genuine union credits both layers. A list landing on a scalar,
       // or on nothing, belongs to this layer alone.
@@ -375,12 +323,7 @@ export function mergeConfigLayers(layers, warnings = []) {
 }
 
 function get(object, path) {
-  return path
-    .split(".")
-    .reduce(
-      (node, key) => (isPlainObject(node) ? node[key] : undefined),
-      object,
-    );
+  return path.split(".").reduce((node, key) => (isPlainObject(node) ? node[key] : undefined), object);
 }
 
 function set(object, path, value) {
@@ -407,23 +350,14 @@ export function normalizeWorkspaceConfig(value, warnings = []) {
     if (raw === undefined) continue;
     // `Number()` turns null, true and [] into finite numbers, which would
     // silently pin a knob to a bound instead of reporting a bad value.
-    const number =
-      typeof raw === "number" || typeof raw === "string" ? Number(raw) : NaN;
+    const number = typeof raw === "number" || typeof raw === "string" ? Number(raw) : NaN;
     if (!Number.isFinite(number)) {
-      warnings.push(
-        `ignored '${path}': ${JSON.stringify(raw)} is not a number`,
-      );
+      warnings.push(`ignored '${path}': ${JSON.stringify(raw)} is not a number`);
       set(value, path, undefined);
       continue;
     }
-    const clamped = Math.min(
-      max,
-      Math.max(min, integer ? Math.floor(number) : number),
-    );
-    if (clamped !== number)
-      warnings.push(
-        `clamped '${path}' from ${number} to ${clamped} (allowed ${min}..${max})`,
-      );
+    const clamped = Math.min(max, Math.max(min, integer ? Math.floor(number) : number));
+    if (clamped !== number) warnings.push(`clamped '${path}' from ${number} to ${clamped} (allowed ${min}..${max})`);
     set(value, path, clamped);
   }
 
@@ -432,9 +366,7 @@ export function normalizeWorkspaceConfig(value, warnings = []) {
     const raw = get(value, path);
     if (raw === undefined) continue;
     if (!allowed.includes(raw)) {
-      warnings.push(
-        `ignored '${path}': ${JSON.stringify(raw)} is not one of ${allowed.join(", ")}`,
-      );
+      warnings.push(`ignored '${path}': ${JSON.stringify(raw)} is not one of ${allowed.join(", ")}`);
       set(value, path, undefined);
     }
   }
@@ -493,12 +425,7 @@ export function announcedOverrides(provenance) {
   for (const [key, entry] of Object.entries(provenance)) {
     const fromWorkspace = String(entry.source || "").includes("(workspace)");
     if (!fromWorkspace) continue;
-    if (
-      entry.value === false ||
-      key === "peer.id" ||
-      key === "peer.source" ||
-      key.startsWith("bypass.")
-    ) {
+    if (entry.value === false || key === "peer.id" || key === "peer.source" || key.startsWith("bypass.")) {
       announced.push({ key, value: entry.value, source: entry.source });
     }
   }

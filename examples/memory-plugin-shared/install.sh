@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 #
 # OpenViking Memory Plugin shared installer for Claude Code, Codex, Cursor,
-# TRAE / TRAE CN, TraeCode CLI 2.0, ZCode, OpenCode, pi, Qoder, CodeBuddy, omp (oh-my-pi), and Antigravity (AGY).
+# TRAE / TRAE CN, TraeCode CLI 2.0, ZCode, OpenCode, and pi.
 #
 # One-liner (GitHub):
 #   bash <(curl -fsSL https://raw.githubusercontent.com/volcengine/OpenViking/main/examples/memory-plugin-shared/install.sh)
 # One-liner (TOS mirror, for regions where GitHub is unreachable):
 #   bash <(curl -fsSL https://ovrelease.tos-cn-beijing.volces.com/memory-plugin-shared/install.sh) --dist tos
 # Non-interactive:
-#   bash install.sh --harness claude,codex,cursor,trae,trae-cn,trae-cli,zcode,opencode,pi,qoder,codebuddy,omp,dsh,agy --dist github --lang en --url http://127.0.0.1:1933 --api-key ''
+#   bash install.sh --harness claude,codex,cursor,trae,trae-cn,trae-cli,zcode,opencode,pi,qoder,codebuddy,omp,dsh,agy --dist github --lang en --url http://127.0.0.1:1933
 # Format-compatible CLI aliases:
 #   bash install.sh --harness trae-cli
 #   bash install.sh --harness claude --claude-bin claude,seed
@@ -64,32 +64,20 @@ PLUGIN_NAME="openviking-memory"
 DSH_PACKAGE="@openviking/dsh-memory-plugin"
 PLUGIN_ID="${PLUGIN_NAME}@${MARKETPLACE_NAME}"
 
-# Qoder installs a local plugin directory directly (no marketplace
-# registration); qodercli namespaces such installs under a synthetic "@local"
-# marketplace, so the plugin id is always openviking-memory@local regardless of
-# the install scope.
+# Fork-local harnesses: Qoder and CodeBuddy install from a local marketplace
+# (no remote registry), Antigravity reads a plain plugin directory.
 QODER_PLUGIN_ID="${PLUGIN_NAME}@local"
-
-# Pre-unification names, cleaned up on upgrade.
-OLD_MARKETPLACE_NAME='openviking-plugins-local'
-CC_OLD_IDS="claude-code-memory-plugin@${OLD_MARKETPLACE_NAME} ${PLUGIN_NAME}@${OLD_MARKETPLACE_NAME}"
-CODEX_OLD_ID="${PLUGIN_NAME}@${OLD_MARKETPLACE_NAME}"
-CODEX_OLD_MARKETPLACE_ROOT="$HOME/.codex/${OLD_MARKETPLACE_NAME}-marketplace"
-
-CODEX_CONFIG="${CODEX_CONFIG_FILE:-$HOME/.codex/config.toml}"
-CC_SETTINGS="$HOME/.claude/settings.json"
-CC_KNOWN_MARKETPLACES="$HOME/.claude/plugins/known_marketplaces.json"
 QODER_SETTINGS="$HOME/.qoder/settings.json"
 QODER_CACHE_DIR="$HOME/.qoder/plugins/cache/local/$PLUGIN_NAME"
-
-# CodeBuddy uses a real local marketplace (directory type) under
-# ~/.codebuddy/marketplaces; install copies into a versioned cache and
-# auto-enables. CODEBUDDY_CONFIG_DIR overrides the config root if set.
 CODEBUDDY_DIR="${CODEBUDDY_CONFIG_DIR:-$HOME/.codebuddy}"
 CODEBUDDY_MKT_NAME="openviking-local"
 CODEBUDDY_MKT_DIR="$CODEBUDDY_DIR/marketplaces/$CODEBUDDY_MKT_NAME"
 CODEBUDDY_PLUGIN_ID="${PLUGIN_NAME}@${CODEBUDDY_MKT_NAME}"
 CODEBUDDY_CACHE_DIR="$CODEBUDDY_DIR/plugins/cache/$CODEBUDDY_MKT_NAME"
+
+CODEX_CONFIG="${CODEX_CONFIG_FILE:-$HOME/.codex/config.toml}"
+CC_SETTINGS="$HOME/.claude/settings.json"
+CC_KNOWN_MARKETPLACES="$HOME/.claude/plugins/known_marketplaces.json"
 MKT_DIR_ARCHIVE="$OV_HOME/memory-plugin-marketplace"
 # Directory-shaped on purpose: Claude Code's file-type marketplaces
 # mis-derive installLocation and fail `marketplace update` with EISDIR.
@@ -111,40 +99,27 @@ URL_ARG=""
 API_KEY_ARG="__OPENVIKING_UNSET__"
 ACCOUNT_ARG="__OPENVIKING_UNSET__"
 USER_ARG="__OPENVIKING_UNSET__"
-STATUSLINE_ARG="" # "", yes, no
+STATUSLINE_ARG=""   # "", yes, no
 YES=0
-RECONFIGURE=0
 UNINSTALL=0
-SYNC_TARGET=""
-VERIFY_TARGET=""
 NODE_BIN=""
 
-CHECKOUT_DIR="" # repo checkout the script itself lives in, when applicable
-SRC_ROOT=""     # local source root once ensured (checkout or $REPO_DIR)
-MKT_DIR=""      # directory marketplace root for archive/dev modes
+CHECKOUT_DIR=""     # repo checkout the script itself lives in, when applicable
+SRC_ROOT=""         # local source root once ensured (checkout or $REPO_DIR)
+MKT_DIR=""          # directory marketplace root for archive/dev modes
 SOURCE_MODE=""
 DIST="github"
 UI_LANG="en"
 
 if [ -t 1 ]; then
-  CYAN=$'\033[0;36m'
-  GREEN=$'\033[0;32m'
-  YELLOW=$'\033[1;33m'
-  RED=$'\033[0;31m'
-  BOLD=$'\033[1m'
-  RESET=$'\033[0m'
+  CYAN=$'\033[0;36m'; GREEN=$'\033[0;32m'; YELLOW=$'\033[1;33m'; RED=$'\033[0;31m'; BOLD=$'\033[1m'; RESET=$'\033[0m'
 else
-  CYAN=''
-  GREEN=''
-  YELLOW=''
-  RED=''
-  BOLD=''
-  RESET=''
+  CYAN=''; GREEN=''; YELLOW=''; RED=''; BOLD=''; RESET=''
 fi
-info() { printf '%s==>%s %s\n' "$GREEN" "$RESET" "$*"; }
-warn() { printf '%s!!%s  %s\n' "$YELLOW" "$RESET" "$*"; }
-err() { printf '%sxx%s  %s\n' "$RED" "$RESET" "$*" >&2; }
-ask() { printf '%s??%s  %s' "$CYAN" "$RESET" "$*"; }
+info()    { printf '%s==>%s %s\n' "$GREEN" "$RESET" "$*"; }
+warn()    { printf '%s!!%s  %s\n' "$YELLOW" "$RESET" "$*"; }
+err()     { printf '%sxx%s  %s\n' "$RED" "$RESET" "$*" >&2; }
+ask()     { printf '%s??%s  %s' "$CYAN" "$RESET" "$*"; }
 heading() { printf '\n%s%s%s\n' "$BOLD" "$*" "$RESET"; }
 
 # t <english> <chinese> — pick the UI language variant.
@@ -172,7 +147,7 @@ trap 'report_unexpected_error "$?" "$LINENO" "$BASH_COMMAND"' ERR
 # Pure-bash substring test. Never pipe `claude/codex plugin list` into
 # `grep -q`: with pipefail, grep exiting early SIGPIPEs the producer and the
 # pipeline reads as a miss even though the entry is there.
-str_contains() { case "$1" in *"$2"*) return 0 ;; *) return 1 ;; esac }
+str_contains() { case "$1" in *"$2"*) return 0 ;; *) return 1 ;; esac; }
 
 usage() {
   cat <<EOF
@@ -191,103 +166,34 @@ Options:
   --api-key KEY      OpenViking API key. Pass '' for unauthenticated local mode.
   --account ID       Optional OpenViking account.
   --user ID          Optional OpenViking user.
-  --reconfigure      Prompt to reconfigure OpenViking URL / API key even if ovcli.conf exists.
   --statusline       Register the Claude Code statusline without asking.
   --no-statusline    Skip the statusline prompt.
-  --uninstall        Remove Cursor/TRAE/TRAE CN/ZCode/Qoder/CodeBuddy integration files and config,
+  --uninstall        Remove Cursor/TRAE/TRAE CN/ZCode integration files and config,
                      plus any legacy TraeCode CLI hook config.
                      For Codex-format plugins, use the client's plugin uninstall command.
-  --sync codebuddy   Dev loop: re-materialize + reinstall the CodeBuddy plugin from this checkout, skip wizard.
-  --verify codebuddy Check CodeBuddy plugin health + source/installed sync; exit 0 if OK.
   --yes, -y          Use defaults for prompts when possible.
 EOF
 }
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
-  --harness)
-    REQUESTED_HARNESSES="${2:-}"
-    shift 2
-    ;;
-  --claude-bin | --claude-bins)
-    CLAUDE_BINS_ARG="${2:-}"
-    shift 2
-    ;;
-  --codex-bin | --codex-bins)
-    CODEX_BINS_ARG="${2:-}"
-    shift 2
-    ;;
-  --dsh-profile)
-    DSH_PROFILE_ARG="${2:-}"
-    shift 2
-    ;;
-  --dist)
-    DIST_ARG="${2:-}"
-    shift 2
-    ;;
-  --lang)
-    LANG_ARG="${2:-}"
-    shift 2
-    ;;
-  --source)
-    SOURCE_ARG="${2:-}"
-    shift 2
-    ;;
-  --url)
-    URL_ARG="${2:-}"
-    shift 2
-    ;;
-  --api-key)
-    API_KEY_ARG="${2-}"
-    shift 2
-    ;;
-  --account)
-    ACCOUNT_ARG="${2-}"
-    shift 2
-    ;;
-  --user)
-    USER_ARG="${2-}"
-    shift 2
-    ;;
-  --statusline)
-    STATUSLINE_ARG="yes"
-    shift
-    ;;
-  --no-statusline)
-    STATUSLINE_ARG="no"
-    shift
-    ;;
-  --uninstall)
-    UNINSTALL=1
-    shift
-    ;;
-  --reconfigure)
-    RECONFIGURE=1
-    shift
-    ;;
-  --sync)
-    SYNC_TARGET="${2:-}"
-    YES=1
-    shift 2
-    ;;
-  --verify)
-    VERIFY_TARGET="${2:-}"
-    YES=1
-    shift 2
-    ;;
-  --yes | -y)
-    YES=1
-    shift
-    ;;
-  --help | -h)
-    usage
-    exit 0
-    ;;
-  *)
-    err "Unknown argument: $1"
-    usage
-    exit 2
-    ;;
+    --harness) REQUESTED_HARNESSES="${2:-}"; shift 2 ;;
+    --claude-bin|--claude-bins) CLAUDE_BINS_ARG="${2:-}"; shift 2 ;;
+    --codex-bin|--codex-bins) CODEX_BINS_ARG="${2:-}"; shift 2 ;;
+    --dsh-profile) DSH_PROFILE_ARG="${2:-}"; shift 2 ;;
+    --dist) DIST_ARG="${2:-}"; shift 2 ;;
+    --lang) LANG_ARG="${2:-}"; shift 2 ;;
+    --source) SOURCE_ARG="${2:-}"; shift 2 ;;
+    --url) URL_ARG="${2:-}"; shift 2 ;;
+    --api-key) API_KEY_ARG="${2-}"; shift 2 ;;
+    --account) ACCOUNT_ARG="${2-}"; shift 2 ;;
+    --user) USER_ARG="${2-}"; shift 2 ;;
+    --statusline) STATUSLINE_ARG="yes"; shift ;;
+    --no-statusline) STATUSLINE_ARG="no"; shift ;;
+    --uninstall) UNINSTALL=1; shift ;;
+    --yes|-y) YES=1; shift ;;
+    --help|-h) usage; exit 0 ;;
+    *) err "Unknown argument: $1"; usage; exit 2 ;;
   esac
 done
 
@@ -295,7 +201,7 @@ done
 # `curl | bash` keep their prompts. No tty -> non-interactive defaults.
 # Probe in a subshell first: a failed `exec` redirection would abort the script.
 INTERACTIVE=0
-if [ "$YES" -ne 1 ] && (exec 3</dev/tty) 2>/dev/null; then
+if [ "$YES" -ne 1 ] && ( exec 3</dev/tty ) 2>/dev/null; then
   exec 3</dev/tty
   INTERACTIVE=1
 fi
@@ -335,8 +241,8 @@ tui_menu() { # tui_menu <title> <default-index> <option...>  -> TUI_MENU_CHOICE
     ask "[1-$n, $(t 'default' '默认') $((def + 1))]: "
     read_tty reply
     case "$reply" in
-    '' | *[!0-9]*) ;;
-    *) [ "$reply" -ge 1 ] && [ "$reply" -le "$n" ] && TUI_MENU_CHOICE=$((reply - 1)) ;;
+      ''|*[!0-9]*) ;;
+      *) [ "$reply" -ge 1 ] && [ "$reply" -le "$n" ] && TUI_MENU_CHOICE=$((reply - 1)) ;;
     esac
     return 0
   fi
@@ -358,29 +264,26 @@ tui_menu() { # tui_menu <title> <default-index> <option...>  -> TUI_MENU_CHOICE
     lines=$((n + 1))
     IFS= read -rsn1 key <&3 || key=""
     case "$key" in
-    $'\x1b')
-      rest=""
-      IFS= read -rsn2 -t 1 rest <&3 || rest=""
-      case "$rest" in
-      '[A') cursor=$(((cursor + n - 1) % n)) ;;
-      '[B') cursor=$(((cursor + 1) % n)) ;;
-      esac
-      ;;
-    k) cursor=$(((cursor + n - 1) % n)) ;;
-    j) cursor=$(((cursor + 1) % n)) ;;
-    [1-9])
-      # Jump only. Confirming on the digit leaves the Enter most users press
-      # right after it in the tty buffer, where the next prompt reads it as
-      # an empty answer.
-      if [ "$key" -le "$n" ]; then
-        cursor=$((key - 1))
-      fi
-      ;;
-    '' | $'\n' | $'\r') break ;;
-    q | Q)
-      cursor="$def"
-      break
-      ;;
+      $'\x1b')
+        rest=""
+        IFS= read -rsn2 -t 1 rest <&3 || rest=""
+        case "$rest" in
+          '[A') cursor=$(( (cursor + n - 1) % n )) ;;
+          '[B') cursor=$(( (cursor + 1) % n )) ;;
+        esac
+        ;;
+      k) cursor=$(( (cursor + n - 1) % n )) ;;
+      j) cursor=$(( (cursor + 1) % n )) ;;
+      [1-9])
+        # Jump only. Confirming on the digit leaves the Enter most users press
+        # right after it in the tty buffer, where the next prompt reads it as
+        # an empty answer.
+        if [ "$key" -le "$n" ]; then
+          cursor=$((key - 1))
+        fi
+        ;;
+      ''|$'\n'|$'\r') break ;;
+      q|Q) cursor="$def"; break ;;
     esac
   done
   printf '\033[?25h' >/dev/tty
@@ -394,8 +297,8 @@ tui_menu() { # tui_menu <title> <default-index> <option...>  -> TUI_MENU_CHOICE
 
 detect_lang_default() {
   case "${OPENVIKING_LANG:-${LC_ALL:-${LANG:-}}}" in
-  zh* | *zh_CN* | *zh_TW* | *zh_HK*) printf 'zh' ;;
-  *) printf 'en' ;;
+    zh*|*zh_CN*|*zh_TW*|*zh_HK*) printf 'zh' ;;
+    *) printf 'en' ;;
   esac
 }
 
@@ -413,11 +316,8 @@ select_language() {
     UI_LANG="$detected"
   fi
   case "$UI_LANG" in
-  en | zh) ;;
-  *)
-    err "Invalid --lang: $UI_LANG (expected en or zh)"
-    exit 2
-    ;;
+    en|zh) ;;
+    *) err "Invalid --lang: $UI_LANG (expected en or zh)"; exit 2 ;;
   esac
 }
 
@@ -493,20 +393,7 @@ EOF
 }
 
 refresh_available_harnesses() {
-  HAVE_CLAUDE=0
-  HAVE_CODEX=0
-  HAVE_CURSOR=0
-  HAVE_TRAE=0
-  HAVE_TRAE_CN=0
-  HAVE_TRAE_CLI=0
-  HAVE_OPENCODE=0
-  HAVE_PI=0
-  HAVE_QODER=0
-  HAVE_CODEBUDDY=0
-  HAVE_OMP=0
-  HAVE_ZCODE=0
-  HAVE_DSH=0
-  HAVE_AGY=0
+  HAVE_CLAUDE=0; HAVE_CODEX=0; HAVE_CURSOR=0; HAVE_TRAE=0; HAVE_TRAE_CN=0; HAVE_TRAE_CLI=0; HAVE_OPENCODE=0; HAVE_PI=0; HAVE_ZCODE=0; HAVE_DSH=0; HAVE_QODER=0; HAVE_CODEBUDDY=0; HAVE_OMP=0; HAVE_AGY=0
   has_available_bin "$CLAUDE_BINS" && HAVE_CLAUDE=1
   has_available_bin "$CODEX_BINS" && HAVE_CODEX=1
   { command -v cursor >/dev/null 2>&1 || command -v cursor-agent >/dev/null 2>&1 || [ -d "/Applications/Cursor.app" ] || [ -d "$HOME/.cursor" ]; } && HAVE_CURSOR=1
@@ -543,8 +430,8 @@ normalize_trae_cli_harness() {
       found=1
       continue
     fi
-    list_contains_line "$(split_harnesses "$normalized")" "$h" ||
-      normalized="${normalized:+$normalized,}$h"
+    list_contains_line "$(split_harnesses "$normalized")" "$h" \
+      || normalized="${normalized:+$normalized,}$h"
   done <<EOF
 $(split_harnesses "$SELECTED_HARNESSES")
 EOF
@@ -554,8 +441,8 @@ EOF
 
   trae_cli_bin="$(resolve_traecode_cli_bin)"
   TRAECODE_CLI_BIN="$trae_cli_bin"
-  if [ -z "$CODEX_BINS_ARG" ] &&
-    ! list_contains_line "$(split_harnesses "$normalized")" codex; then
+  if [ -z "$CODEX_BINS_ARG" ] \
+    && ! list_contains_line "$(split_harnesses "$normalized")" codex; then
     CODEX_BINS="$trae_cli_bin"
     TUI_CODEX_BINS="$trae_cli_bin"
   else
@@ -609,14 +496,8 @@ json_get() {
 
 mask_secret() {
   local s="$1"
-  if [ -z "$s" ]; then
-    printf '%s' "$(t '(not set)' '（未设置）')"
-    return
-  fi
-  if [ "${#s}" -le 8 ]; then
-    printf '****'
-    return
-  fi
+  if [ -z "$s" ]; then printf '%s' "$(t '(not set)' '（未设置）')"; return; fi
+  if [ "${#s}" -le 8 ]; then printf '****'; return; fi
   printf '%s…%s (%s)' "$(printf '%s' "$s" | cut -c1-4)" "$(printf '%s' "$s" | tail -c 4)" "${#s}"
 }
 
@@ -648,20 +529,7 @@ NODE
 CLAUDE_BINS="$(normalize_bin_list "$CLAUDE_BINS_ARG" claude)"
 CODEX_BINS="$(normalize_bin_list "$CODEX_BINS_ARG" codex)"
 
-HAVE_CLAUDE=0
-HAVE_CODEX=0
-HAVE_CURSOR=0
-HAVE_TRAE=0
-HAVE_TRAE_CN=0
-HAVE_TRAE_CLI=0
-HAVE_OPENCODE=0
-HAVE_PI=0
-HAVE_QODER=0
-HAVE_CODEBUDDY=0
-HAVE_OMP=0
-HAVE_ZCODE=0
-HAVE_DSH=0
-HAVE_AGY=0
+HAVE_CLAUDE=0; HAVE_CODEX=0; HAVE_CURSOR=0; HAVE_TRAE=0; HAVE_TRAE_CN=0; HAVE_TRAE_CLI=0; HAVE_OPENCODE=0; HAVE_PI=0; HAVE_ZCODE=0; HAVE_DSH=0; HAVE_QODER=0; HAVE_CODEBUDDY=0; HAVE_OMP=0; HAVE_AGY=0
 refresh_available_harnesses
 
 TUI_CLAUDE_BINS="$CLAUDE_BINS"
@@ -676,13 +544,12 @@ SEL_DSH=0
 SEL_CURSOR_APP=0
 SEL_TRAE=0
 SEL_TRAE_CN=0
+SEL_ZCODE=0
 SEL_QODER=0
 SEL_CODEBUDDY=0
 SEL_OMP=0
-SEL_ZCODE=0
 SEL_AGY=0
-TUI_CURSOR=0
-TUI_LINES=0
+TUI_CURSOR=0; TUI_LINES=0
 
 list_count() {
   local list="$1" item n=0
@@ -695,89 +562,50 @@ EOF
 }
 
 tui_selectable_count() {
-  printf '%s' $(($(list_count "$TUI_CLAUDE_BINS") + $(list_count "$TUI_CODEX_BINS") + 11))
+  printf '%s' $(( $(list_count "$TUI_CLAUDE_BINS") + $(list_count "$TUI_CODEX_BINS") + 11 ))
 }
 
 tui_total_count() {
-  printf '%s' $(($(tui_selectable_count) + 1))
+  printf '%s' $(( $(tui_selectable_count) + 1 ))
 }
 
 tui_item_at() { # tui_item_at <index> -> kind|bin, or add|
   local idx="$1" i=0 bin
   while IFS= read -r bin; do
     [ -n "$bin" ] || continue
-    if [ "$i" -eq "$idx" ]; then
-      printf 'claude|%s' "$bin"
-      return 0
-    fi
+    if [ "$i" -eq "$idx" ]; then printf 'claude|%s' "$bin"; return 0; fi
     i=$((i + 1))
   done <<EOF
 $TUI_CLAUDE_BINS
 EOF
   while IFS= read -r bin; do
     [ -n "$bin" ] || continue
-    if [ "$i" -eq "$idx" ]; then
-      printf 'codex|%s' "$bin"
-      return 0
-    fi
+    if [ "$i" -eq "$idx" ]; then printf 'codex|%s' "$bin"; return 0; fi
     i=$((i + 1))
   done <<EOF
 $TUI_CODEX_BINS
 EOF
-  if [ "$i" -eq "$idx" ]; then
-    printf 'opencode|opencode'
-    return 0
-  fi
+  if [ "$i" -eq "$idx" ]; then printf 'opencode|opencode'; return 0; fi
   i=$((i + 1))
-  if [ "$i" -eq "$idx" ]; then
-    printf 'pi|pi'
-    return 0
-  fi
+  if [ "$i" -eq "$idx" ]; then printf 'pi|pi'; return 0; fi
   i=$((i + 1))
-  if [ "$i" -eq "$idx" ]; then
-    printf 'dsh|dsh'
-    return 0
-  fi
+  if [ "$i" -eq "$idx" ]; then printf 'dsh|dsh'; return 0; fi
   i=$((i + 1))
-  if [ "$i" -eq "$idx" ]; then
-    printf 'cursor|cursor'
-    return 0
-  fi
+  if [ "$i" -eq "$idx" ]; then printf 'cursor|cursor'; return 0; fi
   i=$((i + 1))
-  if [ "$i" -eq "$idx" ]; then
-    printf 'trae|trae'
-    return 0
-  fi
+  if [ "$i" -eq "$idx" ]; then printf 'trae|trae'; return 0; fi
   i=$((i + 1))
-  if [ "$i" -eq "$idx" ]; then
-    printf 'trae-cn|trae-cn'
-    return 0
-  fi
+  if [ "$i" -eq "$idx" ]; then printf 'trae-cn|trae-cn'; return 0; fi
   i=$((i + 1))
-  if [ "$i" -eq "$idx" ]; then
-    printf 'qoder|qoder'
-    return 0
-  fi
+  if [ "$i" -eq "$idx" ]; then printf 'zcode|zcode'; return 0; fi
+  if [ "$i" -eq "$idx" ]; then printf 'qoder|qoder'; return 0; fi
   i=$((i + 1))
-  if [ "$i" -eq "$idx" ]; then
-    printf 'codebuddy|codebuddy'
-    return 0
-  fi
+  if [ "$i" -eq "$idx" ]; then printf 'codebuddy|codebuddy'; return 0; fi
   i=$((i + 1))
-  if [ "$i" -eq "$idx" ]; then
-    printf 'omp|omp'
-    return 0
-  fi
+  if [ "$i" -eq "$idx" ]; then printf 'omp|omp'; return 0; fi
   i=$((i + 1))
-  if [ "$i" -eq "$idx" ]; then
-    printf 'zcode|zcode'
-    return 0
-  fi
+  if [ "$i" -eq "$idx" ]; then printf 'agy|agy'; return 0; fi
   i=$((i + 1))
-  if [ "$i" -eq "$idx" ]; then
-    printf 'agy|agy'
-    return 0
-  fi
   printf 'add|'
 }
 
@@ -800,22 +628,22 @@ tui_find_bin_index() { # tui_find_bin_index <kind> <bin>
 tui_bin_label() {
   local kind="$1" bin="$2"
   case "$kind:$bin" in
-  claude:claude) printf 'Claude Code' ;;
-  codex:codex) printf 'Codex' ;;
-  codex:trae-cli | codex:traecli | codex:traex) printf 'TraeCode CLI 2.0' ;;
-  opencode:*) printf 'OpenCode' ;;
-  pi:*) printf 'pi' ;;
-  dsh:*) printf 'DeepSeek Harness' ;;
-  cursor:*) printf 'Cursor' ;;
-  trae:*) printf 'TRAE' ;;
-  trae-cn:*) printf 'TRAE CN' ;;
-  qoder:*) printf 'Qoder' ;;
-  codebuddy:*) printf 'CodeBuddy' ;;
-  omp:*) printf 'oh-my-pi (omp)' ;;
-  zcode:*) printf 'ZCode' ;;
-  agy:*) printf 'Antigravity (AGY) IDE' ;;
-  claude:*) printf '%s %s' "$bin" "$(t '(Claude-format)' '（Claude 格式）')" ;;
-  codex:*) printf '%s %s' "$bin" "$(t '(Codex-format)' '（Codex 格式）')" ;;
+    claude:claude) printf 'Claude Code' ;;
+    codex:codex) printf 'Codex' ;;
+    codex:trae-cli|codex:traecli|codex:traex) printf 'TraeCode CLI 2.0' ;;
+    opencode:*) printf 'OpenCode' ;;
+    pi:*) printf 'pi' ;;
+    dsh:*) printf 'DeepSeek Harness' ;;
+    cursor:*) printf 'Cursor' ;;
+    trae:*) printf 'TRAE' ;;
+    trae-cn:*) printf 'TRAE CN' ;;
+    zcode:*) printf 'ZCode' ;;
+    qoder:*) printf 'Qoder' ;;
+    codebuddy:*) printf 'CodeBuddy' ;;
+    omp:*) printf 'omp' ;;
+    agy:*) printf 'Antigravity (AGY)' ;;
+    claude:*) printf '%s %s' "$bin" "$(t '(Claude-format)' '（Claude 格式）')" ;;
+    codex:*) printf '%s %s' "$bin" "$(t '(Codex-format)' '（Codex 格式）')" ;;
   esac
 }
 
@@ -837,30 +665,27 @@ tui_bin_selected() {
     [ "$SEL_TRAE" -eq 1 ]
   elif [ "$kind" = "trae-cn" ]; then
     [ "$SEL_TRAE_CN" -eq 1 ]
-  elif [ "$kind" = "zcode" ]; then
-    [ "$SEL_ZCODE" -eq 1 ]
   elif [ "$kind" = "qoder" ]; then
     [ "$SEL_QODER" -eq 1 ]
+  elif [ "$kind" = "codebuddy" ]; then
+    [ "$SEL_CODEBUDDY" -eq 1 ]
   elif [ "$kind" = "omp" ]; then
     [ "$SEL_OMP" -eq 1 ]
   elif [ "$kind" = "agy" ]; then
     [ "$SEL_AGY" -eq 1 ]
   else
-    [ "$SEL_CODEBUDDY" -eq 1 ]
+    [ "$SEL_ZCODE" -eq 1 ]
   fi
 }
 
 tui_bin_detected() { # tui_bin_detected <kind> <bin>
   case "$1" in
-  cursor) [ "$HAVE_CURSOR" -eq 1 ] ;;
-  trae) [ "$HAVE_TRAE" -eq 1 ] ;;
-  trae-cn) [ "$HAVE_TRAE_CN" -eq 1 ] ;;
-  qoder) [ "$HAVE_QODER" -eq 1 ] ;;
-  codebuddy) [ "$HAVE_CODEBUDDY" -eq 1 ] ;;
-  omp) [ "$HAVE_OMP" -eq 1 ] ;;
-  zcode) [ "$HAVE_ZCODE" -eq 1 ] ;;
-  agy) [ "$HAVE_AGY" -eq 1 ] ;;
-  *) command -v "$2" >/dev/null 2>&1 ;;
+    cursor) [ "$HAVE_CURSOR" -eq 1 ] ;;
+    trae) [ "$HAVE_TRAE" -eq 1 ] ;;
+    trae-cn) [ "$HAVE_TRAE_CN" -eq 1 ] ;;
+    zcode) [ "$HAVE_ZCODE" -eq 1 ] ;;
+    agy) [ "$HAVE_AGY" -eq 1 ] ;;
+    *) command -v "$2" >/dev/null 2>&1 ;;
   esac
 }
 
@@ -873,10 +698,10 @@ tui_set_all_bins() {
   SEL_CURSOR_APP=1
   SEL_TRAE=1
   SEL_TRAE_CN=1
+  SEL_ZCODE=1
   SEL_QODER=1
   SEL_CODEBUDDY=1
   SEL_OMP=1
-  SEL_ZCODE=1
   SEL_AGY=1
 }
 
@@ -896,29 +721,21 @@ tui_toggle_bin() {
     SEL_DSH=$((1 - SEL_DSH))
     return 0
   elif [ "$kind" = "cursor" ]; then
-    SEL_CURSOR_APP=$((1 - SEL_CURSOR_APP))
-    return 0
+    SEL_CURSOR_APP=$((1 - SEL_CURSOR_APP)); return 0
   elif [ "$kind" = "trae" ]; then
-    SEL_TRAE=$((1 - SEL_TRAE))
-    return 0
+    SEL_TRAE=$((1 - SEL_TRAE)); return 0
   elif [ "$kind" = "trae-cn" ]; then
-    SEL_TRAE_CN=$((1 - SEL_TRAE_CN))
-    return 0
-  elif [ "$kind" = "zcode" ]; then
-    SEL_ZCODE=$((1 - SEL_ZCODE))
-    return 0
+    SEL_TRAE_CN=$((1 - SEL_TRAE_CN)); return 0
   elif [ "$kind" = "qoder" ]; then
-    SEL_QODER=$((1 - SEL_QODER))
-    return 0
+    SEL_QODER=$((1 - SEL_QODER)); return 0
+  elif [ "$kind" = "codebuddy" ]; then
+    SEL_CODEBUDDY=$((1 - SEL_CODEBUDDY)); return 0
   elif [ "$kind" = "omp" ]; then
-    SEL_OMP=$((1 - SEL_OMP))
-    return 0
+    SEL_OMP=$((1 - SEL_OMP)); return 0
   elif [ "$kind" = "agy" ]; then
-    SEL_AGY=$((1 - SEL_AGY))
-    return 0
+    SEL_AGY=$((1 - SEL_AGY)); return 0
   else
-    SEL_CODEBUDDY=$((1 - SEL_CODEBUDDY))
-    return 0
+    SEL_ZCODE=$((1 - SEL_ZCODE)); return 0
   fi
   if list_contains_line "$selected" "$bin"; then
     while IFS= read -r item; do
@@ -988,17 +805,16 @@ tui_reset_bin_selection() {
   SEL_CURSOR_APP=0
   SEL_TRAE=0
   SEL_TRAE_CN=0
+  SEL_ZCODE=0
   SEL_QODER=0
   SEL_CODEBUDDY=0
   SEL_OMP=0
-  SEL_ZCODE=0
   SEL_AGY=0
   while IFS= read -r bin; do
     [ -n "$bin" ] || continue
     if command -v "$bin" >/dev/null 2>&1; then
       SEL_CLAUDE_BINS="${SEL_CLAUDE_BINS:+$SEL_CLAUDE_BINS
-}$bin"
-      any=1
+}$bin"; any=1
     fi
   done <<EOF
 $TUI_CLAUDE_BINS
@@ -1007,56 +823,18 @@ EOF
     [ -n "$bin" ] || continue
     if command -v "$bin" >/dev/null 2>&1; then
       SEL_CODEX_BINS="${SEL_CODEX_BINS:+$SEL_CODEX_BINS
-}$bin"
-      any=1
+}$bin"; any=1
     fi
   done <<EOF
 $TUI_CODEX_BINS
 EOF
-  if command -v opencode >/dev/null 2>&1; then
-    SEL_OPENCODE=1
-    any=1
-  fi
-  if command -v pi >/dev/null 2>&1; then
-    SEL_PI=1
-    any=1
-  fi
-  if command -v dsh >/dev/null 2>&1; then
-    SEL_DSH=1
-    any=1
-  fi
-  if [ "$HAVE_CURSOR" -eq 1 ]; then
-    SEL_CURSOR_APP=1
-    any=1
-  fi
-  if [ "$HAVE_TRAE" -eq 1 ]; then
-    SEL_TRAE=1
-    any=1
-  fi
-  if [ "$HAVE_TRAE_CN" -eq 1 ]; then
-    SEL_TRAE_CN=1
-    any=1
-  fi
-  if [ "$HAVE_QODER" -eq 1 ]; then
-    SEL_QODER=1
-    any=1
-  fi
-  if [ "$HAVE_CODEBUDDY" -eq 1 ]; then
-    SEL_CODEBUDDY=1
-    any=1
-  fi
-  if [ "$HAVE_OMP" -eq 1 ]; then
-    SEL_OMP=1
-    any=1
-  fi
-  if [ "$HAVE_ZCODE" -eq 1 ]; then
-    SEL_ZCODE=1
-    any=1
-  fi
-  if [ "$HAVE_AGY" -eq 1 ]; then
-    SEL_AGY=1
-    any=1
-  fi
+  if command -v opencode >/dev/null 2>&1; then SEL_OPENCODE=1; any=1; fi
+  if command -v pi >/dev/null 2>&1; then SEL_PI=1; any=1; fi
+  if command -v dsh >/dev/null 2>&1; then SEL_DSH=1; any=1; fi
+  if [ "$HAVE_CURSOR" -eq 1 ]; then SEL_CURSOR_APP=1; any=1; fi
+  if [ "$HAVE_TRAE" -eq 1 ]; then SEL_TRAE=1; any=1; fi
+  if [ "$HAVE_TRAE_CN" -eq 1 ]; then SEL_TRAE_CN=1; any=1; fi
+  if [ "$HAVE_ZCODE" -eq 1 ]; then SEL_ZCODE=1; any=1; fi
   if [ "$any" -ne 1 ]; then
     SEL_CLAUDE_BINS="$TUI_CLAUDE_BINS"
     SEL_CODEX_BINS="$TUI_CODEX_BINS"
@@ -1083,24 +861,21 @@ tui_choose_cli_format() {
       continue
     fi
     case "$key" in
-    $'\x1b')
-      rest=""
-      IFS= read -rsn2 -t 1 rest <&3 || rest=""
-      case "$rest" in
-      '[A' | '[B') cursor=$((1 - cursor)) ;;
-      esac
-      ;;
-    k | j) cursor=$((1 - cursor)) ;;
-    1) cursor=0 ;;
-    2) cursor=1 ;;
-    '' | $'\n' | $'\r')
-      if [ "$cursor" -eq 0 ]; then TUI_FORMAT_CHOICE="claude"; else TUI_FORMAT_CHOICE="codex"; fi
-      break
-      ;;
-    q | Q)
-      TUI_FORMAT_CHOICE=""
-      break
-      ;;
+      $'\x1b')
+        rest=""
+        IFS= read -rsn2 -t 1 rest <&3 || rest=""
+        case "$rest" in
+          '[A'|'[B') cursor=$((1 - cursor)) ;;
+        esac
+        ;;
+      k|j) cursor=$((1 - cursor)) ;;
+      1) cursor=0 ;;
+      2) cursor=1 ;;
+      ''|$'\n'|$'\r')
+        if [ "$cursor" -eq 0 ]; then TUI_FORMAT_CHOICE="claude"; else TUI_FORMAT_CHOICE="codex"; fi
+        break
+        ;;
+      q|Q) TUI_FORMAT_CHOICE=""; break ;;
     esac
   done
   printf '\033[?25h' >/dev/tty
@@ -1145,9 +920,10 @@ tui_add_compatible_cli() {
 }
 
 tui_has_selection() {
-  [ -n "$(list_words "$SEL_CLAUDE_BINS")" ] || [ -n "$(list_words "$SEL_CODEX_BINS")" ] ||
-    [ "$SEL_OPENCODE" -eq 1 ] || [ "$SEL_PI" -eq 1 ] || [ "$SEL_DSH" -eq 1 ] || [ "$SEL_CURSOR_APP" -eq 1 ] ||
-    [ "$SEL_TRAE" -eq 1 ] || [ "$SEL_TRAE_CN" -eq 1 ] || [ "$SEL_QODER" -eq 1 ] || [ "$SEL_CODEBUDDY" -eq 1 ] || [ "$SEL_OMP" -eq 1 ] || [ "$SEL_ZCODE" -eq 1 ] || [ "$SEL_AGY" -eq 1 ]
+  [ -n "$(list_words "$SEL_CLAUDE_BINS")" ] || [ -n "$(list_words "$SEL_CODEX_BINS")" ] \
+    || [ "$SEL_OPENCODE" -eq 1 ] || [ "$SEL_PI" -eq 1 ] || [ "$SEL_DSH" -eq 1 ] || [ "$SEL_CURSOR_APP" -eq 1 ] \
+    || [ "$SEL_TRAE" -eq 1 ] || [ "$SEL_TRAE_CN" -eq 1 ] || [ "$SEL_ZCODE" -eq 1 ] \
+    || [ "$SEL_QODER" -eq 1 ] || [ "$SEL_CODEBUDDY" -eq 1 ] || [ "$SEL_OMP" -eq 1 ] || [ "$SEL_AGY" -eq 1 ]
 }
 
 tui_finish_selection() {
@@ -1162,10 +938,10 @@ tui_finish_selection() {
   [ "$SEL_CURSOR_APP" -eq 1 ] && SELECTED_HARNESSES="${SELECTED_HARNESSES:+$SELECTED_HARNESSES,}cursor"
   [ "$SEL_TRAE" -eq 1 ] && SELECTED_HARNESSES="${SELECTED_HARNESSES:+$SELECTED_HARNESSES,}trae"
   [ "$SEL_TRAE_CN" -eq 1 ] && SELECTED_HARNESSES="${SELECTED_HARNESSES:+$SELECTED_HARNESSES,}trae-cn"
+  [ "$SEL_ZCODE" -eq 1 ] && SELECTED_HARNESSES="${SELECTED_HARNESSES:+$SELECTED_HARNESSES,}zcode"
   [ "$SEL_QODER" -eq 1 ] && SELECTED_HARNESSES="${SELECTED_HARNESSES:+$SELECTED_HARNESSES,}qoder"
   [ "$SEL_CODEBUDDY" -eq 1 ] && SELECTED_HARNESSES="${SELECTED_HARNESSES:+$SELECTED_HARNESSES,}codebuddy"
   [ "$SEL_OMP" -eq 1 ] && SELECTED_HARNESSES="${SELECTED_HARNESSES:+$SELECTED_HARNESSES,}omp"
-  [ "$SEL_ZCODE" -eq 1 ] && SELECTED_HARNESSES="${SELECTED_HARNESSES:+$SELECTED_HARNESSES,}zcode"
   [ "$SEL_AGY" -eq 1 ] && SELECTED_HARNESSES="${SELECTED_HARNESSES:+$SELECTED_HARNESSES,}agy"
   return 0
 }
@@ -1186,43 +962,38 @@ tui_select_harnesses() {
       continue
     fi
     case "$key" in
-    $'\x1b')
-      rest=""
-      IFS= read -rsn2 -t 1 rest <&3 || rest=""
-      case "$rest" in
-      '[A') TUI_CURSOR=$(((TUI_CURSOR + total - 1) % total)) ;;
-      '[B') TUI_CURSOR=$(((TUI_CURSOR + 1) % total)) ;;
-      esac
-      ;;
-    k) TUI_CURSOR=$(((TUI_CURSOR + total - 1) % total)) ;;
-    j) TUI_CURSOR=$(((TUI_CURSOR + 1) % total)) ;;
-    ' ')
-      if [ "$TUI_CURSOR" -eq "$add_idx" ]; then
+      $'\x1b')
+        rest=""
+        IFS= read -rsn2 -t 1 rest <&3 || rest=""
+        case "$rest" in
+          '[A') TUI_CURSOR=$(( (TUI_CURSOR + total - 1) % total )) ;;
+          '[B') TUI_CURSOR=$(( (TUI_CURSOR + 1) % total )) ;;
+        esac
+        ;;
+      k) TUI_CURSOR=$(( (TUI_CURSOR + total - 1) % total )) ;;
+      j) TUI_CURSOR=$(( (TUI_CURSOR + 1) % total )) ;;
+      ' ')
+        if [ "$TUI_CURSOR" -eq "$add_idx" ]; then
+          tui_add_compatible_cli
+        else
+          spec="$(tui_item_at "$TUI_CURSOR")"; kind="${spec%%|*}"; bin="${spec#*|}"
+          tui_toggle_bin "$kind" "$bin"
+        fi
+        ;;
+      a|A) tui_set_all_bins ;;
+      n|N|+)
+        TUI_CURSOR="$add_idx"
         tui_add_compatible_cli
-      else
-        spec="$(tui_item_at "$TUI_CURSOR")"
-        kind="${spec%%|*}"
-        bin="${spec#*|}"
-        tui_toggle_bin "$kind" "$bin"
-      fi
-      ;;
-    a | A) tui_set_all_bins ;;
-    n | N | +)
-      TUI_CURSOR="$add_idx"
-      tui_add_compatible_cli
-      ;;
-    '' | $'\n' | $'\r')
-      if [ "$TUI_CURSOR" -eq "$add_idx" ]; then
-        tui_add_compatible_cli
-      else
-        tui_has_selection || {
-          tui_draw
-          continue
-        }
-        break
-      fi
-      ;;
-    q | Q) tui_has_selection && break ;;
+        ;;
+      ''|$'\n'|$'\r')
+        if [ "$TUI_CURSOR" -eq "$add_idx" ]; then
+          tui_add_compatible_cli
+        else
+          tui_has_selection || { tui_draw; continue; }
+          break
+        fi
+        ;;
+      q|Q) tui_has_selection && break ;;
     esac
     total="$(tui_total_count)"
     [ "$TUI_CURSOR" -lt "$total" ] || TUI_CURSOR=$((total - 1))
@@ -1242,11 +1013,11 @@ select_harnesses() {
   [ "$HAVE_TRAE_CN" -eq 1 ] && detected="${detected:+$detected,}trae-cn"
   [ "$HAVE_OPENCODE" -eq 1 ] && detected="${detected:+$detected,}opencode"
   [ "$HAVE_PI" -eq 1 ] && detected="${detected:+$detected,}pi"
+  [ "$HAVE_DSH" -eq 1 ] && detected="${detected:+$detected,}dsh"
+  [ "$HAVE_ZCODE" -eq 1 ] && detected="${detected:+$detected,}zcode"
   [ "$HAVE_QODER" -eq 1 ] && detected="${detected:+$detected,}qoder"
   [ "$HAVE_CODEBUDDY" -eq 1 ] && detected="${detected:+$detected,}codebuddy"
   [ "$HAVE_OMP" -eq 1 ] && detected="${detected:+$detected,}omp"
-  [ "$HAVE_DSH" -eq 1 ] && detected="${detected:+$detected,}dsh"
-  [ "$HAVE_ZCODE" -eq 1 ] && detected="${detected:+$detected,}zcode"
   [ "$HAVE_AGY" -eq 1 ] && detected="${detected:+$detected,}agy"
 
   if [ -n "$REQUESTED_HARNESSES" ]; then
@@ -1335,8 +1106,8 @@ dsh_have_sha256() {
 }
 
 dsh_source_files() { # dsh_source_files <plugin-dir>
-  (cd "$1" 2>/dev/null && find . -type f \
-    -not -path "./node_modules/*" -not -name "*.tgz" -print0) | LC_ALL=C sort -z
+  ( cd "$1" 2>/dev/null && find . -type f \
+      -not -path "./node_modules/*" -not -name "*.tgz" -print0 ) | LC_ALL=C sort -z
 }
 
 dsh_source_fingerprint() { # dsh_source_fingerprint <plugin-dir>
@@ -1344,7 +1115,7 @@ dsh_source_fingerprint() { # dsh_source_fingerprint <plugin-dir>
   dsh_have_sha256 || return 1
   {
     dsh_source_files "$dir" | tr '\0' '\n'
-    dsh_source_files "$dir" | (cd "$dir" && xargs -0 cat 2>/dev/null)
+    dsh_source_files "$dir" | ( cd "$dir" && xargs -0 cat 2>/dev/null )
   } | dsh_sha256 | cut -c1-12
 }
 
@@ -1365,7 +1136,7 @@ dsh_pack_local() { # dsh_pack_local <plugin-dir> -> tarball path
   fi
   rm -rf "$dest"
   mkdir -p "$dest/$fingerprint" || return 1
-  name="$( (cd "$dir" && npm pack --pack-destination "$dest/$fingerprint" 2>/dev/null) | tail -1)"
+  name="$( (cd "$dir" && npm pack --pack-destination "$dest/$fingerprint" 2>/dev/null) | tail -1 )"
   [ -n "$name" ] && [ -f "$dest/$fingerprint/$name" ] || {
     warn "$(t 'npm pack failed for the local dsh checkout; installing the published package instead.' '本地 dsh checkout 打包失败，将改装已发布的包。')" >&2
     return 1
@@ -1401,12 +1172,9 @@ validate_selected_harnesses() {
   local h bad=0
   while IFS= read -r h; do
     case "$h" in
-    claude | codex | cursor | trae | trae-cn | opencode | pi | zcode | qoder | codebuddy | omp | dsh | agy) ;;
-    trae-cli) [ "$UNINSTALL" -eq 1 ] || bad=1 ;;
-    *)
-      err "Unsupported harness: $h"
-      bad=1
-      ;;
+      claude|codex|cursor|trae|trae-cn|opencode|pi|zcode|dsh) ;;
+      trae-cli) [ "$UNINSTALL" -eq 1 ] || bad=1 ;;
+      *) err "Unsupported harness: $h"; bad=1 ;;
     esac
   done <<EOF
 $(split_harnesses "$SELECTED_HARNESSES")
@@ -1441,12 +1209,12 @@ $CODEX_BINS
 EOF
   fi
   if contains_harness opencode && command -v opencode >/dev/null 2>&1; then ok=1; fi
-  if contains_harness pi && command -v pi >/dev/null 2>&1; then ok=1; fi
   if contains_harness qoder && command -v qodercli >/dev/null 2>&1; then ok=1; fi
   if contains_harness codebuddy && command -v codebuddy >/dev/null 2>&1; then ok=1; fi
   if contains_harness omp && command -v omp >/dev/null 2>&1; then ok=1; fi
+  if contains_harness pi && command -v pi >/dev/null 2>&1; then ok=1; fi
   if contains_harness dsh && command -v dsh >/dev/null 2>&1; then ok=1; fi
-  # Cursor, TRAE, and AGY are config-driven integrations. They may be installed
+  # Cursor and TRAE are config-driven integrations. They may be installed
   # before the desktop app itself, so a CLI in PATH is not required.
   if contains_harness cursor || contains_harness trae || contains_harness trae-cn || contains_harness trae-cli || contains_harness zcode || contains_harness agy; then ok=1; fi
   if [ "$ok" -ne 1 ]; then
@@ -1469,9 +1237,9 @@ select_dist() {
         "$(t 'Volcengine TOS mirror (use when GitHub is unreachable)' '火山引擎 TOS 镜像（无法访问 GitHub 时使用）')" \
         "$(t 'This checkout (development; edits take effect live)' '当前 checkout（开发模式；改动即时生效）')"
       case "$TUI_MENU_CHOICE" in
-      0) DIST="github" ;;
-      1) DIST="tos" ;;
-      *) SOURCE_ARG="dev" ;;
+        0) DIST="github" ;;
+        1) DIST="tos" ;;
+        *) SOURCE_ARG="dev" ;;
       esac
     else
       tui_menu "$(t 'Install source' '安装源模式')" 0 \
@@ -1481,11 +1249,8 @@ select_dist() {
     fi
   fi
   case "$DIST" in
-  github | tos) ;;
-  *)
-    err "Invalid --dist: $DIST (expected github or tos)"
-    exit 2
-    ;;
+    github|tos) ;;
+    *) err "Invalid --dist: $DIST (expected github or tos)"; exit 2 ;;
   esac
 }
 
@@ -1500,13 +1265,13 @@ prompt_connection() { # sets WIZ_URL / WIZ_KEY (WIZ_KEY may stay __OPENVIKING_KE
     "$(t 'Volcengine OpenViking Cloud' '火山引擎 OpenViking 云服务')  [api.vikingdb.cn-beijing.volces.com]" \
     "$(t 'Custom URL / keep current' '自定义 URL / 保持当前')  [${current_url:-http://127.0.0.1:1933}]"
   case "$TUI_MENU_CHOICE" in
-  0) WIZ_URL="http://127.0.0.1:1933" ;;
-  1) WIZ_URL="https://api.vikingdb.cn-beijing.volces.com/openviking" ;;
-  *)
-    ask "$(t 'Server URL' '服务地址') [${current_url:-http://127.0.0.1:1933}]: "
-    read_tty url_input
-    WIZ_URL="${url_input:-${current_url:-http://127.0.0.1:1933}}"
-    ;;
+    0) WIZ_URL="http://127.0.0.1:1933" ;;
+    1) WIZ_URL="https://api.vikingdb.cn-beijing.volces.com/openviking" ;;
+    *)
+      ask "$(t 'Server URL' '服务地址') [${current_url:-http://127.0.0.1:1933}]: "
+      read_tty url_input
+      WIZ_URL="${url_input:-${current_url:-http://127.0.0.1:1933}}"
+      ;;
   esac
 
   if [ -n "$current_key" ]; then
@@ -1540,20 +1305,6 @@ configure_ovcli() {
   current_account="$(json_get "$OVCLI_CONF" account)"
   current_user="$(json_get "$OVCLI_CONF" user)"
 
-  # Fall back to ov.conf if ovcli.conf does not supply url or key
-  if [ -z "$current_url" ] && [ -f "$OV_HOME/ov.conf" ]; then
-    local ov_host ov_port
-    ov_host="$(node -e 'try{const c=JSON.parse(require("node:fs").readFileSync(process.argv[1],"utf8"));process.stdout.write(c.server?.host||"127.0.0.1");}catch{}' "$OV_HOME/ov.conf" 2>/dev/null || true)"
-    ov_port="$(node -e 'try{const c=JSON.parse(require("node:fs").readFileSync(process.argv[1],"utf8"));process.stdout.write(String(c.server?.port||1933));}catch{}' "$OV_HOME/ov.conf" 2>/dev/null || true)"
-    [ "$ov_host" = "0.0.0.0" ] && ov_host="127.0.0.1"
-    if [ -n "$ov_host" ] && [ -n "$ov_port" ]; then
-      current_url="http://$ov_host:$ov_port"
-    fi
-  fi
-  if [ -z "$current_key" ] && [ -f "$OV_HOME/ov.conf" ]; then
-    current_key="$(node -e 'try{const c=JSON.parse(require("node:fs").readFileSync(process.argv[1],"utf8"));process.stdout.write(c.server?.root_api_key||"");}catch{}' "$OV_HOME/ov.conf" 2>/dev/null || true)"
-  fi
-
   url="$current_url"
   key="__OPENVIKING_KEEP__"
   account="__OPENVIKING_KEEP__"
@@ -1563,10 +1314,6 @@ configure_ovcli() {
   [ "$API_KEY_ARG" != "__OPENVIKING_UNSET__" ] && key="$API_KEY_ARG"
   [ "$ACCOUNT_ARG" != "__OPENVIKING_UNSET__" ] && account="$ACCOUNT_ARG"
   [ "$USER_ARG" != "__OPENVIKING_UNSET__" ] && user="$USER_ARG"
-
-  if [ "$key" = "__OPENVIKING_KEEP__" ] && [ ! -f "$OVCLI_CONF" ] && [ -n "$current_key" ]; then
-    key="$current_key"
-  fi
 
   # Show what is configured today, then offer to keep or reconfigure.
   if [ -n "$current_url" ] || [ -n "$current_key" ]; then
@@ -1581,26 +1328,16 @@ configure_ovcli() {
 
   if [ "$INTERACTIVE" -eq 1 ] && [ -z "$URL_ARG" ] && [ "$API_KEY_ARG" = "__OPENVIKING_UNSET__" ]; then
     if [ -n "$current_url" ] || [ -n "$current_key" ]; then
-      if [ -n "$REQUESTED_HARNESSES" ] && [ "$RECONFIGURE" -ne 1 ]; then
-        info "$(t 'Defaulting to existing credentials from:' '默认读取已有凭据：') $OVCLI_CONF"
-      elif [ "$RECONFIGURE" -eq 1 ]; then
+      tui_menu "$(t 'Existing credentials found — what next?' '检测到已有凭据——如何处理？')" 0 \
+        "$(t 'Keep current credentials' '沿用当前凭据')" \
+        "$(t 'Reconfigure (server URL / API key)' '重新配置（服务地址 / API key）')"
+      if [ "$TUI_MENU_CHOICE" -eq 1 ]; then
         prompt_connection "$current_url" "$current_key"
-        url="$WIZ_URL"
-        key="$WIZ_KEY"
-      else
-        tui_menu "$(t 'Existing credentials found — what next?' '检测到已有凭据——如何处理？')" 0 \
-          "$(t 'Keep current credentials' '沿用当前凭据')" \
-          "$(t 'Reconfigure (server URL / API key)' '重新配置（服务地址 / API key）')"
-        if [ "$TUI_MENU_CHOICE" -eq 1 ]; then
-          prompt_connection "$current_url" "$current_key"
-          url="$WIZ_URL"
-          key="$WIZ_KEY"
-        fi
+        url="$WIZ_URL"; key="$WIZ_KEY"
       fi
     else
       prompt_connection "" ""
-      url="$WIZ_URL"
-      key="$WIZ_KEY"
+      url="$WIZ_URL"; key="$WIZ_KEY"
     fi
   fi
   [ -z "$url" ] && url="${current_url:-http://127.0.0.1:1933}"
@@ -1625,56 +1362,34 @@ configure_ovcli() {
 
 fetch_archive() { # fetch_archive <url> <dest> <required-subpath>
   local url="$1" dest="$2" need="$3" tmp_zip tmp_dir top
-  command -v unzip >/dev/null 2>&1 || {
-    err 'unzip not found; required to install from an archive.'
-    exit 1
-  }
-  tmp_zip=$(mktemp "${TMPDIR:-/tmp}/ov-src.XXXXXX") || {
-    err 'mktemp failed'
-    exit 1
-  }
-  tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/ov-src.XXXXXX") || {
-    err 'mktemp failed'
-    rm -f "$tmp_zip"
-    exit 1
-  }
+  command -v unzip >/dev/null 2>&1 || { err 'unzip not found; required to install from an archive.'; exit 1; }
+  tmp_zip=$(mktemp "${TMPDIR:-/tmp}/ov-src.XXXXXX") || { err 'mktemp failed'; exit 1; }
+  tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/ov-src.XXXXXX") || { err 'mktemp failed'; rm -f "$tmp_zip"; exit 1; }
   info "$(t 'Downloading archive' '下载归档')"
   info "  $url"
-  curl -fsSL -o "$tmp_zip" "$url" || {
-    rm -rf "$tmp_zip" "$tmp_dir"
-    return 1
-  }
-  unzip -q "$tmp_zip" -d "$tmp_dir" || {
-    err 'unzip failed'
-    rm -rf "$tmp_zip" "$tmp_dir"
-    exit 1
-  }
+  curl -fsSL -o "$tmp_zip" "$url" || { rm -rf "$tmp_zip" "$tmp_dir"; return 1; }
+  unzip -q "$tmp_zip" -d "$tmp_dir" || { err 'unzip failed'; rm -rf "$tmp_zip" "$tmp_dir"; exit 1; }
   top=$(find "$tmp_dir" -mindepth 1 -maxdepth 1 -type d | head -n 1)
   if [ -n "$top" ] && [ ! -e "$top/$need" ] && [ -e "$tmp_dir/$need" ]; then
     top="$tmp_dir"
   fi
   if [ -z "$top" ] || [ ! -e "$top/$need" ]; then
     err "unexpected archive layout (missing $need)"
-    rm -rf "$tmp_zip" "$tmp_dir"
-    exit 1
+    rm -rf "$tmp_zip" "$tmp_dir"; exit 1
   fi
   if [ -e "$dest" ] && [ ! -f "$dest/$ARCHIVE_MARKER" ] && [ ! -d "$dest/.git" ]; then
     err "$dest exists and is not an OpenViking checkout/archive."
-    rm -rf "$tmp_zip" "$tmp_dir"
-    exit 1
+    rm -rf "$tmp_zip" "$tmp_dir"; exit 1
   fi
   rm -rf "$dest"
   mkdir -p "$(dirname "$dest")"
   if [ "$top" = "$tmp_dir" ]; then
     mkdir -p "$dest"
-    (
-      shopt -s dotglob
-      mv "$tmp_dir"/* "$dest"/
-    )
+    ( shopt -s dotglob; mv "$tmp_dir"/* "$dest"/ )
   else
     mv "$top" "$dest"
   fi
-  : >"$dest/$ARCHIVE_MARKER"
+  : > "$dest/$ARCHIVE_MARKER"
   rm -rf "$tmp_zip" "$tmp_dir"
 }
 
@@ -1687,21 +1402,6 @@ resolve_self_checkout() {
   if [ -e "$dir/../../.git" ] && [ -d "$dir/../claude-code-memory-plugin" ]; then
     CHECKOUT_DIR="$(cd "$dir/../.." >/dev/null 2>&1 && pwd -P)"
   fi
-}
-
-# Re-sync the vendored shared-lib copies (claude-code/codex/opencode/pi) from
-# memory-plugin-shared/lib before a --sync install, so the materialized snapshot
-# picks up the latest shared modules. sync.mjs is a sibling of this script.
-run_shared_sync() {
-  local self_dir sync_mjs
-  self_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd -P)" || return 0
-  sync_mjs="$self_dir/sync.mjs"
-  [ -f "$sync_mjs" ] || return 0
-  info "$(t 'Syncing shared lib into vendored copies' '正在将 shared lib 同步到各 vendored 副本')"
-  "$NODE_BIN" "$sync_mjs" || {
-    err "$(t 'shared lib sync (sync.mjs) failed' 'shared lib 同步（sync.mjs）失败')"
-    return 1
-  }
 }
 
 resolve_source_mode() {
@@ -1717,11 +1417,8 @@ resolve_source_mode() {
     SOURCE_MODE="remote"
   fi
   case "$SOURCE_MODE" in
-  remote | archive | dev) ;;
-  *)
-    err "Invalid --source: $SOURCE_MODE (expected remote, archive, or dev)"
-    exit 2
-    ;;
+    remote|archive|dev) ;;
+    *) err "Invalid --source: $SOURCE_MODE (expected remote, archive, or dev)"; exit 2 ;;
   esac
   info "$(t 'Source mode:' '安装源模式：') $SOURCE_MODE ($(t 'channel' '渠道'): $DIST)"
   if [ "$SOURCE_MODE" = "archive" ] && [ "$HAVE_CLAUDE" -eq 1 ] && contains_harness claude; then
@@ -1744,10 +1441,7 @@ ensure_checkout() {
     return 1
   fi
   if [ -n "$REPO_ARCHIVE_URL" ]; then
-    fetch_archive "$REPO_ARCHIVE_URL" "$REPO_DIR" "examples" || {
-      err "source archive download failed"
-      exit 1
-    }
+    fetch_archive "$REPO_ARCHIVE_URL" "$REPO_DIR" "examples" || { err "source archive download failed"; exit 1; }
   elif [ -d "$REPO_DIR/.git" ]; then
     info "$(t 'Refreshing checkout' '刷新 checkout') ($REPO_REF)"
     git -C "$REPO_DIR" fetch --depth 1 origin "$REPO_REF"
@@ -1757,10 +1451,7 @@ ensure_checkout() {
       err "$REPO_DIR exists but is not a git checkout."
       exit 1
     fi
-    command -v git >/dev/null 2>&1 || {
-      err "git not found (needed to fetch sources)."
-      exit 1
-    }
+    command -v git >/dev/null 2>&1 || { err "git not found (needed to fetch sources)."; exit 1; }
     info "$(t 'Cloning' '克隆') $REPO_URL (ref $REPO_REF)"
     rm -rf "$REPO_DIR"
     mkdir -p "$(dirname "$REPO_DIR")"
@@ -1785,67 +1476,68 @@ plugin_dir_on_disk() { # plugin_dir_on_disk <plugin-subdir>
   return 1
 }
 
+# The installer's own JavaScript: the JSONC editor OpenCode's config needs and
+# the hooks/mcp merge every config-driven host installs through. It is not part
+# of the runtime the plugins ship, so it travels with whatever copy of this
+# script is running rather than with `lib/MANIFEST`.
+#
+# `--uninstall` runs before any source is resolved, and the documented uninstall
+# pipes this script from a URL, where there is no sibling directory to read. So
+# this only ever looks at what is already on disk — the running script's
+# sibling, the assembled runtime, and a marketplace or source root an earlier
+# step resolved. Never plugin_dir_on_disk: it would clone a repository, or exit
+# for want of git, just to remove hooks.
+install_lib_dir() {
+  local src self candidate
+  src="${BASH_SOURCE[0]:-}"
+  self=""
+  if [ -n "$src" ]; then
+    self="$(cd "$(dirname "$src")" >/dev/null 2>&1 && pwd -P)" || self=""
+  fi
+  for candidate in \
+    "${self:+$self/lib/install}" \
+    "$OV_HOME/agent-integrations/memory-plugin-shared/lib/install" \
+    "${MKT_DIR:+$MKT_DIR/memory-plugin-shared/lib/install}" \
+    "${SRC_ROOT:+$SRC_ROOT/examples/memory-plugin-shared/lib/install}"; do
+    [ -n "$candidate" ] && [ -d "$candidate" ] || continue
+    printf '%s' "$candidate"
+    return 0
+  done
+  return 1
+}
+
+require_install_lib_dir() {
+  install_lib_dir && return 0
+  err "$(t 'Installer runtime not found:' '未找到安装器运行时：') memory-plugin-shared/lib/install"
+  return 1
+}
+
 prepare_marketplace_dir() {
   case "$SOURCE_MODE" in
-  dev)
-    MKT_DIR="$CHECKOUT_DIR/examples"
-    ;;
-  archive)
-    heading "$(t '3. Marketplace archive' '3. Marketplace 归档')"
-    [ -z "$MKT_ARCHIVE_URL" ] && [ "$DIST" = "tos" ] && MKT_ARCHIVE_URL="$TOS_BASE/releases/latest/memory-plugin-marketplace.zip"
-    [ -z "$REPO_ARCHIVE_URL" ] && [ "$DIST" = "tos" ] && REPO_ARCHIVE_URL="$TOS_BASE/releases/latest/openviking-source.zip"
-    if [ -n "$MKT_ARCHIVE_URL" ] && fetch_archive "$MKT_ARCHIVE_URL" "$MKT_DIR_ARCHIVE" ".claude-plugin/marketplace.json"; then
-      MKT_DIR="$MKT_DIR_ARCHIVE"
-    elif [ -n "$REPO_ARCHIVE_URL" ]; then
-      [ -n "$MKT_ARCHIVE_URL" ] && warn "$(t 'marketplace archive unavailable; falling back to the full source archive' 'marketplace 归档不可用，回退到完整源码归档')"
-      fetch_archive "$REPO_ARCHIVE_URL" "$REPO_DIR" "examples" || {
-        err "source archive download failed"
+    dev)
+      MKT_DIR="$CHECKOUT_DIR/examples"
+      ;;
+    archive)
+      heading "$(t '3. Marketplace archive' '3. Marketplace 归档')"
+      [ -z "$MKT_ARCHIVE_URL" ] && [ "$DIST" = "tos" ] && MKT_ARCHIVE_URL="$TOS_BASE/releases/latest/memory-plugin-marketplace.zip"
+      [ -z "$REPO_ARCHIVE_URL" ] && [ "$DIST" = "tos" ] && REPO_ARCHIVE_URL="$TOS_BASE/releases/latest/openviking-source.zip"
+      if [ -n "$MKT_ARCHIVE_URL" ] && fetch_archive "$MKT_ARCHIVE_URL" "$MKT_DIR_ARCHIVE" ".claude-plugin/marketplace.json"; then
+        MKT_DIR="$MKT_DIR_ARCHIVE"
+      elif [ -n "$REPO_ARCHIVE_URL" ]; then
+        [ -n "$MKT_ARCHIVE_URL" ] && warn "$(t 'marketplace archive unavailable; falling back to the full source archive' 'marketplace 归档不可用，回退到完整源码归档')"
+        fetch_archive "$REPO_ARCHIVE_URL" "$REPO_DIR" "examples" || { err "source archive download failed"; exit 1; }
+        SRC_ROOT="$REPO_DIR"
+        MKT_DIR="$REPO_DIR/examples"
+      else
+        err "archive mode needs OPENVIKING_MARKETPLACE_ARCHIVE_URL or OPENVIKING_REPO_ARCHIVE_URL"
         exit 1
-      }
-      SRC_ROOT="$REPO_DIR"
-      MKT_DIR="$REPO_DIR/examples"
-    else
-      err "archive mode needs OPENVIKING_MARKETPLACE_ARCHIVE_URL or OPENVIKING_REPO_ARCHIVE_URL"
-      exit 1
-    fi
-    ;;
+      fi
+      ;;
   esac
   if [ -n "$MKT_DIR" ] && [ ! -f "$MKT_DIR/.claude-plugin/marketplace.json" ]; then
     err "marketplace dir $MKT_DIR is missing .claude-plugin/marketplace.json"
     exit 1
   fi
-}
-
-# ---------------------------------------------------------------------------
-# Legacy wrapper cleanup (pre-stdio installs)
-# ---------------------------------------------------------------------------
-
-strip_rc_block() {
-  local rc="$1" begin="$2" end="$3"
-  [ -n "$rc" ] && [ -f "$rc" ] || return 0
-  grep -qF "$begin" "$rc" || return 0
-  if ! grep -qF "$end" "$rc"; then
-    warn "Found $begin in $rc but missing end marker; leaving it untouched."
-    return 0
-  fi
-  awk -v b="$begin" -v e="$end" '
-    $0 == b {skip=1; next}
-    $0 == e {skip=0; next}
-    !skip
-  ' "$rc" >"$rc.tmp" && mv "$rc.tmp" "$rc"
-  info "$(t 'Removed legacy rc block from' '已移除旧的 rc 注入块：') $rc"
-}
-
-cleanup_rc_wrappers() {
-  local rc
-  for rc in "$HOME/.zshrc" "$HOME/.bashrc"; do
-    if contains_harness claude; then
-      strip_rc_block "$rc" '# >>> openviking claude-code memory plugin >>>' '# <<< openviking claude-code memory plugin <<<'
-    fi
-    if contains_harness codex; then
-      strip_rc_block "$rc" '# >>> openviking-codex-plugin >>>' '# <<< openviking-codex-plugin <<<'
-    fi
-  done
 }
 
 # ---------------------------------------------------------------------------
@@ -1895,113 +1587,6 @@ claude_marketplace_current_source() {
   ' "$CC_KNOWN_MARKETPLACES" "$MARKETPLACE_NAME" 2>/dev/null || true
 }
 
-migrate_claude_legacy_marketplace() {
-  local id plugin_list marketplace_list
-  plugin_list="$(claude_cmd plugin list 2>/dev/null || true)"
-  for id in $CC_OLD_IDS; do
-    if str_contains "$plugin_list" "$id"; then
-      info "$(t 'Removing pre-unification plugin install' '移除旧命名的插件安装') ($id)"
-      claude_cmd plugin uninstall "$id" >/dev/null 2>&1 || true
-    fi
-  done
-  marketplace_list="$(claude_cmd plugin marketplace list 2>/dev/null || true)"
-  if str_contains "$marketplace_list" "$OLD_MARKETPLACE_NAME"; then
-    info "$(t 'Removing pre-unification marketplace' '移除旧命名的 marketplace') ($OLD_MARKETPLACE_NAME)"
-    claude_cmd plugin marketplace remove "$OLD_MARKETPLACE_NAME" >/dev/null 2>&1 || true
-  fi
-  migrate_claude_legacy_settings
-}
-
-# `claude plugin marketplace remove` only clears the runtime registry
-# (~/.claude/plugins/known_marketplaces.json); the declarative
-# extraKnownMarketplaces and enabledPlugins maps in ~/.claude/settings.json
-# survive and re-assert on every Claude Code startup, re-registering a
-# marketplace whose source directory may no longer exist (and re-enabling a
-# plugin id that is no longer installed). Scrub them so restarts don't
-# resurrect the old install. Idempotent; safe to run when nothing is stale.
-migrate_claude_legacy_settings() {
-  [ -f "$CC_SETTINGS" ] || return 0
-  command -v node >/dev/null 2>&1 || return 0
-  local changed
-  changed="$(
-    node - "$CC_SETTINGS" "$OLD_MARKETPLACE_NAME" "$(date +%Y%m%d-%H%M%S)" 2>/dev/null <<'NODE' || true
-const fs = require("node:fs");
-const [settingsPath, oldName, ts] = process.argv.slice(2);
-const s = JSON.parse(fs.readFileSync(settingsPath, "utf8"));
-let dirty = false;
-if (s.extraKnownMarketplaces && Object.prototype.hasOwnProperty.call(s.extraKnownMarketplaces, oldName)) {
-  delete s.extraKnownMarketplaces[oldName];
-  dirty = true;
-}
-if (s.enabledPlugins && typeof s.enabledPlugins === "object") {
-  for (const id of Object.keys(s.enabledPlugins)) {
-    if (id.endsWith("@" + oldName)) {
-      delete s.enabledPlugins[id];
-      dirty = true;
-    }
-  }
-}
-if (dirty) {
-  const backup = `${settingsPath}.bak.${ts}`;
-  const mode = fs.statSync(settingsPath).mode;
-  fs.copyFileSync(settingsPath, backup);
-  fs.chmodSync(backup, mode);
-  fs.writeFileSync(settingsPath, JSON.stringify(s, null, 2) + "\n");
-  process.stdout.write("1");
-} else {
-  process.stdout.write("0");
-}
-NODE
-  )"
-  case "$changed" in
-  1) info "$(t 'Cleaned stale legacy entries from settings' '已清理 settings.json 旧命名残留条目') ($CC_SETTINGS)" ;;
-  0) ;;
-  *) warn "$(t 'Could not clean stale entries from settings (malformed JSON or write failure); old plugin ids may revive on restart' '清理 settings.json 旧条目失败（JSON 非法或写入失败），旧插件 id 可能在重启后复活') ($CC_SETTINGS)" ;;
-  esac
-}
-
-# Print the PIDs of any running Claude Code CLI instances, one per line.
-# Use `ps`, not pgrep: from inside Claude Code's own Bash sandbox pgrep cannot
-# see the claude process (it returns empty), whereas ps can. Match two ways:
-#   - comm=claude — the native-binary CLI (the standard install on macOS/Linux).
-#   - args path   — a Linux npm install runs via `#!/usr/bin/env node`, so the
-#     kernel reports comm=node; catch it by the claude / claude-code script path.
-# Plugin/MCP node subprocesses live under a `/.claude/` component (dot-prefixed),
-# which neither args pattern matches, so they are not misreported as the main CLI
-# — the process that loads settings.json into memory and rewrites it on exit.
-claude_running_pids() {
-  ps -eo pid=,comm=,args= 2>/dev/null | awk '
-    $2 == "claude" { print $1; next }
-    {
-      args = $3; for (i = 4; i <= NF; i++) args = args " " $i
-      if (args ~ /(^|\/)claude([[:space:]]|$)/ || args ~ /claude-code\//) print $1
-    }
-  ' || true
-}
-
-# Scrub stale legacy Claude Code settings entries on EVERY run, not only
-# `--harness claude`. Historically migrate_claude_legacy_settings only ran via
-# install_claude, so installs targeting other harnesses never cleaned the stale
-# extraKnownMarketplaces / enabledPlugins ids and they kept reviving on restart.
-# A running Claude Code instance holds settings.json in memory and rewrites the
-# whole file on exit, undoing the scrub — so when the stale ids are present and
-# claude is running, warn prominently that the cleanup will not stick yet.
-scrub_claude_legacy_settings() {
-  [ -f "$CC_SETTINGS" ] || return 0
-  command -v node >/dev/null 2>&1 || return 0
-  # Fast path: in practice the old id appears only in the stale entries, so if
-  # it is absent there is nothing to scrub — skip the node spawn on clean systems.
-  grep -qF "$OLD_MARKETPLACE_NAME" "$CC_SETTINGS" 2>/dev/null || return 0
-  local running_pids="" pid_list=""
-  running_pids="$(claude_running_pids)"
-  migrate_claude_legacy_settings
-  if [ -n "$running_pids" ]; then
-    pid_list="${running_pids//$'\n'/ }"
-    warn "$(t 'Claude Code is currently running' 'Claude Code 当前正在运行') (PID: $pid_list)."
-    warn "$(t 'A running instance loads settings.json into memory and rewrites the whole file on exit, which will resurrect the legacy entries just removed. /exit every Claude Code instance, then re-run this installer from a regular terminal (not from inside Claude Code) so the cleanup sticks.' '运行中的实例会把 settings.json 加载进内存，并在退出时整份回写，导致刚清理的旧条目复活。请 /exit 所有 Claude Code 实例，然后在普通终端（不要在 Claude Code 内部）重跑本安装脚本，清理才会持久生效。')"
-  fi
-}
-
 write_claude_remote_manifest() {
   mkdir -p "$(dirname "$CC_REMOTE_MANIFEST")"
   # Pre-directory-layout leftover (a bare .json registered as a file-type
@@ -2032,7 +1617,7 @@ claude_marketplace_sync() { # claude_marketplace_sync <add-target> <expected-sou
   current="$(claude_marketplace_current_source)"
   if [ -n "$current" ] && [ "$current" = "$needle" ]; then
     info "$CLAUDE_BIN plugin marketplace update ($MARKETPLACE_NAME)"
-    claude_cmd plugin marketplace update "$MARKETPLACE_NAME" ||
+    claude_cmd plugin marketplace update "$MARKETPLACE_NAME" || \
       warn 'marketplace update returned non-zero — continuing'
     return 0
   fi
@@ -2053,23 +1638,20 @@ claude_marketplace_sync() { # claude_marketplace_sync <add-target> <expected-sou
 
 install_claude_modern() {
   case "$SOURCE_MODE" in
-  remote)
-    write_claude_remote_manifest
-    claude_marketplace_sync "$CC_REMOTE_MKT_DIR" "$CC_REMOTE_MKT_DIR" || return 1
-    ;;
-  archive | dev)
-    claude_marketplace_sync "$MKT_DIR" "$MKT_DIR" || return 1
-    ;;
+    remote)
+      write_claude_remote_manifest
+      claude_marketplace_sync "$CC_REMOTE_MKT_DIR" "$CC_REMOTE_MKT_DIR" || return 1
+      ;;
+    archive|dev)
+      claude_marketplace_sync "$MKT_DIR" "$MKT_DIR" || return 1
+      ;;
   esac
   if str_contains "$(claude_cmd plugin list 2>/dev/null || true)" "$PLUGIN_ID"; then
     info "$CLAUDE_BIN plugin update ($PLUGIN_ID)"
     claude_cmd plugin update "$PLUGIN_ID" || warn "$CLAUDE_BIN plugin update returned non-zero"
   else
     info "$CLAUDE_BIN plugin install ($PLUGIN_ID)"
-    claude_cmd plugin install "$PLUGIN_ID" || {
-      err "$CLAUDE_BIN plugin install failed"
-      return 1
-    }
+    claude_cmd plugin install "$PLUGIN_ID" || { err "$CLAUDE_BIN plugin install failed"; return 1; }
   fi
   claude_cmd plugin enable "$PLUGIN_ID" >/dev/null 2>&1 || true
   info "$(t 'Claude-format plugin installed:' 'Claude 格式插件已安装：') $CLAUDE_BIN -> $PLUGIN_ID"
@@ -2091,15 +1673,12 @@ install_claude_legacy() {
     return 1
   }
 
-  [ -f "$hooks_src" ] || {
-    err "hooks source not found: $hooks_src"
-    return 1
-  }
+  [ -f "$hooks_src" ] || { err "hooks source not found: $hooks_src"; return 1; }
   mkdir -p "$HOME/.claude"
-  [ -f "$CC_SETTINGS" ] || echo '{}' >"$CC_SETTINGS"
+  [ -f "$CC_SETTINGS" ] || echo '{}' > "$CC_SETTINGS"
   cp -p "$CC_SETTINGS" "$CC_SETTINGS.bak.$ts"
   info "Backup: $CC_SETTINGS.bak.$ts"
-  node - "$hooks_src" "$CC_SETTINGS" "$plugin_dir" <<'NODE' || {
+  node - "$hooks_src" "$CC_SETTINGS" "$plugin_dir" <<'NODE' || { err "merging hooks into $CC_SETTINGS failed; original untouched"; return 1; }
 const fs = require("node:fs");
 const [hooksSrc, settingsPath, pluginDir] = process.argv.slice(2);
 const expand = (v) => {
@@ -2113,9 +1692,6 @@ const settings = JSON.parse(fs.readFileSync(settingsPath, "utf8"));
 settings.hooks = { ...(settings.hooks || {}), ...(hooks.hooks || {}) };
 fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n");
 NODE
-    err "merging hooks into $CC_SETTINGS failed; original untouched"
-    return 1
-  }
   info 'hooks merged'
 }
 
@@ -2141,7 +1717,7 @@ register_statusline() {
   }
   cmd="node \"$plugin_dir/scripts/statusline.mjs\""
   mkdir -p "$HOME/.claude"
-  [ -f "$CC_SETTINGS" ] || echo '{}' >"$CC_SETTINGS"
+  [ -f "$CC_SETTINGS" ] || echo '{}' > "$CC_SETTINGS"
   existing=$(node -e '
     try {
       const s = JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8"));
@@ -2164,16 +1740,13 @@ register_statusline() {
   fi
   ts=$(date +%Y%m%d-%H%M%S)
   cp -p "$CC_SETTINGS" "$CC_SETTINGS.bak.$ts"
-  node - "$CC_SETTINGS" "$cmd" <<'NODE' || {
+  node - "$CC_SETTINGS" "$cmd" <<'NODE' || { err "writing statusline into $CC_SETTINGS failed"; return 1; }
 const fs = require("node:fs");
 const [settingsPath, cmd] = process.argv.slice(2);
 const settings = JSON.parse(fs.readFileSync(settingsPath, "utf8"));
 settings.statusLine = { type: "command", command: cmd, padding: 0 };
 fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n");
 NODE
-    err "writing statusline into $CC_SETTINGS failed"
-    return 1
-  }
   info "statusline registered (backup: $CC_SETTINGS.bak.$ts)"
   info 'Silence it anytime with: export OPENVIKING_STATUSLINE=off'
 }
@@ -2185,12 +1758,6 @@ install_claude() {
     return 0
   }
   if has_plugin_subcommand; then
-    # Warn only when claude is actually running; scrub_claude_legacy_settings
-    # (run earlier in dispatch) already warns precisely about the settings scrub.
-    if [ -n "$(claude_running_pids)" ]; then
-      warn "$(t 'Exit any running Claude Code first (/exit); a running instance can overwrite these changes and revive stale entries on restart.' '请先退出运行中的 Claude Code（/exit）；运行中的实例可能回写覆盖本次更改，使旧条目在重启后复活。')"
-    fi
-    migrate_claude_legacy_marketplace
     install_claude_modern || return 1
   else
     warn "$(t "This Claude-format CLI doesn't expose 'plugin'." '当前 Claude 格式 CLI 没有 plugin 子命令。') ($CLAUDE_BIN)"
@@ -2230,31 +1797,31 @@ codex_cmd() {
 
 codex_bin_label() {
   case "$(bin_basename "$CODEX_BIN")" in
-  trae-cli | traecli | traex) printf 'TraeCode CLI 2.0' ;;
-  codex) printf 'Codex' ;;
-  *) printf '%s %s' "$CODEX_BIN" "$(t '(Codex-format)' '（Codex 格式）')" ;;
+    trae-cli|traecli|traex) printf 'TraeCode CLI 2.0' ;;
+    codex) printf 'Codex' ;;
+    *) printf '%s %s' "$CODEX_BIN" "$(t '(Codex-format)' '（Codex 格式）')" ;;
   esac
 }
 
 remove_legacy_trae_cli_integration() {
   case "$(bin_basename "$CODEX_BIN")" in
-  trae-cli | traecli | traex) ;;
-  *) return 0 ;;
+    trae-cli|traecli|traex) ;;
+    *) return 0 ;;
   esac
   local trae_home="${TRAE_HOME:-$HOME/.trae}"
   local trae_cli_home="${TRAECLI_HOME:-$trae_home/cli}"
-  if grep -qi 'openviking' "$trae_cli_home/hooks.json" 2>/dev/null ||
-    [ -d "$OV_HOME/agent-integrations/trae-cli" ] ||
-    grep -qF '[mcp_servers."openviking-memory"]' "$trae_home/traecli.toml" 2>/dev/null; then
+  if grep -qi 'openviking' "$trae_cli_home/hooks.json" 2>/dev/null \
+    || [ -d "$OV_HOME/agent-integrations/trae-cli" ] \
+    || grep -qF '[mcp_servers."openviking-memory"]' "$trae_home/traecli.toml" 2>/dev/null; then
     agent_remove_trae_cli_configs "$trae_cli_home/hooks.json" "$trae_home/traecli.toml"
     rm -rf "$OV_HOME/agent-integrations/trae-cli"
     info "$(t 'Removed the deprecated TRAE CLI Hooks integration after installing the TraeCode CLI 2.0 plugin.' 'TraeCode CLI 2.0 插件安装成功后，已移除弃用的 TRAE CLI Hooks 集成。')"
   fi
-  if [ ! -d "$OV_HOME/agent-integrations/cursor" ] &&
-    [ ! -d "$OV_HOME/agent-integrations/trae" ] &&
-    [ ! -d "$OV_HOME/agent-integrations/trae-cn" ] &&
-    [ ! -d "$OV_HOME/agent-integrations/trae-cli" ] &&
-    [ ! -d "$OV_HOME/agent-integrations/zcode" ]; then
+  if [ ! -d "$OV_HOME/agent-integrations/cursor" ] \
+    && [ ! -d "$OV_HOME/agent-integrations/trae" ] \
+    && [ ! -d "$OV_HOME/agent-integrations/trae-cn" ] \
+    && [ ! -d "$OV_HOME/agent-integrations/trae-cli" ] \
+    && [ ! -d "$OV_HOME/agent-integrations/zcode" ]; then
     rm -rf "$OV_HOME/agent-integrations/memory-plugin-shared"
   fi
 }
@@ -2276,36 +1843,6 @@ codex_marketplace_current_source() {
       } catch {}
     });
   ' "$MARKETPLACE_NAME" 2>/dev/null || true
-}
-
-migrate_codex_legacy_marketplace() {
-  codex_cmd plugin remove "$CODEX_OLD_ID" >/dev/null 2>&1 || true
-  codex_cmd plugin uninstall "$CODEX_OLD_ID" >/dev/null 2>&1 || true
-  if str_contains "$(codex_cmd plugin marketplace list 2>/dev/null || true)" "$OLD_MARKETPLACE_NAME"; then
-    info "$(t 'Removing pre-unification marketplace' '移除旧命名的 marketplace') ($OLD_MARKETPLACE_NAME)"
-    codex_cmd plugin marketplace remove "$OLD_MARKETPLACE_NAME" >/dev/null 2>&1 || true
-  fi
-  if is_native_codex_bin; then
-    [ -d "$CODEX_OLD_MARKETPLACE_ROOT" ] && rm -rf "$CODEX_OLD_MARKETPLACE_ROOT"
-    [ -d "$HOME/.codex/plugins/cache/$OLD_MARKETPLACE_NAME" ] && rm -rf "$HOME/.codex/plugins/cache/$OLD_MARKETPLACE_NAME"
-  fi
-  # Drop the old plugin id's config.toml section; the unified id gets its own.
-  if is_native_codex_bin && [ -f "$CODEX_CONFIG" ] && grep -qF "plugins.\"$CODEX_OLD_ID\"" "$CODEX_CONFIG"; then
-    node - "$CODEX_CONFIG" "$CODEX_OLD_ID" <<'NODE' || true
-const fs = require("node:fs");
-const [path, oldId] = process.argv.slice(2);
-const lines = fs.readFileSync(path, "utf8").split(/\n/);
-const out = [];
-let skip = false;
-for (const line of lines) {
-  const trimmed = line.trim();
-  if (/^\[/.test(trimmed)) skip = trimmed.startsWith(`[plugins."${oldId}"`);
-  if (!skip) out.push(line);
-}
-fs.writeFileSync(path, out.join("\n").replace(/\n*$/, "\n"));
-NODE
-    info "Removed old config.toml section for $CODEX_OLD_ID"
-  fi
 }
 
 codex_marketplace_sync() { # codex_marketplace_sync <expected-source> <add-args...>
@@ -2378,35 +1915,34 @@ install_codex() {
     warn "$(t 'Codex-format CLI not found; skipping:' '未找到 Codex 格式 CLI，跳过：') $CODEX_BIN"
     return 0
   }
-  migrate_codex_legacy_marketplace
   case "$SOURCE_MODE" in
-  remote)
-    # Codex doesn't expose which --ref a registered git marketplace is
-    # pinned to (`marketplace upgrade` silently refreshes the OLD ref), so
-    # a matching URL is not enough — re-register deterministically.
-    codex_cmd plugin remove "$PLUGIN_ID" >/dev/null 2>&1 || true
-    codex_cmd plugin uninstall "$PLUGIN_ID" >/dev/null 2>&1 || true
-    codex_cmd plugin marketplace remove "$MARKETPLACE_NAME" >/dev/null 2>&1 || true
-    info "$CODEX_BIN plugin marketplace add $REPO_URL --ref $REPO_REF"
-    # Sparse must include .agents/ — the marketplace manifest lives there,
-    # and a plugin-dir-only sparse checkout fails manifest resolution.
-    codex_cmd plugin marketplace add "$REPO_URL" --ref "$REPO_REF" \
-      --sparse examples/codex-memory-plugin --sparse .agents >/dev/null 2>&1 ||
-      codex_cmd plugin marketplace add "$REPO_URL" --ref "$REPO_REF" >/dev/null || {
-      err "$CODEX_BIN plugin marketplace add failed"
-      return 1
-    }
-    ;;
-  archive)
-    if [ "$DIST" = "tos" ] && install_codex_tos_git; then
-      :
-    else
+    remote)
+      # Codex doesn't expose which --ref a registered git marketplace is
+      # pinned to (`marketplace upgrade` silently refreshes the OLD ref), so
+      # a matching URL is not enough — re-register deterministically.
+      codex_cmd plugin remove "$PLUGIN_ID" >/dev/null 2>&1 || true
+      codex_cmd plugin uninstall "$PLUGIN_ID" >/dev/null 2>&1 || true
+      codex_cmd plugin marketplace remove "$MARKETPLACE_NAME" >/dev/null 2>&1 || true
+      info "$CODEX_BIN plugin marketplace add $REPO_URL --ref $REPO_REF"
+      # Sparse must include .agents/ — the marketplace manifest lives there,
+      # and a plugin-dir-only sparse checkout fails manifest resolution.
+      codex_cmd plugin marketplace add "$REPO_URL" --ref "$REPO_REF" \
+        --sparse examples/codex-memory-plugin --sparse .agents >/dev/null 2>&1 || \
+        codex_cmd plugin marketplace add "$REPO_URL" --ref "$REPO_REF" >/dev/null || {
+          err "$CODEX_BIN plugin marketplace add failed"
+          return 1
+        }
+      ;;
+    archive)
+      if [ "$DIST" = "tos" ] && install_codex_tos_git; then
+        :
+      else
+        codex_marketplace_sync "$MKT_DIR" "$MKT_DIR" || return 1
+      fi
+      ;;
+    dev)
       codex_marketplace_sync "$MKT_DIR" "$MKT_DIR" || return 1
-    fi
-    ;;
-  dev)
-    codex_marketplace_sync "$MKT_DIR" "$MKT_DIR" || return 1
-    ;;
+      ;;
   esac
   if codex_cmd plugin add "$PLUGIN_ID" >/dev/null 2>&1; then
     plugin_installed=1
@@ -2460,10 +1996,12 @@ install_codex_tos_git() {
 # Cursor / TRAE lifecycle hooks
 # ---------------------------------------------------------------------------
 
-copy_agent_integration() { # copy_agent_integration <source-subdir> <dest-name>
-  local source_subdir="$1" dest_name="$2" source dest tmp
-  source="$(plugin_dir_on_disk "$source_subdir")" || {
-    err "$(t 'Agent integration sources not found:' '未找到 Agent 接入源码：') $source_subdir"
+AGENT_HOOK_HOSTS="cursor trae zcode"
+
+copy_agent_integration() { # copy_agent_integration <host> <dest-name>
+  local host="$1" dest_name="$2" source dest tmp other
+  source="$(plugin_dir_on_disk agent-hook-plugin)" || {
+    err "$(t 'Agent integration sources not found:' '未找到 Agent 接入源码：') agent-hook-plugin"
     return 1
   }
   dest="$OV_HOME/agent-integrations/$dest_name"
@@ -2471,6 +2009,11 @@ copy_agent_integration() { # copy_agent_integration <source-subdir> <dest-name>
   rm -rf "$tmp"
   mkdir -p "$tmp"
   (cd "$source" && tar --exclude node_modules --exclude .git -cf - .) | (cd "$tmp" && tar -xf -)
+  # One plugin serves every config-driven host; an installation is for one
+  # client, so the other hosts' configuration directories do not travel with it.
+  for other in $AGENT_HOOK_HOSTS; do
+    [ "$other" = "$host" ] || rm -rf "$tmp/hosts/$other"
+  done
   # Preserve the first-install timestamp across managed upgrades. The package
   # descriptor is copied from source; integration.json records this machine's
   # installation and must survive replacing the runtime directory.
@@ -2481,27 +2024,35 @@ copy_agent_integration() { # copy_agent_integration <source-subdir> <dest-name>
   printf '%s' "$dest"
 }
 
-# Cursor and TRAE keep only their client-specific adapters in the repository.
+# Cursor, TRAE and ZCode keep only their client-specific adapters in the repository.
 # Assemble a self-contained installation by adding the canonical shared runtime
 # at install time instead of committing generated copies for every client.
-assemble_agent_integration() { # assemble_agent_integration <source-subdir> <dest-name>
-  local source_subdir="$1" dest_name="$2" root shared shared_dest file
-  root="$(copy_agent_integration "$source_subdir" "$dest_name")" || return 1
+assemble_agent_integration() { # assemble_agent_integration <host> <dest-name>
+  local host="$1" dest_name="$2" root shared shared_dest manifest file
+  root="$(copy_agent_integration "$host" "$dest_name")" || return 1
   shared="$(plugin_dir_on_disk memory-plugin-shared)" || {
     err "$(t 'Shared agent runtime not found.' '未找到共享 Agent 运行时。')"
     return 1
   }
   shared_dest="$OV_HOME/agent-integrations/memory-plugin-shared/lib"
+  # The closure of what cursor, trae and zcode import, written by sync.mjs and
+  # shipped beside the modules. Regenerating it here is not an option: the
+  # generator finds no plugin sources in a flat marketplace archive.
+  manifest="$shared/lib/MANIFEST"
+  [ -s "$manifest" ] || {
+    err "$(t 'Shared runtime manifest is missing or empty:' '共享运行时清单缺失或为空：') $manifest"
+    return 1
+  }
   rm -rf "$shared_dest.tmp"
   mkdir -p "$shared_dest.tmp"
-  for file in \
-    agent-hook-runtime.mjs agent-uri-guard.mjs credentials.mjs debug-log.mjs \
-    batch-send.mjs mcp-proxy-core.mjs pending-queue.mjs profile-inject.mjs \
-    retryable.mjs \
-    recall-compress-core.mjs recall-core.mjs \
-    session-model.mjs uri-guard.mjs workspace-identity.mjs workspace-peer.mjs; do
-    cp "$shared/lib/$file" "$shared_dest.tmp/$file"
-  done
+  while read -r file || [ -n "$file" ]; do
+    [ -n "$file" ] || continue
+    cp "$shared/lib/$file" "$shared_dest.tmp/$file" || return 1
+  done < "$manifest"
+  cp "$manifest" "$shared_dest.tmp/MANIFEST"
+  # Not part of the closure and never imported by a hook; it is here so that an
+  # uninstall piped from a URL can reclaim this host's entries without a source.
+  cp -R "$shared/lib/install" "$shared_dest.tmp/install" || return 1
   rm -rf "$shared_dest"
   mkdir -p "$(dirname "$shared_dest")"
   mv "$shared_dest.tmp" "$shared_dest"
@@ -2509,445 +2060,44 @@ assemble_agent_integration() { # assemble_agent_integration <source-subdir> <des
 }
 
 agent_write_json_configs() { # agent_write_json_configs <kind> <hooks> <mcp> <root> <client-id> <node-bin>
-  local kind="$1" hooks_path="$2" mcp_path="$3" root="$4" client_id="$5" node_bin="$6"
-  "$NODE_BIN" - "$kind" "$hooks_path" "$mcp_path" "$root" "$client_id" "$node_bin" "$SOURCE_MODE" <<'NODE'
-const fs = require("node:fs");
-const path = require("node:path");
-const [kind, hooksPath, mcpPath, root, clientId, nodeBin, sourceMode] = process.argv.slice(2);
+  local lib
+  lib="$(require_install_lib_dir)" || return 1
+  "$NODE_BIN" "$lib/host-json-config.mjs" write "$1" "$2" "$3" "$4" "$5" "$6" "$SOURCE_MODE"
+}
 
-function readJson(file) {
-  if (!fs.existsSync(file)) return {};
-  try {
-    const parsed = JSON.parse(fs.readFileSync(file, "utf8"));
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-      throw new Error("top-level value must be an object");
-    }
-    return parsed;
-  } catch (error) {
-    throw new Error(`Cannot safely update ${file}: ${error.message}`);
+agent_remove_json_configs() { # agent_remove_json_configs <hooks> [mcp]
+  local lib
+  # An uninstall that cannot find the runtime still has to remove everything it
+  # can and tell the user what it left behind; aborting here would leave both
+  # the host's entries and the integration directory they point at.
+  lib="$(install_lib_dir)" || {
+    warn "$(t 'Installer runtime not found; remove the OpenViking hook and MCP entries by hand from:' '未找到安装器运行时，请手动移除以下文件中的 OpenViking hook 与 MCP 条目：') $1${2:+, $2}"
+    return 0
   }
-}
-
-function atomicWrite(file, value) {
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  const next = JSON.stringify(value, null, 2) + "\n";
-  let previous = "";
-  try { previous = fs.readFileSync(file, "utf8"); } catch {}
-  if (previous === next) return;
-  if (previous) fs.writeFileSync(`${file}.bak`, previous, { mode: 0o600 });
-  const tmp = `${file}.${process.pid}.tmp`;
-  fs.writeFileSync(tmp, next, { mode: 0o600 });
-  fs.renameSync(tmp, file);
-}
-
-function shellArg(value) {
-  return `'${String(value).replace(/'/g, `'"'"'`)}'`;
-}
-
-function isOpenVikingHook(value) {
-  const text = JSON.stringify(value || {});
-  return text.includes("OPENVIKING_INTEGRATION_ID") || (text.includes("openviking") && [
-    "cursor-hook.mjs",
-    "trae-hook.mjs",
-    "zcode-hook.mjs",
-    "session-start.mjs",
-    "auto-recall.mjs",
-    "auto-capture.mjs",
-    "pre-compact.mjs",
-    "session-end.mjs",
-    "trae-auto-recall.mjs",
-    "trae-auto-capture.mjs",
-    "claude-code-memory-plugin/scripts/session-start.mjs",
-  ].some((name) => text.includes(name)));
-}
-
-const packageManifest = readJson(path.join(root, "openviking.integration.json"));
-if (packageManifest.id !== "openviking-memory" || !Array.isArray(packageManifest.clients)
-  || !packageManifest.clients.includes(clientId)) {
-  throw new Error(`Invalid OpenViking integration manifest for ${clientId}`);
-}
-const integrationEnv = {
-  OPENVIKING_INTEGRATION_ID: packageManifest.id,
-  OPENVIKING_INTEGRATION_VERSION: packageManifest.version,
-  OPENVIKING_HOOK_SOURCE: clientId,
-};
-const envPrefix = Object.entries(integrationEnv)
-  .map(([key, value]) => `${key}=${shellArg(value)}`)
-  .join(" ");
-
-function renderHookCommand(command) {
-  let rendered = command;
-  const cursorMatch = /^node\s+\$\{CURSOR_PLUGIN_ROOT\}\/(.+)$/u.exec(rendered);
-  if (cursorMatch) {
-    rendered = `${shellArg(nodeBin)} ${shellArg(path.join(root, cursorMatch[1]))}`;
-  } else {
-    const pluginRootMatch = /^node\s+"?\$\{(?:CLAUDE_PLUGIN_ROOT|ZCODE_PLUGIN_ROOT)\}"?\/(.+?)"?$/u.exec(rendered);
-    if (pluginRootMatch) {
-      rendered = `${shellArg(nodeBin)} ${shellArg(path.join(root, pluginRootMatch[1]))}`;
-    } else {
-      const traeMatch = /^node\s+__OPENVIKING_TRAE_ROOT__\/(\S+)\s+(.+)$/u.exec(rendered);
-      if (!traeMatch) throw new Error(`Unsupported ${clientId} hook command template: ${command}`);
-      rendered = `${shellArg(nodeBin)} ${shellArg(path.join(root, traeMatch[1]))} ${traeMatch[2]
-        .replaceAll("__OPENVIKING_CLIENT_ID__", clientId)}`;
-    }
-  }
-  return `${envPrefix} ${rendered} # openviking-memory`;
-}
-
-function renderHookValue(value) {
-  if (Array.isArray(value)) return value.map(renderHookValue);
-  if (!value || typeof value !== "object") return value;
-  return Object.fromEntries(Object.entries(value).map(([key, child]) => [
-    key,
-    key === "command" && typeof child === "string" ? renderHookCommand(child) : renderHookValue(child),
-  ]));
-}
-
-const hookTemplate = readJson(path.join(root, "hooks", "hooks.json"));
-if (!hookTemplate.hooks || typeof hookTemplate.hooks !== "object" || Array.isArray(hookTemplate.hooks)) {
-  throw new Error(`Invalid ${clientId} hooks template`);
-}
-const hooksConfig = readJson(hooksPath);
-hooksConfig.version = Number.isFinite(Number(hooksConfig.version)) ? Number(hooksConfig.version) : 1;
-hooksConfig.hooks = hooksConfig.hooks && typeof hooksConfig.hooks === "object" && !Array.isArray(hooksConfig.hooks)
-  ? hooksConfig.hooks : {};
-
-for (const [event, entries] of Object.entries(hookTemplate.hooks)) {
-  if (!Array.isArray(entries)) throw new Error(`Invalid ${clientId} hook entries for ${event}`);
-  const current = Array.isArray(hooksConfig.hooks[event]) ? hooksConfig.hooks[event] : [];
-  hooksConfig.hooks[event] = [
-    ...current.filter((item) => !isOpenVikingHook(item)),
-    ...renderHookValue(entries),
-  ];
-}
-if (kind === "cursor") {
-  if (Array.isArray(hooksConfig.hooks.postToolUse)) {
-    const remaining = hooksConfig.hooks.postToolUse.filter((item) => !isOpenVikingHook(item));
-    if (remaining.length) hooksConfig.hooks.postToolUse = remaining;
-    else delete hooksConfig.hooks.postToolUse;
-  }
-}
-atomicWrite(hooksPath, hooksConfig);
-
-const mcpTemplate = readJson(path.join(root, ".mcp.json"));
-const templateServer = mcpTemplate.mcpServers?.openviking;
-if (!templateServer || typeof templateServer !== "object" || Array.isArray(templateServer)) {
-  throw new Error(`Invalid ${clientId} MCP template`);
-}
-const mcp = readJson(mcpPath);
-mcp.mcpServers = mcp.mcpServers && typeof mcp.mcpServers === "object" && !Array.isArray(mcp.mcpServers)
-  ? mcp.mcpServers : {};
-function isKnownLegacyOpenVikingServer(value) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
-  if (value.env?.OPENVIKING_INTEGRATION_ID === "openviking-memory") return true;
-  if (typeof value.url !== "string") return false;
-  try {
-    const url = new URL(value.url);
-    const local = ["127.0.0.1", "localhost", "::1"].includes(url.hostname)
-      && url.port === "1933" && url.pathname.replace(/\/$/u, "") === "/mcp";
-    const cloud = url.hostname === "api.vikingdb.cn-beijing.volces.com"
-      && url.pathname.replace(/\/$/u, "") === "/openviking/mcp";
-    return local || cloud;
-  } catch {
-    return false;
-  }
-}
-// Migrate only the exact OpenViking endpoints published by the earlier manual
-// guides. A coincidentally named third-party server must remain untouched.
-if (isKnownLegacyOpenVikingServer(mcp.mcpServers["ov-mcp-server"])) {
-  delete mcp.mcpServers["ov-mcp-server"];
-}
-const server = {
-  ...templateServer,
-  command: nodeBin,
-  args: [path.join(root, "servers", "mcp-proxy.mjs")],
-  env: { ...(templateServer.env || {}), ...integrationEnv },
-};
-mcp.mcpServers.openviking = server;
-atomicWrite(mcpPath, mcp);
-
-const installedManifestPath = path.join(root, "integration.json");
-const previousManifest = readJson(installedManifestPath);
-const now = new Date().toISOString();
-const unchangedInstall = previousManifest.version === packageManifest.version
-  && previousManifest.source === sourceMode
-  && previousManifest.hooksConfig === hooksPath
-  && previousManifest.mcpConfig === mcpPath;
-atomicWrite(installedManifestPath, {
-  schemaVersion: 1,
-  id: packageManifest.id,
-  version: packageManifest.version,
-  client: clientId,
-  installMode: "managed-native",
-  source: sourceMode,
-  capabilities: packageManifest.capabilities,
-  hooksConfig: hooksPath,
-  mcpConfig: mcpPath,
-  installedAt: previousManifest.installedAt || now,
-  updatedAt: unchangedInstall ? previousManifest.updatedAt || previousManifest.installedAt || now : now,
-});
-NODE
-}
-
-agent_write_trae_cli_configs() { # agent_write_trae_cli_configs <hooks> <traecli.toml> <root> <node-bin>
-  local hooks_path="$1" config_path="$2" root="$3" node_bin="$4"
-  "$NODE_BIN" - "$hooks_path" "$config_path" "$root" "$node_bin" "$SOURCE_MODE" <<'NODE'
-const fs = require("node:fs");
-const path = require("node:path");
-const [hooksPath, configPath, root, nodeBin, sourceMode] = process.argv.slice(2);
-const clientId = "trae-cli";
-const serverName = "openviking-memory";
-
-function readJson(file) {
-  if (!fs.existsSync(file)) return {};
-  const parsed = JSON.parse(fs.readFileSync(file, "utf8"));
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw new Error(`${file} top-level value must be an object`);
-  }
-  return parsed;
-}
-
-function atomicWrite(file, content) {
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  let previous = "";
-  try { previous = fs.readFileSync(file, "utf8"); } catch {}
-  if (previous === content) return;
-  if (previous) fs.writeFileSync(`${file}.bak`, previous, { mode: 0o600 });
-  const tmp = `${file}.${process.pid}.tmp`;
-  fs.writeFileSync(tmp, content, { mode: 0o600 });
-  fs.renameSync(tmp, file);
-}
-
-function shellArg(value) {
-  return `'${String(value).replace(/'/g, `'"'"'`)}'`;
-}
-
-function isOpenVikingHook(value) {
-  const text = JSON.stringify(value || {}).toLowerCase();
-  return text.includes("openviking_integration_id")
-    || (text.includes("openviking") && [
-      "trae-cli-hook.mjs",
-      "session-start.mjs",
-      "auto-recall.mjs",
-      "auto-capture.mjs",
-      "uri-guard.mjs",
-    ].some((name) => text.includes(name)));
-}
-
-function stripTomlSections(content, prefix) {
-  const lines = String(content || "").split(/\r?\n/u);
-  const out = [];
-  let skipping = false;
-  for (const line of lines) {
-    const match = /^\s*\[([^\]]+)\]\s*$/u.exec(line);
-    if (match) skipping = match[1] === prefix || match[1].startsWith(`${prefix}.`);
-    if (!skipping) out.push(line);
-  }
-  return out.join("\n").replace(/\n{3,}/gu, "\n\n").trimEnd();
-}
-
-function stripLegacyOpenVikingServer(content) {
-  const lines = String(content || "").split(/\r?\n/u);
-  for (let index = 0; index < lines.length; index += 1) {
-    const match = /^\s*\[([^\]]+)\]\s*$/u.exec(lines[index]);
-    if (!match || !["mcp_servers.openviking", 'mcp_servers."openviking"'].includes(match[1])) continue;
-    let end = index + 1;
-    while (end < lines.length && !/^\s*\[[^\]]+\]\s*$/u.test(lines[end])) end += 1;
-    const block = lines.slice(index, end).join("\n").toLowerCase();
-    if (block.includes("mcp-proxy.mjs") && block.includes("openviking")) {
-      return stripTomlSections(content, match[1]);
-    }
-  }
-  return content;
-}
-
-const manifest = readJson(path.join(root, "openviking.integration.json"));
-if (manifest.id !== "openviking-memory" || !manifest.clients?.includes(clientId)) {
-  throw new Error("Invalid OpenViking TRAE CLI integration manifest");
-}
-const integrationEnv = {
-  OPENVIKING_INTEGRATION_ID: manifest.id,
-  OPENVIKING_INTEGRATION_VERSION: manifest.version,
-  OPENVIKING_HOOK_SOURCE: clientId,
-};
-const envPrefix = Object.entries(integrationEnv)
-  .map(([key, value]) => `${key}=${shellArg(value)}`)
-  .join(" ");
-
-function renderHookValue(value) {
-  if (Array.isArray(value)) return value.map(renderHookValue);
-  if (!value || typeof value !== "object") return value;
-  return Object.fromEntries(Object.entries(value).map(([key, child]) => {
-    if (key !== "command" || typeof child !== "string") {
-      return [key, renderHookValue(child)];
-    }
-    const match = /^node\s+__OPENVIKING_TRAE_CLI_ROOT__\/(\S+)$/u.exec(child);
-    if (!match) throw new Error(`Unsupported TRAE CLI hook command template: ${child}`);
-    const command = `${shellArg(nodeBin)} ${shellArg(path.join(root, match[1]))}`;
-    return [key, `${envPrefix} ${command} # openviking-memory`];
-  }));
-}
-
-const hookTemplate = readJson(path.join(root, "hooks", "hooks.json"));
-const hooksConfig = readJson(hooksPath);
-hooksConfig.version = Number.isFinite(Number(hooksConfig.version)) ? Number(hooksConfig.version) : 1;
-hooksConfig.hooks = hooksConfig.hooks && typeof hooksConfig.hooks === "object"
-  ? hooksConfig.hooks : {};
-for (const [event, entries] of Object.entries(hookTemplate.hooks || {})) {
-  const current = Array.isArray(hooksConfig.hooks[event]) ? hooksConfig.hooks[event] : [];
-  hooksConfig.hooks[event] = [
-    ...current.filter((item) => !isOpenVikingHook(item)),
-    ...renderHookValue(entries),
-  ];
-}
-atomicWrite(hooksPath, `${JSON.stringify(hooksConfig, null, 2)}\n`);
-
-let toml = "";
-try { toml = fs.readFileSync(configPath, "utf8"); } catch {}
-toml = stripLegacyOpenVikingServer(toml);
-toml = stripTomlSections(toml, `mcp_servers."${serverName}"`);
-const envToml = Object.entries(integrationEnv)
-  .map(([key, value]) => `${key} = ${JSON.stringify(value)}`)
-  .join(", ");
-const section = [
-  `[mcp_servers."${serverName}"]`,
-  `command = ${JSON.stringify(nodeBin)}`,
-  `args = [${JSON.stringify(path.join(root, "servers", "mcp-proxy.mjs"))}]`,
-  `env = { ${envToml} }`,
-].join("\n");
-atomicWrite(configPath, `${toml ? `${toml}\n\n` : ""}${section}\n`);
-
-const manifestPath = path.join(root, "integration.json");
-const previous = readJson(manifestPath);
-const now = new Date().toISOString();
-const unchanged = previous.version === manifest.version
-  && previous.source === sourceMode
-  && previous.hooksConfig === hooksPath
-  && previous.mcpConfig === configPath;
-atomicWrite(manifestPath, `${JSON.stringify({
-  schemaVersion: 1,
-  id: manifest.id,
-  version: manifest.version,
-  client: clientId,
-  installMode: "managed-native",
-  source: sourceMode,
-  capabilities: manifest.capabilities,
-  hooksConfig: hooksPath,
-  mcpConfig: configPath,
-  installedAt: previous.installedAt || now,
-  updatedAt: unchanged ? previous.updatedAt || previous.installedAt || now : now,
-}, null, 2)}\n`);
-NODE
+  "$NODE_BIN" "$lib/host-json-config.mjs" remove "$1" "${2:-}"
 }
 
 agent_remove_trae_cli_configs() { # agent_remove_trae_cli_configs <hooks> <traecli.toml>
   local hooks_path="$1" config_path="$2"
-  "$NODE_BIN" - "$hooks_path" "$config_path" <<'NODE'
-const fs = require("node:fs");
-const path = require("node:path");
-const [hooksPath, configPath] = process.argv.slice(2);
-
-function atomicWrite(file, content) {
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  const tmp = `${file}.${process.pid}.tmp`;
-  fs.writeFileSync(tmp, content, { mode: 0o600 });
-  fs.renameSync(tmp, file);
-}
-
-function ownsHook(value) {
-  const text = JSON.stringify(value || {}).toLowerCase();
-  return text.includes("openviking_integration_id")
-    || (text.includes("openviking") && [
-      "trae-cli-hook.mjs",
-      "session-start.mjs",
-      "auto-recall.mjs",
-      "auto-capture.mjs",
-      "uri-guard.mjs",
-    ].some((name) => text.includes(name)));
-}
-
-if (fs.existsSync(hooksPath)) {
-  const hooks = JSON.parse(fs.readFileSync(hooksPath, "utf8"));
-  for (const event of Object.keys(hooks.hooks || {})) {
-    if (!Array.isArray(hooks.hooks[event])) continue;
-    hooks.hooks[event] = hooks.hooks[event].filter((item) => !ownsHook(item));
-    if (hooks.hooks[event].length === 0) delete hooks.hooks[event];
-  }
-  atomicWrite(hooksPath, `${JSON.stringify(hooks, null, 2)}\n`);
-}
-
-if (fs.existsSync(configPath)) {
-  const lines = fs.readFileSync(configPath, "utf8").split(/\r?\n/u);
-  const prefix = 'mcp_servers."openviking-memory"';
-  const out = [];
-  let skipping = false;
-  for (const line of lines) {
-    const match = /^\s*\[([^\]]+)\]\s*$/u.exec(line);
-    if (match) skipping = match[1] === prefix || match[1].startsWith(`${prefix}.`);
-    if (!skipping) out.push(line);
-  }
-  atomicWrite(configPath, `${out.join("\n").replace(/\n{3,}/gu, "\n\n").trimEnd()}\n`);
-}
-NODE
-}
-
-agent_remove_json_configs() { # agent_remove_json_configs <hooks> <mcp>
-  local hooks_path="$1" mcp_path="$2"
-  "$NODE_BIN" - "$hooks_path" "$mcp_path" <<'NODE'
-const fs = require("node:fs");
-const [hooksPath, mcpPath] = process.argv.slice(2);
-function read(file) {
-  if (!fs.existsSync(file)) return null;
-  try {
-    const parsed = JSON.parse(fs.readFileSync(file, "utf8"));
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-      throw new Error("top-level value must be an object");
+  # The hooks file answers to the same "is this entry ours" the other hosts use;
+  # only the TOML this host keeps its MCP servers in is its own problem.
+  agent_remove_json_configs "$hooks_path"
+  [ -f "$config_path" ] || return 0
+  local stripped tmp="$config_path.$$.tmp"
+  stripped="$(awk -v target='mcp_servers."openviking-memory"' '
+    BEGIN { prefix = target "." }
+    /^[[:space:]]*\[[^]]+\][[:space:]]*$/ {
+      name = $0
+      sub(/^[[:space:]]*\[/, "", name)
+      sub(/\][[:space:]]*$/, "", name)
+      skip = (name == target || index(name, prefix) == 1)
     }
-    return parsed;
-  } catch (error) {
-    throw new Error(`Cannot safely update ${file}: ${error.message}`);
-  }
-}
-function write(file, value) {
-  const next = JSON.stringify(value, null, 2) + "\n";
-  const tmp = `${file}.${process.pid}.tmp`;
-  fs.writeFileSync(tmp, next, { mode: 0o600 });
-  fs.renameSync(tmp, file);
-}
-function ownsHook(value) {
-  const text = JSON.stringify(value || {});
-  return text.includes("openviking") && [
-    "cursor-hook.mjs",
-    "trae-hook.mjs",
-    "zcode-hook.mjs",
-    "session-start.mjs",
-    "auto-recall.mjs",
-    "auto-capture.mjs",
-    "pre-compact.mjs",
-    "session-end.mjs",
-    "trae-auto-recall.mjs",
-    "trae-auto-capture.mjs",
-    "claude-code-memory-plugin/scripts/session-start.mjs",
-  ].some((name) => text.includes(name));
-}
-const hooks = read(hooksPath);
-const mcp = read(mcpPath);
-if (hooks?.hooks && typeof hooks.hooks === "object") {
-  for (const event of Object.keys(hooks.hooks)) {
-    if (!Array.isArray(hooks.hooks[event])) continue;
-    hooks.hooks[event] = hooks.hooks[event].filter((item) => !ownsHook(item));
-    if (hooks.hooks[event].length === 0) delete hooks.hooks[event];
-  }
-  write(hooksPath, hooks);
-}
-if (mcp?.mcpServers?.openviking) {
-  const text = JSON.stringify(mcp.mcpServers.openviking);
-  if (text.includes("agent-integrations") && text.includes("mcp-proxy.mjs")) {
-    delete mcp.mcpServers.openviking;
-    write(mcpPath, mcp);
-  }
-}
-NODE
+    skip { next }
+    /^[[:space:]]*$/ { blank = 1; next }
+    { if (started && blank) print ""; print; started = 1; blank = 0 }
+  ' "$config_path")"
+  ( umask 077; printf '%s\n' "$stripped" >"$tmp" )
+  mv "$tmp" "$config_path"
 }
 
 uninstall_agent_integrations() {
@@ -3029,14 +2179,11 @@ CLEAN_NODE
     rm -rf "$OV_HOME/agent-integrations/agy"
     info "$(t 'Removed Antigravity (AGY) OpenViking plugin.' '已移除 Antigravity (AGY) OpenViking 插件。')"
   fi
-  if [ ! -d "$OV_HOME/agent-integrations/cursor" ] &&
-    [ ! -d "$OV_HOME/agent-integrations/trae" ] &&
-    [ ! -d "$OV_HOME/agent-integrations/trae-cn" ] &&
-    [ ! -d "$OV_HOME/agent-integrations/qoder" ] &&
-    [ ! -d "$OV_HOME/agent-integrations/codebuddy" ] &&
-    [ ! -d "$OV_HOME/agent-integrations/trae-cli" ] &&
-    [ ! -d "$OV_HOME/agent-integrations/zcode" ] &&
-    [ ! -d "$OV_HOME/agent-integrations/agy" ]; then
+  if [ ! -d "$OV_HOME/agent-integrations/cursor" ] \
+    && [ ! -d "$OV_HOME/agent-integrations/trae" ] \
+    && [ ! -d "$OV_HOME/agent-integrations/trae-cn" ] \
+    && [ ! -d "$OV_HOME/agent-integrations/trae-cli" ] \
+    && [ ! -d "$OV_HOME/agent-integrations/zcode" ]; then
     rm -rf "$OV_HOME/agent-integrations/memory-plugin-shared"
   fi
 }
@@ -3075,15 +2222,15 @@ trae_mcp_path() { # trae_mcp_path <client-id>
 install_cursor() {
   heading "$(t '4. Cursor integration' '4. Cursor 集成')"
   local root hooks_path mcp_path skill_tmp legacy_plugins
-  root="$(assemble_agent_integration cursor-memory-plugin cursor)" || return 1
+  root="$(assemble_agent_integration cursor cursor)" || return 1
   hooks_path="$HOME/.cursor/hooks.json"
   mcp_path="$(cursor_mcp_path)"
   agent_write_json_configs cursor "$hooks_path" "$mcp_path" "$root" cursor "$NODE_BIN"
   mkdir -p "$HOME/.cursor/rules" "$HOME/.cursor/skills"
-  cp "$root/rules/openviking-memory.mdc" "$HOME/.cursor/rules/openviking-memory.mdc"
+  cp "$root/hosts/cursor/rules/openviking-memory.mdc" "$HOME/.cursor/rules/openviking-memory.mdc"
   skill_tmp="$HOME/.cursor/skills/openviking-memory.tmp"
   rm -rf "$skill_tmp"
-  cp -R "$root/skills/openviking-memory" "$skill_tmp"
+  cp -R "$root/hosts/cursor/skills/openviking-memory" "$skill_tmp"
   rm -rf "$HOME/.cursor/skills/openviking-memory"
   mv "$skill_tmp" "$HOME/.cursor/skills/openviking-memory"
   info "$(t 'Cursor hooks installed:' 'Cursor hooks 已安装：') $hooks_path"
@@ -3101,83 +2248,15 @@ zcode_mcp_path() {
 }
 
 zcode_merge_config() { # zcode_merge_config <config_path> <hooks_path> <mcp_path>
-  "$NODE_BIN" - "$1" "$2" "$3" <<'ZCODE_MERGE_NODE'
-const fs = require("node:fs");
-const path = require("node:path");
-const [configPath, hooksPath, mcpPath] = process.argv.slice(2);
-
-// --- Safe read: ENOENT → empty config; parse error → abort, do NOT overwrite ---
-let config = {};
-const exists = fs.existsSync(configPath);
-if (exists) {
-  let raw;
-  try {
-    raw = fs.readFileSync(configPath, "utf8");
-  } catch (e) {
-    process.stderr.write(`Cannot read ${configPath}: ${e.message}\n`);
-    process.exit(1);
-  }
-  try {
-    config = JSON.parse(raw);
-  } catch (e) {
-    process.stderr.write(`${configPath} is malformed and will NOT be overwritten: ${e.message}\n`);
-    process.exit(1);
-  }
-  if (typeof config !== "object" || config === null || Array.isArray(config)) {
-    process.stderr.write(`${configPath} top-level value is not an object; refusing to overwrite\n`);
-    process.exit(1);
-  }
-}
-
-// --- Merge hooks ---
-if (fs.existsSync(hooksPath)) {
-  const hooks = JSON.parse(fs.readFileSync(hooksPath, "utf8"));
-  config.hooks = config.hooks || {};
-  config.hooks.enabled = true;
-  config.hooks.events = config.hooks.events || {};
-  if (hooks.hooks) {
-    for (const [event, handlers] of Object.entries(hooks.hooks)) {
-      const existing = (config.hooks.events[event] || []).filter(
-        (group) => !JSON.stringify(group).includes("openviking-memory"),
-      );
-      config.hooks.events[event] = [...existing, ...handlers];
-    }
-  }
-}
-
-// --- Merge MCP: only manage entries tagged as openviking-memory ---
-if (fs.existsSync(mcpPath)) {
-  const stat = fs.statSync(mcpPath);
-  if (stat.size > 0) {
-    const mcp = JSON.parse(fs.readFileSync(mcpPath, "utf8"));
-    config.mcp = config.mcp || {};
-    config.mcp.servers = config.mcp.servers || {};
-    const incoming = mcp.mcpServers || {};
-    if (mcp.openviking) incoming.openviking = mcp.openviking;
-    for (const [name, server] of Object.entries(incoming)) {
-      const existing = config.mcp.servers[name];
-      // Only replace if the entry doesn't exist OR is already managed by us
-      if (existing && !JSON.stringify(existing).includes("openviking-memory")) {
-        process.stderr.write(`Skipping ${name} MCP server: already exists and is not managed by OpenViking\n`);
-        continue;
-      }
-      config.mcp.servers[name] = server;
-    }
-  }
-}
-
-// --- Atomic write: backup + tmp + rename ---
-if (exists) fs.copyFileSync(configPath, `${configPath}.bak`);
-const tmp = `${configPath}.${process.pid}.tmp`;
-fs.writeFileSync(tmp, JSON.stringify(config, null, 2) + "\n");
-fs.renameSync(tmp, configPath);
-ZCODE_MERGE_NODE
+  local lib
+  lib="$(require_install_lib_dir)" || return 1
+  "$NODE_BIN" "$lib/host-json-config.mjs" merge-zcode "$1" "$2" "$3"
 }
 
 install_zcode() {
   heading "$(t 'ZCode integration' 'ZCode 集成')"
   local root hooks_path mcp_path config_path
-  root="$(assemble_agent_integration zcode-memory-plugin zcode)" || return 1
+  root="$(assemble_agent_integration zcode zcode)" || return 1
   hooks_path="$HOME/.zcode/hooks.json"
   mcp_path="$(zcode_mcp_path)"
   config_path="$HOME/.zcode/cli/config.json"
@@ -3185,36 +2264,20 @@ install_zcode() {
   agent_write_json_configs zcode "$hooks_path" "$mcp_path" "$root" zcode "$NODE_BIN"
   # ZCode reads hooks from config.json → hooks.events, not a standalone hooks.json.
   # Merge the generated hooks.json and mcp.json into config.json so ZCode picks them up.
-  zcode_merge_config "$config_path" "$hooks_path" "$mcp_path" ||
-    {
-      warn "$(t 'Failed to merge ZCode config' 'ZCode 配置合并失败')"
-      return 1
-    }
+  zcode_merge_config "$config_path" "$hooks_path" "$mcp_path" \
+    || { warn "$(t 'Failed to merge ZCode config' 'ZCode 配置合并失败')"; return 1; }
   info "$(t 'ZCode hooks installed:' 'ZCode hooks 已安装：') $config_path (hooks.events)"
   info "$(t 'ZCode MCP installed:' 'ZCode MCP 已安装：') $config_path (mcp.servers)"
 }
 
 install_trae_variant() { # install_trae_variant <trae|trae-cn>
   local client_id="$1" root hooks_path mcp_path
-  root="$(assemble_agent_integration trae-memory-hooks "$client_id")" || return 1
+  root="$(assemble_agent_integration trae "$client_id")" || return 1
   hooks_path="$HOME/.$client_id/hooks.json"
   mcp_path="$(trae_mcp_path "$client_id")"
   agent_write_json_configs trae "$hooks_path" "$mcp_path" "$root" "$client_id" "$NODE_BIN"
   info "$client_id hooks: $hooks_path"
   info "$client_id MCP: $mcp_path"
-}
-
-install_trae_cli() {
-  heading "$(t 'TRAE CLI integration' 'TRAE CLI 集成')"
-  local root trae_home trae_cli_home hooks_path config_path
-  root="$(assemble_agent_integration trae-cli-memory-hooks trae-cli)" || return 1
-  trae_home="${TRAE_HOME:-$HOME/.trae}"
-  trae_cli_home="${TRAECLI_HOME:-$trae_home/cli}"
-  hooks_path="$trae_cli_home/hooks.json"
-  config_path="$trae_home/traecli.toml"
-  agent_write_trae_cli_configs "$hooks_path" "$config_path" "$root" "$NODE_BIN"
-  info "$(t 'TRAE CLI hooks installed:' 'TRAE CLI hooks 已安装：') $hooks_path"
-  info "$(t 'TRAE CLI MCP installed:' 'TRAE CLI MCP 已安装：') $config_path (mcp_servers.openviking-memory)"
 }
 
 # ---------------------------------------------------------------------------
@@ -3228,29 +2291,20 @@ install_opencode() {
     return 0
   fi
   case "$SOURCE_MODE" in
-  remote)
-    opencode_register_npm_plugin
-    ;;
-  archive | dev)
-    opencode_install_file_plugin
-    ;;
+    remote)
+      opencode_register_npm_plugin
+      ;;
+    archive|dev)
+      opencode_install_file_plugin
+      ;;
   esac
 }
 
 opencode_config_file() {
   local json="$HOME/.config/opencode/opencode.json" jsonc="$HOME/.config/opencode/opencode.jsonc"
-  if [ -f "$jsonc" ] && grep -q '"plugin"' "$jsonc" 2>/dev/null; then
-    printf '%s' "$jsonc"
-    return
-  fi
-  if [ -f "$json" ]; then
-    printf '%s' "$json"
-    return
-  fi
-  if [ -f "$jsonc" ]; then
-    printf '%s' "$jsonc"
-    return
-  fi
+  if [ -f "$jsonc" ] && grep -q '"plugin"' "$jsonc" 2>/dev/null; then printf '%s' "$jsonc"; return; fi
+  if [ -f "$json" ]; then printf '%s' "$json"; return; fi
+  if [ -f "$jsonc" ]; then printf '%s' "$jsonc"; return; fi
   printf '%s' "$json"
 }
 
@@ -3270,6 +2324,7 @@ opencode_register_npm_plugin() {
 
 opencode_install_mcp_proxy_snapshot() {
   local plugin_dir="$1" dest="$2"
+  prepare_opencode_runtime "$plugin_dir" || return 1
   rm -rf "$dest.tmp"
   mkdir -p "$dest.tmp"
   (cd "$plugin_dir" && tar --exclude node_modules --exclude .git -cf - package.json lib servers) | (cd "$dest.tmp" && tar -xf -)
@@ -3280,346 +2335,12 @@ opencode_install_mcp_proxy_snapshot() {
 }
 
 opencode_write_config() {
-  local cfg="$1" plugin_spec="$2" mcp_proxy="$3"
+  local cfg="$1" plugin_spec="$2" mcp_proxy="$3" lib
+  lib="$(require_install_lib_dir)" || return 1
   mkdir -p "$(dirname "$cfg")"
-  [ -f "$cfg" ] || printf '{\n}\n' >"$cfg"
+  [ -f "$cfg" ] || printf '{\n}\n' > "$cfg"
   cp "$cfg" "$cfg.bak.$(date +%Y%m%d-%H%M%S)"
-  node - "$cfg" "$plugin_spec" "$mcp_proxy" <<'NODE'
-const fs = require("node:fs");
-const file = process.argv[2];
-const pluginSpec = process.argv[3] || "";
-const mcpProxy = process.argv[4] || "";
-let raw = "";
-try { raw = fs.readFileSync(file, "utf8"); } catch {}
-
-function stripJsonc(s) {
-  let out = "";
-  let i = 0;
-  while (i < s.length) {
-    const ch = s[i];
-    const next = s[i + 1];
-    if (ch === '"' || ch === "'") {
-      const end = readStringEnd(s, i);
-      out += s.slice(i, end);
-      i = end;
-    } else if (ch === "/" && next === "/") {
-      i += 2;
-      while (i < s.length && s[i] !== "\n") i++;
-    } else if (ch === "/" && next === "*") {
-      i += 2;
-      while (i < s.length && !(s[i] === "*" && s[i + 1] === "/")) i++;
-      i = Math.min(s.length, i + 2);
-    } else {
-      out += ch;
-      i++;
-    }
-  }
-  return out.replace(/,\s*([}\]])/g, "$1");
-}
-
-function readStringEnd(s, start) {
-  const quote = s[start];
-  let i = start + 1;
-  while (i < s.length) {
-    if (s[i] === "\\") {
-      i += 2;
-    } else if (s[i] === quote) {
-      return i + 1;
-    } else {
-      i++;
-    }
-  }
-  return s.length;
-}
-
-function skipTrivia(s, i, end = s.length) {
-  while (i < end) {
-    if (/\s/.test(s[i])) {
-      i++;
-    } else if (s[i] === "/" && s[i + 1] === "/") {
-      i += 2;
-      while (i < end && s[i] !== "\n") i++;
-    } else if (s[i] === "/" && s[i + 1] === "*") {
-      i += 2;
-      while (i < end && !(s[i] === "*" && s[i + 1] === "/")) i++;
-      i = Math.min(end, i + 2);
-    } else {
-      break;
-    }
-  }
-  return i;
-}
-
-function parseStringLiteral(s, start) {
-  const end = readStringEnd(s, start);
-  try {
-    return { value: JSON.parse(s.slice(start, end)), end };
-  } catch {
-    return { value: "", end };
-  }
-}
-
-function findTopLevelObject(s) {
-  const start = skipTrivia(s, 0);
-  if (s[start] !== "{") return null;
-  let depth = 0;
-  let i = start;
-  while (i < s.length) {
-    if (s[i] === '"' || s[i] === "'") {
-      i = readStringEnd(s, i);
-      continue;
-    }
-    if (s[i] === "/" && (s[i + 1] === "/" || s[i + 1] === "*")) {
-      i = skipTrivia(s, i);
-      continue;
-    }
-    if (s[i] === "{" || s[i] === "[") depth++;
-    if (s[i] === "}" || s[i] === "]") {
-      depth--;
-      if (depth === 0 && s[i] === "}") return { start, end: i };
-    }
-    i++;
-  }
-  return null;
-}
-
-function findObjectRangeAt(s, start, end = s.length) {
-  const objectStart = skipTrivia(s, start, end);
-  if (s[objectStart] !== "{") return null;
-  let depth = 0;
-  let i = objectStart;
-  while (i < end) {
-    if (s[i] === '"' || s[i] === "'") {
-      i = readStringEnd(s, i);
-      continue;
-    }
-    if (s[i] === "/" && (s[i + 1] === "/" || s[i + 1] === "*")) {
-      i = skipTrivia(s, i, end);
-      continue;
-    }
-    if (s[i] === "{" || s[i] === "[") depth++;
-    if (s[i] === "}" || s[i] === "]") {
-      depth--;
-      if (depth === 0 && s[i] === "}") return { start: objectStart, end: i };
-    }
-    i++;
-  }
-  return null;
-}
-
-function findArrayRangeAt(s, start, end = s.length) {
-  const arrayStart = skipTrivia(s, start, end);
-  if (s[arrayStart] !== "[") return null;
-  let depth = 0;
-  let i = arrayStart;
-  while (i < end) {
-    if (s[i] === '"' || s[i] === "'") {
-      i = readStringEnd(s, i);
-      continue;
-    }
-    if (s[i] === "/" && (s[i + 1] === "/" || s[i + 1] === "*")) {
-      i = skipTrivia(s, i, end);
-      continue;
-    }
-    if (s[i] === "{" || s[i] === "[") depth++;
-    if (s[i] === "}" || s[i] === "]") {
-      depth--;
-      if (depth === 0 && s[i] === "]") return { start: arrayStart, end: i };
-    }
-    i++;
-  }
-  return null;
-}
-
-function findTopLevelProperty(s, objectRange, name) {
-  let depth = 1;
-  let i = objectRange.start + 1;
-  while (i < objectRange.end) {
-    if (s[i] === "/" && (s[i + 1] === "/" || s[i + 1] === "*")) {
-      i = skipTrivia(s, i, objectRange.end);
-      continue;
-    }
-    if (s[i] === '"' || s[i] === "'") {
-      const keyStart = i;
-      const parsed = parseStringLiteral(s, i);
-      i = parsed.end;
-      const afterKey = skipTrivia(s, i, objectRange.end);
-      if (depth === 1 && parsed.value === name && s[afterKey] === ":") {
-        const valueStart = skipTrivia(s, afterKey + 1, objectRange.end);
-        return {
-          keyStart,
-          valueStart,
-          replaceEnd: findPropertyReplaceEnd(s, valueStart, objectRange.end),
-        };
-      }
-      continue;
-    }
-    if (s[i] === "{" || s[i] === "[") depth++;
-    if (s[i] === "}" || s[i] === "]") depth--;
-    i++;
-  }
-  return null;
-}
-
-function findPropertyReplaceEnd(s, valueStart, objectEnd) {
-  let depth = 0;
-  let i = skipTrivia(s, valueStart, objectEnd);
-  let lastTokenEnd = i;
-  while (i < objectEnd) {
-    if (s[i] === '"' || s[i] === "'") {
-      i = readStringEnd(s, i);
-      lastTokenEnd = i;
-      continue;
-    }
-    if (s[i] === "/" && (s[i + 1] === "/" || s[i + 1] === "*")) {
-      i = skipTrivia(s, i, objectEnd);
-      continue;
-    }
-    if (depth === 0 && s[i] === ",") return lastTokenEnd;
-    if (s[i] === "{" || s[i] === "[") depth++;
-    if (s[i] === "}" || s[i] === "]") depth--;
-    if (!/\s/.test(s[i])) lastTokenEnd = i + 1;
-    i++;
-  }
-  return lastTokenEnd;
-}
-
-function findLineIndent(s, index) {
-  const lineStart = s.lastIndexOf("\n", index - 1) + 1;
-  const prefix = s.slice(lineStart, index);
-  return /^[ \t]*$/.test(prefix) ? prefix : "";
-}
-
-function detectPropertyIndent(s, objectRange) {
-  let i = objectRange.start + 1;
-  while (i < objectRange.end) {
-    i = skipTrivia(s, i, objectRange.end);
-    if (s[i] === '"' || s[i] === "'") return findLineIndent(s, i) || "  ";
-    if (s[i] === "{" || s[i] === "[") break;
-    i++;
-  }
-  const closeIndent = findLineIndent(s, objectRange.end);
-  return `${closeIndent}  `;
-}
-
-function hasTopLevelProperty(s, objectRange) {
-  let i = objectRange.start + 1;
-  while (i < objectRange.end) {
-    i = skipTrivia(s, i, objectRange.end);
-    if (s[i] === '"' || s[i] === "'") return true;
-    i++;
-  }
-  return false;
-}
-
-function objectEndsWithComma(s, objectRange) {
-  const body = s.slice(objectRange.start + 1, objectRange.end);
-  return body.trimEnd().endsWith(",");
-}
-
-function rangeHasValue(s, range) {
-  let i = range.start + 1;
-  while (i < range.end) {
-    i = skipTrivia(s, i, range.end);
-    if (i < range.end) return true;
-  }
-  return false;
-}
-
-function formatProperty(name, value, indent) {
-  const json = JSON.stringify(value, null, 2);
-  const formatted = json.split("\n").map((line, idx) => idx === 0 ? line : `${indent}${line}`).join("\n");
-  return `${JSON.stringify(name)}: ${formatted}`;
-}
-
-function setPropertyInObject(s, objectRange, name, value) {
-  const existing = findTopLevelProperty(s, objectRange, name);
-  if (existing) {
-    const indent = findLineIndent(s, existing.keyStart) || detectPropertyIndent(s, objectRange);
-    return `${s.slice(0, existing.keyStart)}${formatProperty(name, value, indent)}${s.slice(existing.replaceEnd)}`;
-  }
-
-  const indent = detectPropertyIndent(s, objectRange);
-  const closeIndent = findLineIndent(s, objectRange.end);
-  const needsComma = hasTopLevelProperty(s, objectRange) && !objectEndsWithComma(s, objectRange);
-  const prefix = needsComma ? "," : "";
-  const insertion = `${prefix}\n${indent}${formatProperty(name, value, indent)}\n${closeIndent}`;
-  return `${s.slice(0, objectRange.end)}${insertion}${s.slice(objectRange.end)}`;
-}
-
-function setTopLevelProperty(s, name, value) {
-  let objectRange = findTopLevelObject(s);
-  if (!objectRange) {
-    s = "{\n}\n";
-    objectRange = findTopLevelObject(s);
-  }
-  return setPropertyInObject(s, objectRange, name, value);
-}
-
-function setNestedObjectProperty(s, parentName, childName, childValue, fallbackParentValue) {
-  let objectRange = findTopLevelObject(s);
-  if (!objectRange) {
-    s = "{\n}\n";
-    objectRange = findTopLevelObject(s);
-  }
-  const parent = findTopLevelProperty(s, objectRange, parentName);
-  if (!parent) return setPropertyInObject(s, objectRange, parentName, fallbackParentValue);
-  const parentRange = findObjectRangeAt(s, parent.valueStart, parent.replaceEnd);
-  if (!parentRange) return setPropertyInObject(s, objectRange, parentName, fallbackParentValue);
-  return setPropertyInObject(s, parentRange, childName, childValue);
-}
-
-function rewriteTopLevelStringArray(s, name, values) {
-  let objectRange = findTopLevelObject(s);
-  if (!objectRange) {
-    s = "{\n}\n";
-    objectRange = findTopLevelObject(s);
-  }
-  const prop = findTopLevelProperty(s, objectRange, name);
-  if (!prop) {
-    return values.length ? setPropertyInObject(s, objectRange, name, values) : s;
-  }
-  const arrayRange = findArrayRangeAt(s, prop.valueStart, prop.replaceEnd);
-  if (!arrayRange || values.length === 0) {
-    return setPropertyInObject(s, objectRange, name, values);
-  }
-  const propIndent = findLineIndent(s, prop.keyStart) || detectPropertyIndent(s, objectRange);
-  const itemIndent = `${propIndent}  `;
-  const closeIndent = findLineIndent(s, arrayRange.end) || propIndent;
-  const body = "\n" + values.map((v) => `${itemIndent}${JSON.stringify(v)}`).join(",\n") + "\n";
-  return `${s.slice(0, arrayRange.start + 1)}${body}${closeIndent}${s.slice(arrayRange.end)}`;
-}
-
-let data = {};
-try { data = raw.trim() ? JSON.parse(stripJsonc(raw)) : {}; } catch { data = {}; }
-let nextRaw = raw.trim() ? raw : "{\n}\n";
-{
-  const knownOpenViking = ["openviking-opencode", "@openviking/opencode-plugin"];
-  const origPlugin = Array.isArray(data.plugin) ? data.plugin : null;
-  const removeSet = knownOpenViking.filter((p) => p !== pluginSpec);
-  let nextPlugin = origPlugin ? origPlugin.filter((p) => !removeSet.includes(p)) : [];
-  if (pluginSpec && !nextPlugin.includes(pluginSpec)) nextPlugin.push(pluginSpec);
-  const sameAsOrig = origPlugin && JSON.stringify(origPlugin) === JSON.stringify(nextPlugin);
-  if ((nextPlugin.length > 0 && !origPlugin) || (origPlugin && !sameAsOrig)) {
-    nextRaw = rewriteTopLevelStringArray(nextRaw, "plugin", nextPlugin);
-    data.plugin = nextPlugin;
-  }
-}
-if (mcpProxy) {
-  data.mcp = data.mcp && typeof data.mcp === "object" && !Array.isArray(data.mcp) ? data.mcp : {};
-  if (!data.mcp.openviking || data.mcp.openviking.enabled !== false) {
-    data.mcp.openviking = {
-      type: "local",
-      command: ["node", mcpProxy],
-      enabled: true,
-      timeout: 15000,
-    };
-    nextRaw = setNestedObjectProperty(nextRaw, "mcp", "openviking", data.mcp.openviking, data.mcp);
-  }
-}
-if (!nextRaw.endsWith("\n")) nextRaw += "\n";
-fs.writeFileSync(file, nextRaw);
-NODE
+  "$NODE_BIN" "$lib/jsonc-edit.mjs" "$cfg" "$plugin_spec" "$mcp_proxy"
 }
 
 opencode_install_file_plugin() {
@@ -3628,6 +2349,7 @@ opencode_install_file_plugin() {
     warn "$(t 'OpenCode plugin sources not found; skipping.' '未找到 OpenCode 插件源码，跳过。')"
     return 0
   }
+  prepare_opencode_runtime "$plugin_dir" || return 1
   dest="$HOME/.config/opencode/plugins/openviking"
   mkdir -p "$(dirname "$dest")"
   if [ "$SOURCE_MODE" = "dev" ]; then
@@ -3642,7 +2364,7 @@ opencode_install_file_plugin() {
   if [ -f "$plugin_dir/wrappers/openviking.js" ]; then
     cp "$plugin_dir/wrappers/openviking.js" "$HOME/.config/opencode/plugins/openviking.js"
   else
-    printf '%s\n' 'export { OpenVikingPlugin, default } from "./openviking/index.mjs"' >"$HOME/.config/opencode/plugins/openviking.js"
+    printf '%s\n' 'export { OpenVikingPlugin, default } from "./openviking/index.mjs"' > "$HOME/.config/opencode/plugins/openviking.js"
   fi
   opencode_write_config "$(opencode_config_file)" "" "$dest/servers/mcp-proxy.mjs"
   info "$(t 'OpenCode file plugin installed:' 'OpenCode 文件插件已安装：') $dest"
@@ -3652,32 +2374,470 @@ opencode_install_file_plugin() {
 # pi
 # ---------------------------------------------------------------------------
 
+# Whole-directory installs need generated dependencies before copying. Flat
+# marketplace archives already contain them and have no source generator.
+sync_shared_runtime() {
+  local shared root
+  shared="$(plugin_dir_on_disk memory-plugin-shared)" || return 0
+  shared="$(cd "$shared" && pwd -P)" || return 1
+  root="$(cd "$shared/../.." 2>/dev/null && pwd)" || return 0
+  [ -f "$shared/sync.mjs" ] && [ -d "$root/examples/memory-plugin-shared" ] || return 0
+  "$NODE_BIN" "$shared/sync.mjs" >/dev/null
+}
+
+prepare_opencode_runtime() {
+  local plugin_dir="$1"
+  sync_shared_runtime || return 1
+  # Import resolves the complete dependency graph; node --check only parses.
+  "$NODE_BIN" --input-type=module -e 'import { pathToFileURL } from "node:url"; await import(pathToFileURL(process.argv[2]));' \
+    check-runtime "$plugin_dir/servers/mcp-proxy.mjs" || return 1
+}
+
 install_pi() {
   heading "$(t '4. pi extension' '4. pi 扩展')"
   if ! command -v pi >/dev/null 2>&1; then
     warn "$(t 'pi CLI not found; skipping pi extension install.' '未找到 pi 命令，跳过 pi 扩展安装。')"
     return 0
   fi
-  local plugin_dir dest tmp keep_config
+  local plugin_dir dest tmp
   plugin_dir="$(plugin_dir_on_disk pi-coding-agent-extension)" || {
     warn "$(t 'pi extension sources not found; skipping.' '未找到 pi 扩展源码，跳过。')"
     return 0
   }
+  sync_shared_runtime
+  if [ ! -f "$plugin_dir/shared/credentials.mjs" ]; then
+    warn "$(t 'pi extension shared runtime is missing; run node examples/memory-plugin-shared/sync.mjs and retry.' '未找到 pi 扩展的共享运行时；请先运行 node examples/memory-plugin-shared/sync.mjs 再重试。')"
+    return 0
+  fi
   dest="$HOME/.pi/agent/extensions/openviking"
   tmp="$dest.tmp"
-  keep_config=""
-  [ -f "$dest/config.json" ] && keep_config="$dest/config.json"
   rm -rf "$tmp"
   mkdir -p "$tmp"
-  (cd "$plugin_dir" && tar --exclude node_modules --exclude .git --exclude .omc --exclude .qoder -cf - .) | (cd "$tmp" && tar -xf -)
-  if [ -n "$keep_config" ]; then
-    cp "$keep_config" "$tmp/config.json"
-  fi
+  (cd "$plugin_dir" && tar --exclude node_modules --exclude .git -cf - .) | (cd "$tmp" && tar -xf -)
   rm -rf "$dest"
   mkdir -p "$(dirname "$dest")"
   mv "$tmp" "$dest"
-  pi install "$dest" || warn "$(t 'pi extension copied but pi install registration failed; run pi install manually.' 'pi 扩展文件已复制，但 pi install 注册失败；请手动运行 pi install。')"
-  info "$(t 'pi extension installed:' 'pi 扩展已安装：') $dest"
+  # ~/.pi/agent/extensions/ is one of pi's auto-discovery roots, so copying the
+  # extension there is enough for pi to load it. Do NOT also `pi install` the
+  # same path: that adds a "packages" entry pointing at the directory while
+  # auto-discovery already found its index.ts, and pi dedupes on the canonical
+  # path — a directory and its index.ts don't match, so the extension loads
+  # twice (duplicate /viking command). Instead, purge any stale packages entry
+  # left by older installer versions; `pi remove` on a local path only edits
+  # settings and never deletes the copied files.
+  pi remove "$dest" >/dev/null 2>&1 || true
+  info "$(t 'pi extension installed (auto-discovered):' 'pi 扩展已安装（自动发现）：') $dest"
+}
+
+# ---------------------------------------------------------------------------
+# Validation
+# ---------------------------------------------------------------------------
+
+validate_install() {
+  heading "$(t '5. Validation' '5. 安装校验')"
+  local ok=1 agent_fatal=0 cached list bin
+  if contains_harness claude; then
+    while IFS= read -r bin; do
+      [ -n "$bin" ] || continue
+      command -v "$bin" >/dev/null 2>&1 || continue
+      CLAUDE_BIN="$bin"
+      if has_plugin_subcommand; then
+        list="$(claude_cmd plugin list 2>/dev/null || true)"
+        if str_contains "$list" "$PLUGIN_NAME"; then
+          info "$CLAUDE_BIN: $PLUGIN_NAME $(t 'visible in plugin list' '已出现在插件列表')"
+        else
+          warn "$CLAUDE_BIN: $PLUGIN_NAME $(t 'not visible in plugin list' '未出现在插件列表')"
+          ok=0
+        fi
+      fi
+    done <<EOF
+$CLAUDE_BINS
+EOF
+  fi
+  if contains_harness codex; then
+    while IFS= read -r bin; do
+      [ -n "$bin" ] || continue
+      command -v "$bin" >/dev/null 2>&1 || continue
+      CODEX_BIN="$bin"
+      list="$(codex_cmd plugin list 2>/dev/null || true)"
+      if str_contains "$list" "$PLUGIN_NAME"; then
+        info "$CODEX_BIN: $PLUGIN_NAME $(t 'visible in plugin list' '已出现在插件列表')"
+      else
+        warn "$CODEX_BIN: $PLUGIN_NAME $(t 'not visible in plugin list' '未出现在插件列表')"
+        ok=0
+      fi
+      if is_native_codex_bin; then
+        cached=$(find "$HOME/.codex/plugins/cache/$MARKETPLACE_NAME/$PLUGIN_NAME" -name 'mcp-proxy.mjs' -path '*/servers/*' 2>/dev/null | sort | tail -n 1)
+        if [ -n "$cached" ]; then
+          node --check "$cached" && info "codex: $(t 'cached stdio proxy parses' '缓存中的 stdio 代理语法正常') ($cached)" || ok=0
+        fi
+      fi
+    done <<EOF
+$CODEX_BINS
+EOF
+  fi
+  if contains_harness cursor; then
+    if grep -q 'scripts/hook.mjs' "$HOME/.cursor/hooks.json" 2>/dev/null \
+      && grep -q 'scripts/uri-guard.mjs' "$HOME/.cursor/hooks.json" 2>/dev/null \
+      && grep -q 'OPENVIKING_INTEGRATION_ID' "$HOME/.cursor/hooks.json" 2>/dev/null \
+      && grep -q 'mcp-proxy.mjs' "$HOME/.cursor/mcp.json" 2>/dev/null \
+      && [ -f "$OV_HOME/agent-integrations/cursor/scripts/hook.mjs" ] \
+      && [ -f "$OV_HOME/agent-integrations/cursor/scripts/uri-guard.mjs" ] \
+      && [ -f "$OV_HOME/agent-integrations/memory-plugin-shared/lib/uri-guard.mjs" ] \
+      && [ -f "$OV_HOME/agent-integrations/memory-plugin-shared/lib/agent-hook-runtime.mjs" ] \
+      && [ -f "$OV_HOME/agent-integrations/cursor/plugin.json" ] \
+      && [ -f "$OV_HOME/agent-integrations/cursor/integration.json" ] \
+      && [ -f "$HOME/.cursor/rules/openviking-memory.mdc" ] \
+      && [ -f "$HOME/.cursor/skills/openviking-memory/SKILL.md" ]; then
+      "$NODE_BIN" --check "$OV_HOME/agent-integrations/cursor/scripts/hook.mjs" \
+        || { ok=0; agent_fatal=1; }
+      "$NODE_BIN" --check "$OV_HOME/agent-integrations/cursor/scripts/uri-guard.mjs" \
+        || { ok=0; agent_fatal=1; }
+      if printf '%s' '{}' | env HOME="$HOME" OPENVIKING_MEMORY_ENABLED=0 \
+        "$NODE_BIN" "$OV_HOME/agent-integrations/cursor/scripts/hook.mjs" sessionStart cursor >/dev/null; then
+        info "cursor: $(t 'installed Hook runtime passed its smoke test' '已安装的 Hook 运行时通过 smoke test')"
+      else
+        warn "cursor: $(t 'installed Hook runtime failed its smoke test' '已安装的 Hook 运行时 smoke test 失败')"
+        ok=0; agent_fatal=1
+      fi
+      info "cursor: $(t 'integration installed (Hooks, MCP, Rule, Skill)' '集成已安装（Hook、MCP、Rule、Skill）')"
+    else
+      warn "cursor: $(t 'OpenViking integration installation is incomplete' 'OpenViking 集成安装不完整')"
+      ok=0; agent_fatal=1
+    fi
+  fi
+  if contains_harness trae; then
+    local trae_mcp
+    trae_mcp="$(trae_mcp_path trae)"
+    if grep -q 'scripts/hook.mjs' "$HOME/.trae/hooks.json" 2>/dev/null \
+      && grep -q 'scripts/uri-guard.mjs' "$HOME/.trae/hooks.json" 2>/dev/null \
+      && grep -q 'OPENVIKING_INTEGRATION_ID' "$HOME/.trae/hooks.json" 2>/dev/null \
+      && grep -q 'mcp-proxy.mjs' "$trae_mcp" 2>/dev/null \
+      && [ -f "$OV_HOME/agent-integrations/trae/scripts/hook.mjs" ] \
+      && [ -f "$OV_HOME/agent-integrations/trae/scripts/uri-guard.mjs" ] \
+      && [ -f "$OV_HOME/agent-integrations/trae/integration.json" ] \
+      && [ -f "$OV_HOME/agent-integrations/memory-plugin-shared/lib/agent-hook-runtime.mjs" ]; then
+      "$NODE_BIN" --check "$OV_HOME/agent-integrations/trae/scripts/hook.mjs" \
+        || { ok=0; agent_fatal=1; }
+      "$NODE_BIN" --check "$OV_HOME/agent-integrations/trae/scripts/uri-guard.mjs" \
+        || { ok=0; agent_fatal=1; }
+      if ! printf '%s' '{}' | env HOME="$HOME" OPENVIKING_MEMORY_ENABLED=0 \
+        "$NODE_BIN" "$OV_HOME/agent-integrations/trae/scripts/hook.mjs" session-start trae >/dev/null; then
+        warn "trae: $(t 'installed Hook runtime failed its smoke test' '已安装的 Hook 运行时 smoke test 失败')"
+        ok=0; agent_fatal=1
+      fi
+      info "trae: $(t 'hooks and MCP are configured' 'hooks 与 MCP 已配置')"
+    else
+      warn "trae: $(t 'OpenViking hook or MCP config is incomplete' 'OpenViking hook 或 MCP 配置不完整')"
+      ok=0; agent_fatal=1
+    fi
+  fi
+  if contains_harness trae-cn; then
+    local trae_cn_mcp
+    trae_cn_mcp="$(trae_mcp_path trae-cn)"
+    if grep -q 'scripts/hook.mjs' "$HOME/.trae-cn/hooks.json" 2>/dev/null \
+      && grep -q 'scripts/uri-guard.mjs' "$HOME/.trae-cn/hooks.json" 2>/dev/null \
+      && grep -q 'OPENVIKING_INTEGRATION_ID' "$HOME/.trae-cn/hooks.json" 2>/dev/null \
+      && grep -q 'mcp-proxy.mjs' "$trae_cn_mcp" 2>/dev/null \
+      && [ -f "$OV_HOME/agent-integrations/trae-cn/scripts/hook.mjs" ] \
+      && [ -f "$OV_HOME/agent-integrations/trae-cn/scripts/uri-guard.mjs" ] \
+      && [ -f "$OV_HOME/agent-integrations/trae-cn/integration.json" ] \
+      && [ -f "$OV_HOME/agent-integrations/memory-plugin-shared/lib/agent-hook-runtime.mjs" ]; then
+      "$NODE_BIN" --check "$OV_HOME/agent-integrations/trae-cn/scripts/hook.mjs" \
+        || { ok=0; agent_fatal=1; }
+      "$NODE_BIN" --check "$OV_HOME/agent-integrations/trae-cn/scripts/uri-guard.mjs" \
+        || { ok=0; agent_fatal=1; }
+      if ! printf '%s' '{}' | env HOME="$HOME" OPENVIKING_MEMORY_ENABLED=0 \
+        "$NODE_BIN" "$OV_HOME/agent-integrations/trae-cn/scripts/hook.mjs" session-start trae-cn >/dev/null; then
+        warn "trae-cn: $(t 'installed Hook runtime failed its smoke test' '已安装的 Hook 运行时 smoke test 失败')"
+        ok=0; agent_fatal=1
+      fi
+      info "trae-cn: $(t 'hooks and MCP are configured' 'hooks 与 MCP 已配置')"
+    else
+      warn "trae-cn: $(t 'OpenViking hook or MCP config is incomplete' 'OpenViking hook 或 MCP 配置不完整')"
+      ok=0; agent_fatal=1
+    fi
+  fi
+  if contains_harness trae-cli; then
+    local trae_home="${TRAE_HOME:-$HOME/.trae}"
+    local trae_cli_home="${TRAECLI_HOME:-$trae_home/cli}"
+    local trae_cli_hooks="$trae_cli_home/hooks.json"
+    local trae_cli_config="$trae_home/traecli.toml"
+    if grep -q 'scripts/session-start.mjs' "$trae_cli_hooks" 2>/dev/null \
+      && grep -q 'scripts/auto-recall.mjs' "$trae_cli_hooks" 2>/dev/null \
+      && grep -q 'scripts/auto-capture.mjs' "$trae_cli_hooks" 2>/dev/null \
+      && grep -q 'scripts/uri-guard.mjs' "$trae_cli_hooks" 2>/dev/null \
+      && grep -q 'OPENVIKING_INTEGRATION_ID' "$trae_cli_hooks" 2>/dev/null \
+      && grep -q '\[mcp_servers."openviking-memory"\]' "$trae_cli_config" 2>/dev/null \
+      && grep -q 'mcp-proxy.mjs' "$trae_cli_config" 2>/dev/null \
+      && [ -f "$OV_HOME/agent-integrations/trae-cli/scripts/trae-cli-hook.mjs" ] \
+      && [ -f "$OV_HOME/agent-integrations/trae-cli/scripts/uri-guard.mjs" ] \
+      && [ -f "$OV_HOME/agent-integrations/trae-cli/integration.json" ]; then
+      "$NODE_BIN" --check "$OV_HOME/agent-integrations/trae-cli/scripts/trae-cli-hook.mjs" \
+        || { ok=0; agent_fatal=1; }
+      "$NODE_BIN" --check "$OV_HOME/agent-integrations/trae-cli/scripts/uri-guard.mjs" \
+        || { ok=0; agent_fatal=1; }
+      if ! printf '%s' '{}' | env HOME="$HOME" OPENVIKING_MEMORY_ENABLED=0 \
+        "$NODE_BIN" "$OV_HOME/agent-integrations/trae-cli/scripts/session-start.mjs" >/dev/null; then
+        warn "trae-cli: $(t 'installed Hook runtime failed its smoke test' '已安装的 Hook 运行时 smoke test 失败')"
+        ok=0; agent_fatal=1
+      fi
+      info "trae-cli: $(t 'hooks and MCP are configured' 'hooks 与 MCP 已配置')"
+    else
+      warn "trae-cli: $(t 'OpenViking hook or MCP config is incomplete' 'OpenViking hook 或 MCP 配置不完整')"
+      ok=0; agent_fatal=1
+    fi
+  fi
+  if contains_harness zcode; then
+    local zcode_config="$HOME/.zcode/cli/config.json"
+    if grep -q 'scripts/hook.mjs' "$zcode_config" 2>/dev/null \
+      && grep -q 'scripts/uri-guard.mjs' "$zcode_config" 2>/dev/null \
+      && grep -q 'OPENVIKING_INTEGRATION_ID' "$zcode_config" 2>/dev/null \
+      && grep -q 'mcp-proxy.mjs' "$zcode_config" 2>/dev/null \
+      && [ -f "$OV_HOME/agent-integrations/zcode/scripts/hook.mjs" ] \
+      && [ -f "$OV_HOME/agent-integrations/zcode/scripts/uri-guard.mjs" ] \
+      && [ -f "$OV_HOME/agent-integrations/zcode/integration.json" ] \
+      && [ -f "$OV_HOME/agent-integrations/memory-plugin-shared/lib/agent-hook-runtime.mjs" ]; then
+      "$NODE_BIN" --check "$OV_HOME/agent-integrations/zcode/scripts/hook.mjs" \
+        || { ok=0; agent_fatal=1; }
+      "$NODE_BIN" --check "$OV_HOME/agent-integrations/zcode/scripts/uri-guard.mjs" \
+        || { ok=0; agent_fatal=1; }
+      if ! printf '%s' '{}' | env HOME="$HOME" OPENVIKING_MEMORY_ENABLED=0 \
+        "$NODE_BIN" "$OV_HOME/agent-integrations/zcode/scripts/hook.mjs" session-start zcode >/dev/null; then
+        warn "zcode: $(t 'installed Hook runtime failed its smoke test' '已安装的 Hook 运行时 smoke test 失败')"
+        ok=0; agent_fatal=1
+      fi
+      info "zcode: $(t 'hooks and MCP are configured' 'hooks 与 MCP 已配置')"
+    else
+      warn "zcode: $(t 'OpenViking hook or MCP config is incomplete' 'OpenViking hook 或 MCP 配置不完整')"
+      ok=0; agent_fatal=1
+    fi
+  fi
+  if contains_harness opencode; then
+    local ocfg="$HOME/.config/opencode/opencode.json"
+    local ocfgc="$HOME/.config/opencode/opencode.jsonc"
+    if grep -q '@openviking/opencode-plugin' "$ocfg" "$ocfgc" 2>/dev/null || { [ -f "$HOME/.config/opencode/plugins/openviking.js" ] && [ -f "$HOME/.config/opencode/plugins/openviking/index.mjs" ]; }; then
+      info "opencode: $PLUGIN_NAME $(t 'appears installed' '看起来已安装')"
+    else
+      warn "opencode: $PLUGIN_NAME $(t 'not found in config/plugin dir' '未在配置或插件目录中找到')"
+      ok=0
+    fi
+    if [ -f "$HOME/.config/opencode/plugins/openviking.js" ]; then
+      node --check "$HOME/.config/opencode/plugins/openviking.js" || ok=0
+    fi
+    if [ -f "$HOME/.config/opencode/plugins/openviking/index.mjs" ]; then
+      node --check "$HOME/.config/opencode/plugins/openviking/index.mjs" || ok=0
+    fi
+    if [ -f "$HOME/.config/opencode/plugins/openviking/servers/mcp-proxy.mjs" ]; then
+      node --check "$HOME/.config/opencode/plugins/openviking/servers/mcp-proxy.mjs" || ok=0
+    elif [ -f "$OV_HOME/opencode-mcp-proxy/openviking/servers/mcp-proxy.mjs" ]; then
+      node --check "$OV_HOME/opencode-mcp-proxy/openviking/servers/mcp-proxy.mjs" || ok=0
+    else
+      warn "opencode: $(t 'OpenViking MCP proxy not found' '未找到 OpenViking MCP proxy')"
+      ok=0
+    fi
+    if grep -q '"openviking"' "$ocfg" "$ocfgc" 2>/dev/null && grep -q '"mcp"' "$ocfg" "$ocfgc" 2>/dev/null; then
+      info "opencode: $(t 'MCP server registered' 'MCP server 已注册')"
+    else
+      warn "opencode: $(t 'MCP server not found in config' '配置中未找到 MCP server')"
+      ok=0
+    fi
+  fi
+  if contains_harness pi; then
+    if [ -f "$HOME/.pi/agent/extensions/openviking/index.ts" ] || [ -f "$HOME/.pi/agent/extensions/openviking/index.js" ]; then
+      info "pi: $PLUGIN_NAME $(t 'extension files present (auto-discovered)' '扩展文件已存在（自动发现）')"
+    else
+      warn "pi: $PLUGIN_NAME $(t 'extension files not found' '未找到扩展文件')"
+      ok=0
+    fi
+    if command -v pi >/dev/null 2>&1; then
+      # The extension lives under pi's auto-discovery root, so it must NOT appear
+      # as a configured "packages" entry — a stale entry there loads it twice.
+      if pi list 2>/dev/null | grep -q 'extensions/openviking'; then
+        warn "pi: $PLUGIN_NAME $(t 'still registered as a package (duplicate load); run pi remove ~/.pi/agent/extensions/openviking' '仍作为 package 注册（会重复加载）；请运行 pi remove ~/.pi/agent/extensions/openviking')"
+        ok=0
+      fi
+    fi
+    if [ -f "$HOME/.pi/agent/extensions/openviking/shared/recall-core.mjs" ]; then
+      node --check "$HOME/.pi/agent/extensions/openviking/shared/recall-core.mjs" || ok=0
+    fi
+  fi
+  if contains_harness dsh && command -v dsh >/dev/null 2>&1; then
+    local dsh_profile="${DSH_PROFILE:-$DSH_PROFILE_DEFAULT}"
+    if dsh plugin --profile "$dsh_profile" ls 2>/dev/null | grep -q "$DSH_PACKAGE"; then
+      info "dsh: $DSH_PACKAGE $(t 'installed in profile' '已安装到 profile') $dsh_profile"
+    else
+      warn "dsh: $DSH_PACKAGE $(t 'not found in profile' '未在 profile 中找到') $dsh_profile"
+      ok=0
+    fi
+    if dsh --profile "$dsh_profile" --dump-config 2>/dev/null | grep -q 'openviking-memory'; then
+      info "dsh: $(t 'plugin group composed into the profile' '插件组已合入 profile')"
+    else
+      warn "dsh: $(t 'plugin group not present in the composed profile' '合成后的 profile 中没有插件组')"
+      ok=0
+    fi
+  fi
+  if contains_harness qoder; then
+    if command -v qodercli >/dev/null 2>&1; then
+      list="$(qodercli plugin list 2>/dev/null || true)"
+      if str_contains "$list" "$PLUGIN_NAME"; then
+        info "qoder: $PLUGIN_NAME $(t 'visible in plugin list' '已出现在插件列表')"
+      else
+        warn "qoder: $PLUGIN_NAME $(t 'not visible in plugin list' '未出现在插件列表')"
+        ok=0
+      fi
+      cached=$(find "$QODER_CACHE_DIR" -name 'mcp-proxy.mjs' -path '*/servers/*' 2>/dev/null | sort | tail -n 1)
+      if [ -n "$cached" ]; then
+        node --check "$cached" && info "qoder: $(t 'cached stdio proxy parses' '缓存中的 stdio 代理语法正常')" || ok=0
+      else
+        warn "qoder: $PLUGIN_NAME $(t 'cached stdio proxy not found' '未找到缓存的 stdio 代理')"
+        ok=0
+      fi
+    else
+      warn "qoder: $(t 'qodercli not found; plugin not validated' '未找到 qodercli，插件未校验')"
+      ok=0
+    fi
+  fi
+  if contains_harness codebuddy; then
+    if command -v codebuddy >/dev/null 2>&1; then
+      if codebuddy plugin marketplace list 2>/dev/null | grep -q "$CODEBUDDY_MKT_NAME"; then
+        info "codebuddy: $(t 'marketplace registered' '市场已注册') ($CODEBUDDY_MKT_NAME)"
+      else
+        warn "codebuddy: $(t 'marketplace not registered' '市场未注册') ($CODEBUDDY_MKT_NAME)"
+        ok=0
+      fi
+      list="$(codebuddy plugin list 2>/dev/null || true)"
+      if str_contains "$list" "$CODEBUDDY_PLUGIN_ID"; then
+        info "codebuddy: $CODEBUDDY_PLUGIN_ID $(t 'visible in plugin list' '已出现在插件列表')"
+      else
+        warn "codebuddy: $CODEBUDDY_PLUGIN_ID $(t 'not visible in plugin list' '未出现在插件列表')"
+        ok=0
+      fi
+      cached=$(find "$CODEBUDDY_CACHE_DIR" -name 'mcp-proxy.mjs' -path '*/servers/*' 2>/dev/null | sort | tail -n 1)
+      if [ -n "$cached" ]; then
+        node --check "$cached" && info "codebuddy: $(t 'cached stdio proxy parses' '缓存中的 stdio 代理语法正常')" || ok=0
+      else
+        warn "codebuddy: $PLUGIN_NAME $(t 'cached stdio proxy not found' '未找到缓存的 stdio 代理')"
+        ok=0
+      fi
+    else
+      warn "codebuddy: $(t 'codebuddy not found; plugin not validated' '未找到 codebuddy，插件未校验')"
+      ok=0
+    fi
+  fi
+  if contains_harness agy; then
+    local agy_plugin_dir="$HOME/.gemini/config/plugins/openviking"
+    if [ -f "$agy_plugin_dir/plugin.json" ] &&
+      [ -f "$agy_plugin_dir/hooks.json" ] &&
+      [ -f "$agy_plugin_dir/mcp_config.json" ] &&
+      [ -f "$OV_HOME/agent-integrations/agy/scripts/pre-invocation.mjs" ] &&
+      [ -f "$OV_HOME/agent-integrations/agy/scripts/stop.mjs" ] &&
+      [ -f "$OV_HOME/agent-integrations/agy/scripts/uri-guard.mjs" ] &&
+      [ -f "$OV_HOME/agent-integrations/agy/servers/mcp-proxy.mjs" ]; then
+      "$NODE_BIN" --check "$OV_HOME/agent-integrations/agy/scripts/pre-invocation.mjs" || { ok=0; agent_fatal=1; }
+      "$NODE_BIN" --check "$OV_HOME/agent-integrations/agy/scripts/stop.mjs" || { ok=0; agent_fatal=1; }
+      "$NODE_BIN" --check "$OV_HOME/agent-integrations/agy/scripts/uri-guard.mjs" || { ok=0; agent_fatal=1; }
+      "$NODE_BIN" --check "$OV_HOME/agent-integrations/agy/servers/mcp-proxy.mjs" || { ok=0; agent_fatal=1; }
+      if "$NODE_BIN" - "$OV_HOME/agent-integrations/agy/scripts/config.mjs" "$OVCLI_CONF" <<'AGY_CFG_TEST' 2>/dev/null; then
+const { pathToFileURL } = require("node:url");
+const [configScript, ovcliConf] = process.argv.slice(2);
+process.env.OPENVIKING_CLI_CONFIG_FILE = ovcliConf;
+import(pathToFileURL(configScript).href).then(({ loadAgyConfig }) => {
+  const cfg = loadAgyConfig();
+  if (!cfg.baseUrl) process.exit(1);
+  process.exit(0);
+}).catch(() => process.exit(1));
+AGY_CFG_TEST
+        info "agy: $(t 'credentials verified from' '已验证凭据源：') $OVCLI_CONF"
+      fi
+      info "agy: $(t 'Antigravity plugin and hooks verified' 'Antigravity 插件与 hooks 校验通过')"
+    else
+      warn "agy: $(t 'Antigravity plugin files incomplete' 'Antigravity 插件文件不完整')"
+      ok=0
+      agent_fatal=1
+    fi
+  fi
+  if [ -n "$MKT_DIR" ] && [ -f "$MKT_DIR/claude-code-memory-plugin/scripts/marketplace.test.mjs" ] && [ -d "$MKT_DIR/../.git" ]; then
+    node --test "$MKT_DIR/claude-code-memory-plugin/scripts/marketplace.test.mjs" \
+      "$MKT_DIR/codex-memory-plugin/scripts/marketplace.test.mjs" || ok=0
+  fi
+  if [ "$agent_fatal" -ne 0 ]; then
+    err "$(t 'Installation validation failed. No success result will be reported.' '安装校验失败，不会报告安装成功。')"
+    return 1
+  fi
+  if [ "$ok" -ne 1 ]; then
+    warn "$(t 'Validation reported issues — the install may still work; check the messages above.' '校验发现问题——安装可能仍然可用，请检查上方输出。')"
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# Fork-local harness installers (qoder / codebuddy / omp / agy)
+
+migrate_claude_legacy_settings() {
+  [ -f "$CC_SETTINGS" ] || return 0
+  command -v node >/dev/null 2>&1 || return 0
+  local changed
+  changed="$(
+    node - "$CC_SETTINGS" "$OLD_MARKETPLACE_NAME" "$(date +%Y%m%d-%H%M%S)" 2>/dev/null <<'NODE' || true
+const fs = require("node:fs");
+const [settingsPath, oldName, ts] = process.argv.slice(2);
+const s = JSON.parse(fs.readFileSync(settingsPath, "utf8"));
+let dirty = false;
+if (s.extraKnownMarketplaces && Object.prototype.hasOwnProperty.call(s.extraKnownMarketplaces, oldName)) {
+  delete s.extraKnownMarketplaces[oldName];
+  dirty = true;
+}
+if (s.enabledPlugins && typeof s.enabledPlugins === "object") {
+  for (const id of Object.keys(s.enabledPlugins)) {
+    if (id.endsWith("@" + oldName)) {
+      delete s.enabledPlugins[id];
+      dirty = true;
+    }
+  }
+}
+if (dirty) {
+  const backup = `${settingsPath}.bak.${ts}`;
+  const mode = fs.statSync(settingsPath).mode;
+  fs.copyFileSync(settingsPath, backup);
+  fs.chmodSync(backup, mode);
+  fs.writeFileSync(settingsPath, JSON.stringify(s, null, 2) + "\n");
+  process.stdout.write("1");
+} else {
+  process.stdout.write("0");
+}
+NODE
+  )"
+  case "$changed" in
+  1) info "$(t 'Cleaned stale legacy entries from settings' '已清理 settings.json 旧命名残留条目') ($CC_SETTINGS)" ;;
+  0) ;;
+  *) warn "$(t 'Could not clean stale entries from settings (malformed JSON or write failure); old plugin ids may revive on restart' '清理 settings.json 旧条目失败（JSON 非法或写入失败），旧插件 id 可能在重启后复活') ($CC_SETTINGS)" ;;
+  esac
+}
+
+claude_running_pids() {
+  ps -eo pid=,comm=,args= 2>/dev/null | awk '
+    $2 == "claude" { print $1; next }
+    {
+      args = $3; for (i = 4; i <= NF; i++) args = args " " $i
+      if (args ~ /(^|\/)claude([[:space:]]|$)/ || args ~ /claude-code\//) print $1
+    }
+  ' || true
+}
+
+scrub_claude_legacy_settings() {
+  [ -f "$CC_SETTINGS" ] || return 0
+  command -v node >/dev/null 2>&1 || return 0
+  # Fast path: in practice the old id appears only in the stale entries, so if
+  # it is absent there is nothing to scrub — skip the node spawn on clean systems.
+  grep -qF "$OLD_MARKETPLACE_NAME" "$CC_SETTINGS" 2>/dev/null || return 0
+  local running_pids="" pid_list=""
+  running_pids="$(claude_running_pids)"
+  migrate_claude_legacy_settings
+  if [ -n "$running_pids" ]; then
+    pid_list="${running_pids//$'\n'/ }"
+    warn "$(t 'Claude Code is currently running' 'Claude Code 当前正在运行') (PID: $pid_list)."
+    warn "$(t 'A running instance loads settings.json into memory and rewrites the whole file on exit, which will resurrect the legacy entries just removed. /exit every Claude Code instance, then re-run this installer from a regular terminal (not from inside Claude Code) so the cleanup sticks.' '运行中的实例会把 settings.json 加载进内存，并在退出时整份回写，导致刚清理的旧条目复活。请 /exit 所有 Claude Code 实例，然后在普通终端（不要在 Claude Code 内部）重跑本安装脚本，清理才会持久生效。')"
+  fi
 }
 
 resolve_omp_agent_dir() {
@@ -3782,12 +2942,6 @@ NODE
   info "$(t 'Removed the Qoder OpenViking plugin.' '已移除 Qoder OpenViking 插件。')"
 }
 
-# CodeBuddy uses a real local marketplace (directory type) under
-# ~/.codebuddy/marketplaces. We materialize the plugin into it (version read
-# from the plugin manifest, DRY), register it, then `plugin install` copies a
-# versioned snapshot into the cache and auto-enables it (no manual JSON merge,
-# unlike Qoder). Official `plugin uninstall` self-cleans settings + ledger but
-# leaves the cache dir behind, so we rm it ourselves.
 materialize_codebuddy_marketplace() {
   local plugin_dir="$1" version
   version="$(json_get "$plugin_dir/.claude-plugin/plugin.json" version)"
@@ -3861,11 +3015,6 @@ uninstall_codebuddy() {
   info "$(t 'Removed the CodeBuddy OpenViking plugin.' '已移除 CodeBuddy OpenViking 插件。')"
 }
 
-# verify_codebuddy: read-only health + sync check for the CodeBuddy plugin.
-# Prints one ✓/✗ line per check; returns 0 when all hard checks pass, 1 otherwise.
-# Check 4 (recall activity) is informational only — a fresh install legitimately
-# has no recall state yet. Check 5 (desync) compares checkout sources against the
-# materialized marketplace copy over the files that drive runtime behavior.
 verify_codebuddy() {
   heading "$(t 'CodeBuddy verify' 'CodeBuddy 校验')"
   local fail=0 f desync src_ver mkt_ver base src_dir
@@ -4025,409 +3174,6 @@ AGY_NODE
   info "$(t 'Antigravity (AGY) MCP configured:' 'Antigravity (AGY) MCP 已配置：') $target_dir/mcp_config.json"
 }
 
-# ---------------------------------------------------------------------------
-# Validation
-# ---------------------------------------------------------------------------
-
-validate_install() {
-  heading "$(t '5. Validation' '5. 安装校验')"
-  local ok=1 agent_fatal=0 cached list bin
-  if contains_harness claude; then
-    while IFS= read -r bin; do
-      [ -n "$bin" ] || continue
-      command -v "$bin" >/dev/null 2>&1 || continue
-      CLAUDE_BIN="$bin"
-      if has_plugin_subcommand; then
-        list="$(claude_cmd plugin list 2>/dev/null || true)"
-        if str_contains "$list" "$PLUGIN_NAME"; then
-          info "$CLAUDE_BIN: $PLUGIN_NAME $(t 'visible in plugin list' '已出现在插件列表')"
-        else
-          warn "$CLAUDE_BIN: $PLUGIN_NAME $(t 'not visible in plugin list' '未出现在插件列表')"
-          ok=0
-        fi
-      fi
-    done <<EOF
-$CLAUDE_BINS
-EOF
-  fi
-  if contains_harness codex; then
-    while IFS= read -r bin; do
-      [ -n "$bin" ] || continue
-      command -v "$bin" >/dev/null 2>&1 || continue
-      CODEX_BIN="$bin"
-      list="$(codex_cmd plugin list 2>/dev/null || true)"
-      if str_contains "$list" "$PLUGIN_NAME"; then
-        info "$CODEX_BIN: $PLUGIN_NAME $(t 'visible in plugin list' '已出现在插件列表')"
-      else
-        warn "$CODEX_BIN: $PLUGIN_NAME $(t 'not visible in plugin list' '未出现在插件列表')"
-        ok=0
-      fi
-      if is_native_codex_bin; then
-        cached=$(find "$HOME/.codex/plugins/cache/$MARKETPLACE_NAME/$PLUGIN_NAME" -name 'mcp-proxy.mjs' -path '*/servers/*' 2>/dev/null | sort | tail -n 1)
-        if [ -n "$cached" ]; then
-          node --check "$cached" && info "codex: $(t 'cached stdio proxy parses' '缓存中的 stdio 代理语法正常') ($cached)" || ok=0
-        fi
-      fi
-    done <<EOF
-$CODEX_BINS
-EOF
-  fi
-  if contains_harness cursor; then
-    if grep -q 'scripts/session-start.mjs' "$HOME/.cursor/hooks.json" 2>/dev/null &&
-      grep -q 'scripts/auto-recall.mjs' "$HOME/.cursor/hooks.json" 2>/dev/null &&
-      grep -q 'scripts/auto-capture.mjs' "$HOME/.cursor/hooks.json" 2>/dev/null &&
-      grep -q 'scripts/uri-guard.mjs' "$HOME/.cursor/hooks.json" 2>/dev/null &&
-      grep -q 'OPENVIKING_INTEGRATION_ID' "$HOME/.cursor/hooks.json" 2>/dev/null &&
-      grep -q 'mcp-proxy.mjs' "$HOME/.cursor/mcp.json" 2>/dev/null &&
-      [ -f "$OV_HOME/agent-integrations/cursor/scripts/cursor-hook.mjs" ] &&
-      [ -f "$OV_HOME/agent-integrations/cursor/scripts/uri-guard.mjs" ] &&
-      [ -f "$OV_HOME/agent-integrations/memory-plugin-shared/lib/agent-uri-guard.mjs" ] &&
-      [ -f "$OV_HOME/agent-integrations/cursor/.cursor-plugin/plugin.json" ] &&
-      [ -f "$OV_HOME/agent-integrations/cursor/integration.json" ] &&
-      [ -f "$HOME/.cursor/rules/openviking-memory.mdc" ] &&
-      [ -f "$HOME/.cursor/skills/openviking-memory/SKILL.md" ]; then
-      "$NODE_BIN" --check "$OV_HOME/agent-integrations/cursor/scripts/cursor-hook.mjs" ||
-        {
-          ok=0
-          agent_fatal=1
-        }
-      "$NODE_BIN" --check "$OV_HOME/agent-integrations/cursor/scripts/uri-guard.mjs" ||
-        {
-          ok=0
-          agent_fatal=1
-        }
-      if printf '%s' '{}' | env HOME="$HOME" OPENVIKING_MEMORY_ENABLED=0 \
-        "$NODE_BIN" "$OV_HOME/agent-integrations/cursor/scripts/session-start.mjs" >/dev/null; then
-        info "cursor: $(t 'installed Hook runtime passed its smoke test' '已安装的 Hook 运行时通过 smoke test')"
-      else
-        warn "cursor: $(t 'installed Hook runtime failed its smoke test' '已安装的 Hook 运行时 smoke test 失败')"
-        ok=0
-        agent_fatal=1
-      fi
-      info "cursor: $(t 'integration installed (Hooks, MCP, Rule, Skill)' '集成已安装（Hook、MCP、Rule、Skill）')"
-    else
-      warn "cursor: $(t 'OpenViking integration installation is incomplete' 'OpenViking 集成安装不完整')"
-      ok=0
-      agent_fatal=1
-    fi
-  fi
-  if contains_harness trae; then
-    local trae_mcp
-    trae_mcp="$(trae_mcp_path trae)"
-    if grep -q 'scripts/session-start.mjs' "$HOME/.trae/hooks.json" 2>/dev/null &&
-      grep -q 'scripts/auto-recall.mjs' "$HOME/.trae/hooks.json" 2>/dev/null &&
-      grep -q 'scripts/auto-capture.mjs' "$HOME/.trae/hooks.json" 2>/dev/null &&
-      grep -q 'scripts/uri-guard.mjs' "$HOME/.trae/hooks.json" 2>/dev/null &&
-      grep -q 'OPENVIKING_INTEGRATION_ID' "$HOME/.trae/hooks.json" 2>/dev/null &&
-      grep -q 'mcp-proxy.mjs' "$trae_mcp" 2>/dev/null &&
-      [ -f "$OV_HOME/agent-integrations/trae/scripts/trae-hook.mjs" ] &&
-      [ -f "$OV_HOME/agent-integrations/trae/scripts/uri-guard.mjs" ] &&
-      [ -f "$OV_HOME/agent-integrations/trae/integration.json" ]; then
-      "$NODE_BIN" --check "$OV_HOME/agent-integrations/trae/scripts/trae-hook.mjs" ||
-        {
-          ok=0
-          agent_fatal=1
-        }
-      "$NODE_BIN" --check "$OV_HOME/agent-integrations/trae/scripts/uri-guard.mjs" ||
-        {
-          ok=0
-          agent_fatal=1
-        }
-      if ! printf '%s' '{}' | env HOME="$HOME" OPENVIKING_MEMORY_ENABLED=0 \
-        "$NODE_BIN" "$OV_HOME/agent-integrations/trae/scripts/session-start.mjs" trae >/dev/null; then
-        warn "trae: $(t 'installed Hook runtime failed its smoke test' '已安装的 Hook 运行时 smoke test 失败')"
-        ok=0
-        agent_fatal=1
-      fi
-      info "trae: $(t 'hooks and MCP are configured' 'hooks 与 MCP 已配置')"
-    else
-      warn "trae: $(t 'OpenViking hook or MCP config is incomplete' 'OpenViking hook 或 MCP 配置不完整')"
-      ok=0
-      agent_fatal=1
-    fi
-  fi
-  if contains_harness trae-cn; then
-    local trae_cn_mcp
-    trae_cn_mcp="$(trae_mcp_path trae-cn)"
-    if grep -q 'scripts/session-start.mjs' "$HOME/.trae-cn/hooks.json" 2>/dev/null &&
-      grep -q 'scripts/auto-recall.mjs' "$HOME/.trae-cn/hooks.json" 2>/dev/null &&
-      grep -q 'scripts/auto-capture.mjs' "$HOME/.trae-cn/hooks.json" 2>/dev/null &&
-      grep -q 'scripts/uri-guard.mjs' "$HOME/.trae-cn/hooks.json" 2>/dev/null &&
-      grep -q 'OPENVIKING_INTEGRATION_ID' "$HOME/.trae-cn/hooks.json" 2>/dev/null &&
-      grep -q 'mcp-proxy.mjs' "$trae_cn_mcp" 2>/dev/null &&
-      [ -f "$OV_HOME/agent-integrations/trae-cn/scripts/trae-hook.mjs" ] &&
-      [ -f "$OV_HOME/agent-integrations/trae-cn/scripts/uri-guard.mjs" ] &&
-      [ -f "$OV_HOME/agent-integrations/trae-cn/integration.json" ]; then
-      "$NODE_BIN" --check "$OV_HOME/agent-integrations/trae-cn/scripts/trae-hook.mjs" ||
-        {
-          ok=0
-          agent_fatal=1
-        }
-      "$NODE_BIN" --check "$OV_HOME/agent-integrations/trae-cn/scripts/uri-guard.mjs" ||
-        {
-          ok=0
-          agent_fatal=1
-        }
-      if ! printf '%s' '{}' | env HOME="$HOME" OPENVIKING_MEMORY_ENABLED=0 \
-        "$NODE_BIN" "$OV_HOME/agent-integrations/trae-cn/scripts/session-start.mjs" trae-cn >/dev/null; then
-        warn "trae-cn: $(t 'installed Hook runtime failed its smoke test' '已安装的 Hook 运行时 smoke test 失败')"
-        ok=0
-        agent_fatal=1
-      fi
-      info "trae-cn: $(t 'hooks and MCP are configured' 'hooks 与 MCP 已配置')"
-    else
-      warn "trae-cn: $(t 'OpenViking hook or MCP config is incomplete' 'OpenViking hook 或 MCP 配置不完整')"
-      ok=0
-      agent_fatal=1
-    fi
-  fi
-  if contains_harness trae-cli; then
-    local trae_home="${TRAE_HOME:-$HOME/.trae}"
-    local trae_cli_home="${TRAECLI_HOME:-$trae_home/cli}"
-    local trae_cli_hooks="$trae_cli_home/hooks.json"
-    local trae_cli_config="$trae_home/traecli.toml"
-    if grep -q 'scripts/session-start.mjs' "$trae_cli_hooks" 2>/dev/null &&
-      grep -q 'scripts/auto-recall.mjs' "$trae_cli_hooks" 2>/dev/null &&
-      grep -q 'scripts/auto-capture.mjs' "$trae_cli_hooks" 2>/dev/null &&
-      grep -q 'scripts/uri-guard.mjs' "$trae_cli_hooks" 2>/dev/null &&
-      grep -q 'OPENVIKING_INTEGRATION_ID' "$trae_cli_hooks" 2>/dev/null &&
-      grep -q '\[mcp_servers."openviking-memory"\]' "$trae_cli_config" 2>/dev/null &&
-      grep -q 'mcp-proxy.mjs' "$trae_cli_config" 2>/dev/null &&
-      [ -f "$OV_HOME/agent-integrations/trae-cli/scripts/trae-cli-hook.mjs" ] &&
-      [ -f "$OV_HOME/agent-integrations/trae-cli/scripts/uri-guard.mjs" ] &&
-      [ -f "$OV_HOME/agent-integrations/trae-cli/integration.json" ]; then
-      "$NODE_BIN" --check "$OV_HOME/agent-integrations/trae-cli/scripts/trae-cli-hook.mjs" ||
-        {
-          ok=0
-          agent_fatal=1
-        }
-      "$NODE_BIN" --check "$OV_HOME/agent-integrations/trae-cli/scripts/uri-guard.mjs" ||
-        {
-          ok=0
-          agent_fatal=1
-        }
-      if ! printf '%s' '{}' | env HOME="$HOME" OPENVIKING_MEMORY_ENABLED=0 \
-        "$NODE_BIN" "$OV_HOME/agent-integrations/trae-cli/scripts/session-start.mjs" >/dev/null; then
-        warn "trae-cli: $(t 'installed Hook runtime failed its smoke test' '已安装的 Hook 运行时 smoke test 失败')"
-        ok=0
-        agent_fatal=1
-      fi
-      info "trae-cli: $(t 'hooks and MCP are configured' 'hooks 与 MCP 已配置')"
-    else
-      warn "trae-cli: $(t 'OpenViking hook or MCP config is incomplete' 'OpenViking hook 或 MCP 配置不完整')"
-      ok=0
-      agent_fatal=1
-    fi
-  fi
-  if contains_harness zcode; then
-    local zcode_config="$HOME/.zcode/cli/config.json"
-    if grep -q 'scripts/session-start.mjs' "$zcode_config" 2>/dev/null &&
-      grep -q 'scripts/auto-recall.mjs' "$zcode_config" 2>/dev/null &&
-      grep -q 'scripts/auto-capture.mjs' "$zcode_config" 2>/dev/null &&
-      grep -q 'scripts/uri-guard.mjs' "$zcode_config" 2>/dev/null &&
-      grep -q 'OPENVIKING_INTEGRATION_ID' "$zcode_config" 2>/dev/null &&
-      grep -q 'mcp-proxy.mjs' "$zcode_config" 2>/dev/null &&
-      [ -f "$OV_HOME/agent-integrations/zcode/scripts/zcode-hook.mjs" ] &&
-      [ -f "$OV_HOME/agent-integrations/zcode/scripts/uri-guard.mjs" ] &&
-      [ -f "$OV_HOME/agent-integrations/zcode/integration.json" ]; then
-      "$NODE_BIN" --check "$OV_HOME/agent-integrations/zcode/scripts/zcode-hook.mjs" ||
-        {
-          ok=0
-          agent_fatal=1
-        }
-      "$NODE_BIN" --check "$OV_HOME/agent-integrations/zcode/scripts/uri-guard.mjs" ||
-        {
-          ok=0
-          agent_fatal=1
-        }
-      if ! printf '%s' '{}' | env HOME="$HOME" OPENVIKING_MEMORY_ENABLED=0 \
-        "$NODE_BIN" "$OV_HOME/agent-integrations/zcode/scripts/session-start.mjs" >/dev/null; then
-        warn "zcode: $(t 'installed Hook runtime failed its smoke test' '已安装的 Hook 运行时 smoke test 失败')"
-        ok=0
-        agent_fatal=1
-      fi
-      info "zcode: $(t 'hooks and MCP are configured' 'hooks 与 MCP 已配置')"
-    else
-      warn "zcode: $(t 'OpenViking hook or MCP config is incomplete' 'OpenViking hook 或 MCP 配置不完整')"
-      ok=0
-      agent_fatal=1
-    fi
-  fi
-  if contains_harness opencode; then
-    local ocfg="$HOME/.config/opencode/opencode.json"
-    local ocfgc="$HOME/.config/opencode/opencode.jsonc"
-    if grep -q '@openviking/opencode-plugin' "$ocfg" "$ocfgc" 2>/dev/null || { [ -f "$HOME/.config/opencode/plugins/openviking.js" ] && [ -f "$HOME/.config/opencode/plugins/openviking/index.mjs" ]; }; then
-      info "opencode: $PLUGIN_NAME $(t 'appears installed' '看起来已安装')"
-    else
-      warn "opencode: $PLUGIN_NAME $(t 'not found in config/plugin dir' '未在配置或插件目录中找到')"
-      ok=0
-    fi
-    if [ -f "$HOME/.config/opencode/plugins/openviking.js" ]; then
-      node --check "$HOME/.config/opencode/plugins/openviking.js" || ok=0
-    fi
-    if [ -f "$HOME/.config/opencode/plugins/openviking/index.mjs" ]; then
-      node --check "$HOME/.config/opencode/plugins/openviking/index.mjs" || ok=0
-    fi
-    if [ -f "$HOME/.config/opencode/plugins/openviking/servers/mcp-proxy.mjs" ]; then
-      node --check "$HOME/.config/opencode/plugins/openviking/servers/mcp-proxy.mjs" || ok=0
-    elif [ -f "$OV_HOME/opencode-mcp-proxy/openviking/servers/mcp-proxy.mjs" ]; then
-      node --check "$OV_HOME/opencode-mcp-proxy/openviking/servers/mcp-proxy.mjs" || ok=0
-    else
-      warn "opencode: $(t 'OpenViking MCP proxy not found' '未找到 OpenViking MCP proxy')"
-      ok=0
-    fi
-    if grep -q '"openviking"' "$ocfg" "$ocfgc" 2>/dev/null && grep -q '"mcp"' "$ocfg" "$ocfgc" 2>/dev/null; then
-      info "opencode: $(t 'MCP server registered' 'MCP server 已注册')"
-    else
-      warn "opencode: $(t 'MCP server not found in config' '配置中未找到 MCP server')"
-      ok=0
-    fi
-  fi
-  if contains_harness pi; then
-    if [ -f "$HOME/.pi/agent/extensions/openviking/index.ts" ] || [ -f "$HOME/.pi/agent/extensions/openviking/index.js" ]; then
-      info "pi: $PLUGIN_NAME $(t 'extension files present' '扩展文件已存在')"
-    else
-      warn "pi: $PLUGIN_NAME $(t 'extension files not found' '未找到扩展文件')"
-      ok=0
-    fi
-    if command -v pi >/dev/null 2>&1; then
-      if pi list 2>/dev/null | grep -q 'extensions/openviking'; then
-        info "pi: $PLUGIN_NAME $(t 'registered in pi settings' '已注册到 pi settings')"
-      else
-        warn "pi: $PLUGIN_NAME $(t 'not registered in pi settings' '未注册到 pi settings')"
-        ok=0
-      fi
-    fi
-    if [ -f "$HOME/.pi/agent/extensions/openviking/shared/recall-core.mjs" ]; then
-      node --check "$HOME/.pi/agent/extensions/openviking/shared/recall-core.mjs" || ok=0
-    fi
-  fi
-  if contains_harness omp; then
-    local omp_agent_dir="$(resolve_omp_agent_dir)"
-    if [ -f "$omp_agent_dir/extensions/openviking/index.ts" ] || [ -f "$omp_agent_dir/extensions/openviking/index.js" ]; then
-      info "omp: $PLUGIN_NAME $(t 'extension files present' '扩展文件已存在')"
-    else
-      warn "omp: $PLUGIN_NAME $(t 'extension files not found' '未找到扩展文件')"
-      ok=0
-    fi
-    if [ -f "$omp_agent_dir/extensions/openviking/shared/recall-core.mjs" ]; then
-      if "$NODE_BIN" --check "$omp_agent_dir/extensions/openviking/shared/recall-core.mjs" 2>/dev/null; then
-        info "omp: $(t 'shared recall-core.mjs syntax OK' 'shared/recall-core.mjs 语法正常')"
-      else
-        warn "omp: $(t 'shared recall-core.mjs syntax check failed' 'shared/recall-core.mjs 语法检查失败')"
-        ok=0
-      fi
-    fi
-  fi
-  if contains_harness qoder; then
-    if command -v qodercli >/dev/null 2>&1; then
-      list="$(qodercli plugin list 2>/dev/null || true)"
-      if str_contains "$list" "$PLUGIN_NAME"; then
-        info "qoder: $PLUGIN_NAME $(t 'visible in plugin list' '已出现在插件列表')"
-      else
-        warn "qoder: $PLUGIN_NAME $(t 'not visible in plugin list' '未出现在插件列表')"
-        ok=0
-      fi
-      cached=$(find "$QODER_CACHE_DIR" -name 'mcp-proxy.mjs' -path '*/servers/*' 2>/dev/null | sort | tail -n 1)
-      if [ -n "$cached" ]; then
-        node --check "$cached" && info "qoder: $(t 'cached stdio proxy parses' '缓存中的 stdio 代理语法正常')" || ok=0
-      else
-        warn "qoder: $PLUGIN_NAME $(t 'cached stdio proxy not found' '未找到缓存的 stdio 代理')"
-        ok=0
-      fi
-    else
-      warn "qoder: $(t 'qodercli not found; plugin not validated' '未找到 qodercli，插件未校验')"
-      ok=0
-    fi
-  fi
-  if contains_harness codebuddy; then
-    if command -v codebuddy >/dev/null 2>&1; then
-      if codebuddy plugin marketplace list 2>/dev/null | grep -q "$CODEBUDDY_MKT_NAME"; then
-        info "codebuddy: $(t 'marketplace registered' '市场已注册') ($CODEBUDDY_MKT_NAME)"
-      else
-        warn "codebuddy: $(t 'marketplace not registered' '市场未注册') ($CODEBUDDY_MKT_NAME)"
-        ok=0
-      fi
-      list="$(codebuddy plugin list 2>/dev/null || true)"
-      if str_contains "$list" "$CODEBUDDY_PLUGIN_ID"; then
-        info "codebuddy: $CODEBUDDY_PLUGIN_ID $(t 'visible in plugin list' '已出现在插件列表')"
-      else
-        warn "codebuddy: $CODEBUDDY_PLUGIN_ID $(t 'not visible in plugin list' '未出现在插件列表')"
-        ok=0
-      fi
-      cached=$(find "$CODEBUDDY_CACHE_DIR" -name 'mcp-proxy.mjs' -path '*/servers/*' 2>/dev/null | sort | tail -n 1)
-      if [ -n "$cached" ]; then
-        node --check "$cached" && info "codebuddy: $(t 'cached stdio proxy parses' '缓存中的 stdio 代理语法正常')" || ok=0
-      else
-        warn "codebuddy: $PLUGIN_NAME $(t 'cached stdio proxy not found' '未找到缓存的 stdio 代理')"
-        ok=0
-      fi
-    else
-      warn "codebuddy: $(t 'codebuddy not found; plugin not validated' '未找到 codebuddy，插件未校验')"
-      ok=0
-    fi
-  fi
-  if contains_harness dsh && command -v dsh >/dev/null 2>&1; then
-    local dsh_profile="${DSH_PROFILE:-$DSH_PROFILE_DEFAULT}"
-    if dsh plugin --profile "$dsh_profile" ls 2>/dev/null | grep -q "$DSH_PACKAGE"; then
-      info "dsh: $DSH_PACKAGE $(t 'installed in profile' '已安装到 profile') $dsh_profile"
-    else
-      warn "dsh: $DSH_PACKAGE $(t 'not found in profile' '未在 profile 中找到') $dsh_profile"
-      ok=0
-    fi
-    if dsh --profile "$dsh_profile" --dump-config 2>/dev/null | grep -q 'openviking-memory'; then
-      info "dsh: $(t 'plugin group composed into the profile' '插件组已合入 profile')"
-    else
-      warn "dsh: $(t 'plugin group not present in the composed profile' '合成后的 profile 中没有插件组')"
-      ok=0
-    fi
-  fi
-  if contains_harness agy; then
-    local agy_plugin_dir="$HOME/.gemini/config/plugins/openviking"
-    if [ -f "$agy_plugin_dir/plugin.json" ] &&
-      [ -f "$agy_plugin_dir/hooks.json" ] &&
-      [ -f "$agy_plugin_dir/mcp_config.json" ] &&
-      [ -f "$OV_HOME/agent-integrations/agy/scripts/pre-invocation.mjs" ] &&
-      [ -f "$OV_HOME/agent-integrations/agy/scripts/stop.mjs" ] &&
-      [ -f "$OV_HOME/agent-integrations/agy/scripts/uri-guard.mjs" ] &&
-      [ -f "$OV_HOME/agent-integrations/agy/servers/mcp-proxy.mjs" ]; then
-      "$NODE_BIN" --check "$OV_HOME/agent-integrations/agy/scripts/pre-invocation.mjs" || { ok=0; agent_fatal=1; }
-      "$NODE_BIN" --check "$OV_HOME/agent-integrations/agy/scripts/stop.mjs" || { ok=0; agent_fatal=1; }
-      "$NODE_BIN" --check "$OV_HOME/agent-integrations/agy/scripts/uri-guard.mjs" || { ok=0; agent_fatal=1; }
-      "$NODE_BIN" --check "$OV_HOME/agent-integrations/agy/servers/mcp-proxy.mjs" || { ok=0; agent_fatal=1; }
-      if "$NODE_BIN" - "$OV_HOME/agent-integrations/agy/scripts/config.mjs" "$OVCLI_CONF" <<'AGY_CFG_TEST' 2>/dev/null; then
-const { pathToFileURL } = require("node:url");
-const [configScript, ovcliConf] = process.argv.slice(2);
-process.env.OPENVIKING_CLI_CONFIG_FILE = ovcliConf;
-import(pathToFileURL(configScript).href).then(({ loadAgyConfig }) => {
-  const cfg = loadAgyConfig();
-  if (!cfg.baseUrl) process.exit(1);
-  process.exit(0);
-}).catch(() => process.exit(1));
-AGY_CFG_TEST
-        info "agy: $(t 'credentials verified from' '已验证凭据源：') $OVCLI_CONF"
-      fi
-      info "agy: $(t 'Antigravity plugin and hooks verified' 'Antigravity 插件与 hooks 校验通过')"
-    else
-      warn "agy: $(t 'Antigravity plugin files incomplete' 'Antigravity 插件文件不完整')"
-      ok=0
-      agent_fatal=1
-    fi
-  fi
-  if [ -n "$MKT_DIR" ] && [ -f "$MKT_DIR/claude-code-memory-plugin/scripts/marketplace.test.mjs" ] && [ -d "$MKT_DIR/../.git" ]; then
-    node --test "$MKT_DIR/claude-code-memory-plugin/scripts/marketplace.test.mjs" \
-      "$MKT_DIR/codex-memory-plugin/scripts/marketplace.test.mjs" || ok=0
-  fi
-  if [ "$agent_fatal" -ne 0 ]; then
-    err "$(t 'Installation validation failed. No success result will be reported.' '安装校验失败，不会报告安装成功。')"
-    return 1
-  fi
-  if [ "$ok" -ne 1 ]; then
-    warn "$(t 'Validation reported issues — the install may still work; check the messages above.' '校验发现问题——安装可能仍然可用，请检查上方输出。')"
-  fi
-}
-
-# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
@@ -4435,55 +3181,16 @@ select_language
 
 heading "$(t '1. Environment check' '1. 环境检查')"
 case "$(uname -s)" in
-Darwin | Linux) info "OS: $(uname -s)" ;;
-*)
-  err "Unsupported OS: $(uname -s). Only macOS and Linux are supported."
-  exit 1
-  ;;
+  Darwin|Linux) info "OS: $(uname -s)" ;;
+  *) err "Unsupported OS: $(uname -s). Only macOS and Linux are supported."; exit 1 ;;
 esac
-command -v node >/dev/null 2>&1 || {
-  err "$(t 'node not found. Install Node.js 18+.' '未找到 node，请先安装 Node.js 18+。')"
-  exit 1
-}
+command -v node >/dev/null 2>&1 || { err "$(t 'node not found. Install Node.js 18+.' '未找到 node，请先安装 Node.js 18+。')"; exit 1; }
 NODE_BIN="$(command -v node)"
 NODE_MAJOR="$("$NODE_BIN" -p 'Number(process.versions.node.split(".")[0])')"
-[ "$NODE_MAJOR" -ge 18 ] || {
-  err "Node.js 18+ required; found $("$NODE_BIN" --version)."
-  exit 1
-}
+[ "$NODE_MAJOR" -ge 18 ] || { err "Node.js 18+ required; found $("$NODE_BIN" --version)."; exit 1; }
 command -v curl >/dev/null 2>&1 || warn "curl not found; archive installs may fail."
 
 resolve_self_checkout
-
-# Fast paths: `--sync codebuddy` / `--verify codebuddy` run without the wizard,
-# harness selection, connection config, or install validation. Dev-loop only —
-# they rely on resolve_self_checkout having located the plugin sources in this
-# checkout. `--sync`/`--verify` set YES=1 at parse time so nothing prompts.
-if [ -n "$SYNC_TARGET" ]; then
-  [ "$SYNC_TARGET" = "codebuddy" ] || {
-    err "Unsupported --sync target: $SYNC_TARGET (expected: codebuddy)"
-    exit 2
-  }
-  run_shared_sync || exit 1
-  install_codebuddy
-  exit 0
-fi
-if [ -n "$VERIFY_TARGET" ]; then
-  [ "$VERIFY_TARGET" = "codebuddy" ] || {
-    err "Unsupported --verify target: $VERIFY_TARGET (expected: codebuddy)"
-    exit 2
-  }
-  if verify_codebuddy; then exit 0; else exit 1; fi
-fi
-
-# Scrub stale legacy Claude Code settings entries on every wizard run (not only
-# `--harness claude`) so the old plugin ids stop reviving on restart. Runs before
-# any network step so it still runs if a later step fails — but AFTER the
-# `--sync`/`--verify` fast paths above, which exit first and must stay
-# side-effect-free (`--verify` is read-only; neither should rewrite Claude's
-# settings.json during a CodeBuddy dev-loop operation).
-scrub_claude_legacy_settings
-
 select_harnesses
 validate_selected_harnesses
 select_compatible_bins
@@ -4504,7 +3211,6 @@ select_dist
 configure_ovcli
 resolve_source_mode
 prepare_marketplace_dir
-cleanup_rc_wrappers
 
 if contains_harness claude; then
   while IFS= read -r CLAUDE_BIN; do
@@ -4538,8 +3244,8 @@ validate_install
 heading "$(t 'Done' '完成')"
 info "$(t 'Credentials:' '凭据：') $OVCLI_CONF"
 case "$SOURCE_MODE" in
-remote) if contains_harness claude || contains_harness codex; then info "Marketplace: remote ($REPO_URL @ $REPO_REF)"; fi ;;
-*) if contains_harness claude || contains_harness codex; then info "Marketplace: ${MKT_DIR:-$CODEX_TOS_GIT_URL}"; fi ;;
+  remote) if contains_harness claude || contains_harness codex; then info "Marketplace: remote ($REPO_URL @ $REPO_REF)"; fi ;;
+  *) if contains_harness claude || contains_harness codex; then info "Marketplace: ${MKT_DIR:-$CODEX_TOS_GIT_URL}"; fi ;;
 esac
 if contains_harness claude; then info "Claude-format: $(list_words "$CLAUDE_BINS") -> $PLUGIN_ID"; fi
 if [ -n "$TRAECODE_CLI_BIN" ]; then

@@ -22,12 +22,7 @@
 
 import { loadConfig } from "./config.mjs";
 import { createLogger } from "./debug-log.mjs";
-import {
-  catchUpTurns,
-  commitOvSession,
-  hasCaptureKeyword,
-  makeFetchJSON,
-} from "./ov-session.mjs";
+import { catchUpTurns, commitOvSession, hasCaptureKeyword, makeFetchJSON } from "./ov-session.mjs";
 import {
   clearEnded,
   loadState,
@@ -36,6 +31,7 @@ import {
   saveState,
   withSessionLock,
 } from "./session-state.mjs";
+import { runHookStage } from "./shared/agent-hook-runtime.mjs";
 import { maybeDetach, readHookStdin } from "./shared/async-writer.mjs";
 import { resolveEffectivePeerId } from "./shared/workspace-peer.mjs";
 
@@ -48,9 +44,7 @@ const LOCK_WAIT_MS = (() => {
   return Number.isFinite(v) && v >= 0 ? Math.floor(v) : 120_000;
 })();
 
-const { fetchJSONRes, fetchJSON } = makeFetchJSON(cfg, {
-  getActorPeerId: () => activePeerId,
-});
+const { fetchJSONRes, fetchJSON } = makeFetchJSON(cfg, { getActorPeerId: () => activePeerId });
 
 function output(obj) {
   process.stdout.write(JSON.stringify(obj) + "\n");
@@ -67,19 +61,13 @@ async function finish(sessionId, transcriptPath, cwd, endToken, heartbeat) {
   }
 
   const state = await loadState(sessionId);
-  activePeerId =
-    cfg.peerId ||
-    state.workspacePeerId ||
-    resolveEffectivePeerId({ cfg, cwd }).peerId;
+  activePeerId = cfg.peerId || state.workspacePeerId || resolveEffectivePeerId({ cfg, cwd }).peerId;
   log("start", { sessionId, transcriptPath, hasPeer: Boolean(activePeerId) });
 
   const health = await fetchJSON("/health");
   if (!health) {
     // Keep the state and the end marker; the sweep retries once OV is back.
-    logError(
-      "health_check",
-      "server unreachable; end marker kept for the sweep",
-    );
+    logError("health_check", "server unreachable; end marker kept for the sweep");
     return;
   }
 
@@ -93,20 +81,14 @@ async function finish(sessionId, transcriptPath, cwd, endToken, heartbeat) {
     logError,
     heartbeat,
     shouldSend: (turns) =>
-      Boolean(state.ovSessionId) ||
-      cfg.captureMode !== "keyword" ||
-      hasCaptureKeyword(turns),
+      Boolean(state.ovSessionId) || cfg.captureMode !== "keyword" || hasCaptureKeyword(turns),
   });
-  if (added > 0)
-    log("appended_catchup", { ovSessionId: state.ovSessionId, added });
+  if (added > 0) log("appended_catchup", { ovSessionId: state.ovSessionId, added });
 
   // An unreadable transcript is not an empty one: the tail turns may still be
   // there. Keep the live id and the marker so the sweep retries.
   if (unreadable) {
-    logError("transcript_unreadable", {
-      ovSessionId: state.ovSessionId,
-      transcriptPath,
-    });
+    logError("transcript_unreadable", { ovSessionId: state.ovSessionId, transcriptPath });
     await saveState(state, { touch: false });
     return;
   }
@@ -125,10 +107,7 @@ async function finish(sessionId, transcriptPath, cwd, endToken, heartbeat) {
   }
 
   if (!state.ovSessionId) {
-    log("skip", {
-      stage: "commit",
-      reason: "no live OV session for this codex session",
-    });
+    log("skip", { stage: "commit", reason: "no live OV session for this codex session" });
     if (added > 0) await saveState(state, { touch: false });
     await clearEnded(sessionId, { before: endToken + 1 });
     return;
@@ -164,43 +143,21 @@ async function finish(sessionId, transcriptPath, cwd, endToken, heartbeat) {
   await clearEnded(sessionId, { before: endToken + 1 });
 }
 
-async function main() {
-  if (!cfg.autoCapture) {
-    log("skip", { stage: "init", reason: "autoCapture disabled" });
-    output({});
-    return;
-  }
-
-  let raw;
-  let input;
-  try {
-    raw = await readHookStdin();
-    input = JSON.parse(raw);
-  } catch {
-    log("skip", { stage: "stdin_parse", reason: "invalid input" });
-    output({});
-    return;
-  }
-
-  const sessionId = input.session_id;
+runHookStage({
+  loadConfig,
+  input: { read: readHookStdin },
+  // The gates answer before markEnded below: a bypassed session was never
+  // captured, so leaving a marker behind would only make the next SessionStart
+  // sweep chase nothing.
+  gates: { enabled: (reloaded) => reloaded.autoCapture },
+  envelope: () => output({}),
+  onSkip: (reason) => log("skip", { stage: "init", reason }),
+}, async ({ cfg: reloaded, input, raw, cwd, sessionId, emit }) => {
+  cfg = reloaded;
   const transcriptPath = input.transcript_path || null;
-  // The workspace layer belongs to the session's directory, which only the
-  // payload knows; see loadConfig for why re-resolving this late is safe.
-  const cwd =
-    typeof input.cwd === "string" && input.cwd.trim()
-      ? input.cwd
-      : process.cwd();
-  cfg = loadConfig(cwd);
-  if (!cfg.autoCapture) {
-    // The gate above ran against this process's directory, not the session's.
-    log("skip", { stage: "init", reason: "autoCapture disabled" });
-    output({});
-    return;
-  }
 
   if (!sessionId) {
     log("skip", { stage: "init", reason: "no session_id" });
-    output({});
     return;
   }
 
@@ -209,46 +166,27 @@ async function main() {
   // session at the next SessionStart. The marker's timestamp is the token the
   // worker verifies before committing, inherited through the environment.
   const inherited = Number(process.env.OPENVIKING_SESSION_END_TOKEN);
-  const endToken =
-    process.env.OV_HOOK_WORKER === "1" &&
-    Number.isFinite(inherited) &&
-    inherited > 0
-      ? inherited
-      : await markEnded(sessionId);
+  const endToken = process.env.OV_HOOK_WORKER === "1" && Number.isFinite(inherited) && inherited > 0
+    ? inherited
+    : await markEnded(sessionId);
   process.env.OPENVIKING_SESSION_END_TOKEN = String(endToken);
 
   if (process.env.OV_HOOK_WORKER !== "1") {
     // stdin is already drained; hand the payload to the worker through the
     // shared cache env var.
     process.env.OPENVIKING_HOOK_STDIN_CACHE = raw;
-    const detached = await maybeDetach(
-      { ...cfg, writePathAsync: true },
-      { approve: () => output({}) },
-    );
+    const detached = await maybeDetach({ ...cfg, writePathAsync: true }, { approve: emit });
     if (detached) return;
     delete process.env.OPENVIKING_HOOK_STDIN_CACHE;
-    logError(
-      "detach_failed",
-      "running the commit inline; Codex may kill it at the timeout",
-    );
+    logError("detach_failed", "running the commit inline; Codex may kill it at the timeout");
   }
 
   const outcome = await withSessionLock(
     sessionId,
-    ({ heartbeat }) =>
-      finish(sessionId, transcriptPath, cwd, endToken, heartbeat),
+    ({ heartbeat }) => finish(sessionId, transcriptPath, cwd, endToken, heartbeat),
     { waitMs: LOCK_WAIT_MS },
   );
   if (outcome.skipped) {
-    logError(
-      "lock_timeout",
-      `another writer holds ${sessionId}; end marker left for the sweep`,
-    );
+    logError("lock_timeout", `another writer holds ${sessionId}; end marker left for the sweep`);
   }
-  output({});
-}
-
-main().catch((err) => {
-  logError("uncaught", err);
-  output({});
-});
+}).catch((err) => { logError("uncaught", err); output({}); });

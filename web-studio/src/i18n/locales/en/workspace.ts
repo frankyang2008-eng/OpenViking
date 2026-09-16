@@ -30,6 +30,7 @@ const workspace = {
       defaultTitle: 'OpenViking Studio',
     },
     navigation: {
+      compile: { title: 'Compile' },
       home: {
         title: 'Home',
       },
@@ -413,6 +414,15 @@ const workspace = {
       },
       error: 'Failure reason',
       result: 'Result',
+      noResultRunning: 'Task in progress',
+      noResultRunningDescription:
+        'No final result is available yet. See the reported stages and execution log above.',
+      noResultPending: 'Task queued',
+      noResultPendingDescription:
+        'The task has not started yet. Reported stages and execution events will appear when available.',
+      noResultCompleted: 'Task completed',
+      noResultCompletedDescription:
+        'This task did not return a displayable result.',
       noResult: 'No result yet',
       noResultDescription:
         'Results returned by the API will appear here when the task completes.',
@@ -476,6 +486,7 @@ const workspace = {
       unknown: 'Unknown',
     },
     types: {
+      compile: 'Compile',
       session_commit: 'Session commit',
       add_resource: 'Resource processing',
       add_skill: 'Skill import',
@@ -848,6 +859,19 @@ const workspace = {
       title: 'New API key',
     },
     loading: 'Loading identities...',
+    userList: {
+      search: 'Search all users by username',
+      noResults: 'No matching users',
+      noResultsDescription: 'Try another username or clear the search.',
+      pagination: 'User pagination',
+      summary: '{{total}} users · Page {{page}} of {{pageCount}}',
+      pageSize: 'Users per page',
+      pageSizeValue: '{{count}} per page',
+      first: 'First',
+      previous: 'Previous',
+      next: 'Next',
+      last: 'Last',
+    },
     management: {
       accountFilter: 'Accounts',
       accessDeniedDescription:
@@ -914,9 +938,9 @@ const workspace = {
     },
     toast: {
       accountCreated: 'Account created',
-      accountDeleted: '{{account}} deleted',
-      accountDeletedRecoveryFailed:
-        'The account was deleted, but the remaining account list could not be loaded: {{error}}',
+      accountDeletionStarted: '{{account}} disabled. Cleanup task: {{taskId}}',
+      accountDeletionRecoveryFailed:
+        'Account cleanup was submitted, but the remaining account list could not be loaded: {{error}}',
       connectionSaved: 'Connection saved',
       copyFailed: 'Copy failed',
       copied: 'Copied',
