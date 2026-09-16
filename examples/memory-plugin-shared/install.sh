@@ -2770,7 +2770,6 @@ AGY_CFG_TEST
   fi
 }
 
-# ---------------------------------------------------------------------------
 # Fork-local harness installers (qoder / codebuddy / omp / agy)
 
 migrate_claude_legacy_settings() {
@@ -3174,6 +3173,7 @@ AGY_NODE
   info "$(t 'Antigravity (AGY) MCP configured:' 'Antigravity (AGY) MCP 已配置：') $target_dir/mcp_config.json"
 }
 
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
