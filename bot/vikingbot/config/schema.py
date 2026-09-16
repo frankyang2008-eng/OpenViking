@@ -872,7 +872,7 @@ class Config(BaseSettings):
     sandbox: SandboxConfig = Field(default_factory=SandboxConfig)
     heartbeat: HeartbeatConfig = Field(default_factory=HeartbeatConfig)
     langfuse: LangfuseConfig = Field(default_factory=LangfuseConfig)
-    hooks: list[str] = Field(["vikingbot.hooks.builtins.openviking_hooks.hooks"])
+    hooks: list[str] = Field(default=["vikingbot.hooks.builtins.openviking_hooks.hooks"])
     skills: list[str] = Field(
         default_factory=lambda: [
             "github-proxy",

@@ -454,7 +454,7 @@ def gateway(
     port: Optional[int] = typer.Option(None, "--port", "-p", help="Gateway port"),
     host: Optional[str] = typer.Option(None, "--host", help="Gateway host"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Verbose output"),
-    config_path: str = typer.Option(None, "--config", "-c", help="ov.conf path"),
+    config_path: str | None = typer.Option(None, "--config", "-c", help="ov.conf path"),
 ):
     """Start the vikingbot gateway with OpenAPI chat enabled by default."""
 
@@ -795,8 +795,8 @@ def prepare_agent_channel(
 
 @app.command()
 def chat(
-    message: str = typer.Option(None, "--message", "-m", help="Message to send to the agent"),
-    session_id: str = typer.Option(None, "--session", "-s", help="Session ID"),
+    message: str | None = typer.Option(None, "--message", "-m", help="Message to send to the agent"),
+    session_id: str | None = typer.Option(None, "--session", "-s", help="Session ID"),
     markdown: bool = typer.Option(
         True, "--markdown/--no-markdown", help="Render assistant output as Markdown"
     ),
@@ -806,16 +806,16 @@ def chat(
     eval: bool = typer.Option(
         False, "--eval", "-e", help="Run evaluation mode, output JSON results"
     ),
-    config_path: str = typer.Option(
+    config_path: str | None = typer.Option(
         None, "--config", "-c", help="Path to ov.conf, default .openviking/ov.conf"
     ),
-    sender: str = typer.Option(
+    sender: str | None = typer.Option(
         None, "--sender", help="Sender ID, same usage as feishu channel sender"
     ),
-    memory_peer: list[str] = typer.Option(
+    memory_peer: list[str] | None = typer.Option(
         None, "--memory-peer", help="Peer ID for memory retrieval (can be repeated)"
     ),
-    memory_user: list[str] = typer.Option(
+    memory_user: list[str] | None = typer.Option(
         None,
         "--memory-user",
         help="Deprecated legacy OpenViking user ID for root-key memory fanout",
@@ -1306,7 +1306,7 @@ def status():
 
 @app.command("feedback-stats")
 def feedback_stats(
-    config_path: str = typer.Option(
+    config_path: str | None = typer.Option(
         None, "--config", "-c", help="Path to ov.conf, default ~/.openviking/ov.conf"
     ),
     channel: str = typer.Option(None, "--channel", help="Only include one channel key"),
