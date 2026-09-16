@@ -1,4 +1,6 @@
 import type { OVConfig } from "./config.js";
+import type { OvHttpRequestOptions } from "./shared/ov-http.mjs";
+import { createOvHttp } from "./shared/ov-http.mjs";
 
 // --- OV API Response Shapes ---
 // All OV responses wrap in: { status: "ok"|"error", result: T, error?: {...}, ... }
@@ -83,11 +85,7 @@ export interface OVResponse<T> {
 }
 
 export class OVClient {
-  private baseUrl: string;
-  private apiKey: string;
-  private account: string;
-  private user: string;
-  private peerId: string;
+  private http: ReturnType<typeof createOvHttp>;
   connected: boolean = false;
 
   private resolvedSpaces: Map<string, string> = new Map();
@@ -100,60 +98,32 @@ export class OVClient {
 
   constructor(config: OVConfig) {
     this.cfg = config;
-    this.baseUrl = config.endpoint.replace(/\/+$/, "");
-    this.apiKey = config.apiKey;
-    this.account = config.account;
-    this.user = config.user;
-    this.peerId = config.peerId;
-  }
-
-  private headers(): Record<string, string> {
-    const h: Record<string, string> = { "Content-Type": "application/json" };
-    if (this.apiKey) h["Authorization"] = `Bearer ${this.apiKey}`;
-    if (this.account) h["X-OpenViking-Account"] = this.account;
-    if (this.user) h["X-OpenViking-User"] = this.user;
-    if (this.peerId) h["X-OpenViking-Actor-Peer"] = this.peerId;
-    if (this.cfg.userAgent) h["User-Agent"] = this.cfg.userAgent;
-    return h;
+    this.http = createOvHttp(
+      { ...config, baseUrl: config.endpoint.replace(/\/+$/, "") },
+      { defaultTimeoutMs: 10000, resolveActorPeerId: () => config.peerId },
+    );
   }
 
   /** Core fetch wrapper. Returns { ok, result } after parsing OV's { status, result } envelope. */
-  async fetchJSON<T>(path: string, init?: RequestInit, timeoutMs = 10000): Promise<OVResponse<T>> {
-    try {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), timeoutMs);
-      const resp = await fetch(`${this.baseUrl}${path}`, {
-        ...init,
-        headers: { ...this.headers(), ...(init?.headers as Record<string, string> || {}) },
-        signal: controller.signal,
-      });
-      clearTimeout(timer);
-      const body = await resp.json().catch(() => ({}));
-      const traceId = body?.result?.trace_id || body?.error?.trace_id || body?.trace_id || undefined;
-      if (!resp.ok || body.status === "error") {
-        return {
-          ok: false,
-          result: null,
-          status: resp.status,
-          error: body.error || { message: `HTTP ${resp.status}` },
-          traceId,
-        };
-      }
-      return { ok: true, result: (body.result ?? body) as T, traceId };
-    } catch (err: any) {
-      // Network-level failure (DNS / refused / abort): the server is unreachable.
-      // Flip connected off so gating tools stop taking the live path; health()
-      // will flip it back on once the server recovers. (HTTP 4xx/5xx above mean
-      // the server IS up, so those don't touch connected.)
-      this.connected = false;
-      return { ok: false, result: null, status: 0, error: { message: err?.message || String(err) } };
-    }
+  async fetchJSON<T>(
+    path: string,
+    init?: RequestInit,
+    options?: OvHttpRequestOptions,
+  ): Promise<OVResponse<T>> {
+    const res = await this.http(path, init, options);
+    // Network-level failure (DNS / refused / abort) comes back as status 0: the
+    // server is unreachable. Flip connected off so gating tools stop taking the
+    // live path; health() flips it back on once the server recovers. HTTP
+    // 4xx/5xx carry a real status, meaning the server IS up, so they don't touch
+    // connected.
+    if (!res.ok && res.status === 0) this.connected = false;
+    return res;
   }
 
   // ========== Health ==========
 
   async health(): Promise<boolean> {
-    const res = await this.fetchJSON<any>("/health", undefined, 5000);
+    const res = await this.fetchJSON<any>("/health", undefined, { timeoutMs: 5000 });
     this.connected = res.ok;
     return res.ok;
   }

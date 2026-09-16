@@ -12,7 +12,7 @@ from vikingbot.agent.tools.registry import ToolRegistry
 from vikingbot.bus.queue import MessageBus
 from vikingbot.cli import commands
 from vikingbot.config import loader
-from vikingbot.config.schema import Config, SessionKey
+from vikingbot.config.schema import Config, CronConfig, SessionKey, ToolsConfig
 from vikingbot.cron.service import CronService
 from vikingbot.cron.types import CronSchedule
 
@@ -32,7 +32,9 @@ def test_cron_config_load_and_save(tmp_path, monkeypatch, enabled):
 
 @pytest.mark.parametrize("enabled", [False, True])
 def test_cron_tool_registration(tmp_path, enabled):
-    config = Config(tools={"cron": {"enabled": enabled}})
+    # Built through the models, not a dict literal: pydantic coerces the
+    # literal at runtime, but a type checker cannot see that.
+    config = Config(tools=ToolsConfig(cron=CronConfig(enabled=enabled)))
     registry = ToolRegistry(config=config)
     service = CronService(tmp_path / "jobs.json")
     register_default_tools(registry, config, cron_service=service)
@@ -73,7 +75,9 @@ def test_disabled_cron_preserves_existing_jobs(tmp_path, monkeypatch):
 @pytest.mark.parametrize("enabled", [False, True])
 @pytest.mark.parametrize("mode", ["gateway", "interactive", "single_turn", "eval"])
 def test_startup_respects_cron_config(tmp_path, monkeypatch, enabled, mode):
-    config = Config(storage_workspace=str(tmp_path), tools={"cron": {"enabled": enabled}})
+    config = Config(
+        storage_workspace=str(tmp_path), tools=ToolsConfig(cron=CronConfig(enabled=enabled))
+    )
     agent = SimpleNamespace(run=AsyncMock(), close_mcp=AsyncMock())
     channels = SimpleNamespace(start_all=AsyncMock())
     cron = SimpleNamespace(start=AsyncMock(), status=lambda: {"jobs": 0})

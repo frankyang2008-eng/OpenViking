@@ -4,7 +4,7 @@
 
 import { readFileSync, realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { evaluateAgentUriGuard } from "../../memory-plugin-shared/lib/agent-uri-guard.mjs";
+import { evaluateUriGuard } from "../../memory-plugin-shared/lib/uri-guard.mjs";
 
 function readInput() {
   try {
@@ -36,7 +36,7 @@ export function evaluateAgyUriGuard(payload = {}) {
   const args = toolCall.args || {};
 
   // Check if args contains a viking:// URI
-  const decision = evaluateAgentUriGuard(mappedToolName, args);
+  const decision = evaluateUriGuard(mappedToolName, args);
   if (decision) {
     return {
       decision: "deny",
