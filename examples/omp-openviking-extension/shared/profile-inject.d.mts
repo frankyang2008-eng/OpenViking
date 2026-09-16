@@ -1,3 +1,4 @@
+// GENERATED FROM examples/memory-plugin-shared/lib. DO NOT EDIT.
 export function buildProfileBlock(
   fetchJSON: (path: string, init?: any, options?: any) => Promise<{ ok: boolean; status?: number; result?: any; error?: any }>,
   totalBudgetTokens: number,
