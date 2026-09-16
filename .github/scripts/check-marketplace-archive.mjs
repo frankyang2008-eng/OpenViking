@@ -140,7 +140,18 @@ async function pluginRequirements(root) {
 
   for (const file of [...required]) {
     if (file.endsWith(".json")) {
-      for (const value of jsonStrings(JSON.parse(await readFile(file, "utf-8")))) {
+      let manifest;
+      try {
+        manifest = JSON.parse(await readFile(file, "utf-8"));
+      } catch (error) {
+        // A staged manifest that does not parse fails the release run here,
+        // naming the file, instead of surfacing as an opaque SyntaxError.
+        throw new Error(
+          `staged marketplace file is not valid JSON: ${relative(root, file)}: ${error.message}`,
+          { cause: error },
+        );
+      }
+      for (const value of jsonStrings(manifest)) {
         for (const script of await namedScripts(root, value)) entrypoints.add(script);
       }
     } else if (file.endsWith(".md")) {
