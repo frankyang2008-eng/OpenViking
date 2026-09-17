@@ -1,7 +1,7 @@
 import { readFileSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildUserAgent, resolveOpenVikingCredentials } from "./shared/credentials.mjs";
+import { buildUserAgent, resolveConnection } from "./shared/credentials.mjs";
 import { resolveEffectivePeerId } from "./shared/workspace-peer.mjs";
 
 /** Hand-maintained: this extension ships no manifest to read a version from. */
@@ -111,7 +111,10 @@ export function loadConfig(extensionDir: string): OVConfig {
   }
 
   const takeover = file.takeover && typeof file.takeover === "object" ? file.takeover : {};
-  const creds = resolveOpenVikingCredentials();
+  // The shared resolver replaced resolveOpenVikingCredentials; it returns the
+  // same fields plus the auth mode. Pass the detected harness so the
+  // plugin.<name> section lookup matches the User-Agent below.
+  const creds = resolveConnection(detectHarness(), { env: process.env });
   const config: OVConfig = {
     ...DEFAULT_CONFIG,
     ...file,
