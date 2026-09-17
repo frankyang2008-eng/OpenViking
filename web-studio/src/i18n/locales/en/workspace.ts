@@ -209,6 +209,7 @@ const workspace = {
     },
   },
   agentExperiencePage: {
+    pageCount: '{{count}} experiences on this page',
     setup: {
       expand: 'Expand steps',
       collapse: 'Collapse',
@@ -387,6 +388,34 @@ const workspace = {
     },
   },
   tasksPage: {
+    labels: {
+      missingResource: 'Missing resource ID for task',
+      requeueFailed: 'Re-queue failed',
+      requeueSubmitted: 'Re-queue request submitted successfully!',
+      successRate: 'Success Rate',
+      avgDuration: 'Avg Duration',
+      avgProcessingTime: 'Avg Processing Time',
+      totalTasks: 'Total Tasks',
+      activePending: 'Active/Pending',
+      runningPending: 'Running / Pending Workloads',
+      taskQueueStatus: 'Task Queue Status',
+      processQueueStatus: 'Process Queue Status',
+      queuePipeline: 'Queue Pipeline',
+      duration: 'Duration',
+      taskSummary: 'Total {{total}} ({{failed}} failed)',
+      taskCount: 'Tasks: {{count}}',
+      completedTasks: 'Completed: {{count}}',
+      serialFlow: 'Sequential process flow',
+      parallelBatch: 'Parallel process batch',
+      serialBatch: 'Sequential process batch',
+      latestPerResource: 'Latest per Resource',
+      individualTasks: 'Individual Tasks',
+    },
+    retry: {
+      noPendingMessages:
+        'No new task created: this session has no pending messages',
+      commitSkipped: 'No new task created: this session commit was skipped',
+    },
     title: 'Task Center',
     description:
       'Track background work such as resource processing, session commits, and reindexing.',
@@ -459,6 +488,29 @@ const workspace = {
       allTypes: 'All types',
       allStatuses: 'All statuses',
       clear: 'Clear filters',
+    },
+    actions: {
+      retrigger: 'Re-trigger Task',
+    },
+    pipeline: {
+      steps: 'Pipeline Steps',
+      duration: 'Duration',
+      count: '{{count}} items',
+      status: {
+        completed: 'Completed',
+        running: 'Running',
+        failed: 'Failed',
+        pending: 'Pending',
+      },
+      step: {
+        sessionPersistence: 'Session Persistence',
+        sessionCommit: 'Session Commit',
+        connectorAuth: 'Connector Auth',
+        resourceFetching: 'Resource Fetching',
+        externalParse: 'Document Parsing',
+        semantic: 'Semantic Processing',
+        embedding: 'Vector Embedding',
+      },
     },
     pagination: {
       next: 'Next',
@@ -633,6 +685,19 @@ const workspace = {
     unset: 'No account selected',
   },
   common: {
+    ui: {
+      close: 'Close',
+      loading: 'Loading',
+      pagination: 'Pagination',
+      previous: 'Previous',
+      next: 'Next',
+      previousPage: 'Go to previous page',
+      nextPage: 'Go to next page',
+      morePages: 'More pages',
+      sidebar: 'Sidebar',
+      mobileSidebar: 'Mobile navigation sidebar',
+      toggleSidebar: 'Toggle Sidebar',
+    },
     action: {
       cancel: 'Cancel',
       saveConnection: 'Save Connection',
