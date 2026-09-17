@@ -2001,10 +2001,14 @@ AGENT_HOOK_HOSTS="cursor trae zcode"
 
 copy_agent_integration() { # copy_agent_integration <host> <dest-name>
   local host="$1" dest_name="$2" source dest tmp other
-  source="$(plugin_dir_on_disk agent-hook-plugin)" || {
-    err "$(t 'Agent integration sources not found:' '未找到 Agent 接入源码：') agent-hook-plugin"
-    return 1
-  }
+  if plugin_dir_on_disk "$host" >/dev/null 2>&1; then
+    source="$(plugin_dir_on_disk "$host")"
+  else
+    source="$(plugin_dir_on_disk agent-hook-plugin)" || {
+      err "$(t 'Agent integration sources not found:' '未找到 Agent 接入源码：') agent-hook-plugin"
+      return 1
+    }
+  fi
   dest="$OV_HOME/agent-integrations/$dest_name"
   tmp="$dest.tmp"
   rm -rf "$tmp"
@@ -3109,8 +3113,8 @@ install_agy() {
   mkdir -p "$target_dir" "$target_dir/rules" "$target_dir/skills"
   cp "$root/plugin.json" "$target_dir/plugin.json"
   [ -f "$root/package.json" ] && cp "$root/package.json" "$target_dir/package.json"
-  cp -R "$root/rules/"* "$target_dir/rules/"
-  cp -R "$root/skills/"* "$target_dir/skills/"
+  [ -d "$root/rules" ] && cp -R "$root/rules/." "$target_dir/rules/"
+  [ -d "$root/skills" ] && cp -R "$root/skills/." "$target_dir/skills/"
   "$node_bin" - "$target_dir/hooks.json" "$target_dir/mcp_config.json" "$root" "$node_bin" "$OVCLI_CONF" <<'AGY_NODE'
 const fs = require("node:fs");
 const path = require("node:path");
