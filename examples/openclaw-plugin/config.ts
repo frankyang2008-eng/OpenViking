@@ -48,6 +48,8 @@ export type MemoryOpenVikingConfig = {
   autoRecall?: boolean;
   /** Outer time budget for the whole server-assembled auto-recall flow. */
   autoRecallTimeoutMs?: number;
+  /** Cloud recall compression; no local compressor is shipped. Default off. */
+  recallCompress?: "off" | "server" | "auto";
   /** Include resources in auto-recall and default memory_recall search. Default false. */
   recallResources?: boolean;
   recallLimit?: number;
@@ -130,18 +132,13 @@ export type MemoryOpenVikingConfig = {
 
 /** Runtime config after memoryOpenVikingConfigSchema.parse() has applied defaults. */
 export type ParsedMemoryOpenVikingConfig = Required<
-  Omit<
-    MemoryOpenVikingConfig,
-    "agentExperience" | "recallTargetTypes" | "apiKey" | "peer_role"
-  >
+  Omit<MemoryOpenVikingConfig, "agentExperience" | "recallTargetTypes" | "apiKey" | "peer_role">
 > & {
   /** parse() resolves SecretRef values, so the runtime shape is always a plain string. */
   apiKey: string;
   /** Runtime uses the canonical name; legacy `person` input normalizes to `sender`. */
   peer_role: "none" | "assistant" | "sender";
-  agentExperience: Required<
-    NonNullable<MemoryOpenVikingConfig["agentExperience"]>
-  >;
+  agentExperience: Required<NonNullable<MemoryOpenVikingConfig["agentExperience"]>>;
   recallTargetTypes: Array<"resource" | "user" | "agent">;
 };
 
@@ -174,7 +171,7 @@ const DEFAULT_TRACE_RECALL_QUERY_MAX_CHARS = 4000;
 const DEFAULT_TRACE_RECALL_QUERY_MAX_DAYS = 14;
 const ALLOWED_RECALL_TARGET_TYPES = ["resource", "user", "agent"] as const;
 const DEFAULT_RECALL_TARGET_TYPES = ["user", "agent"] as const;
-type RecallTargetType = (typeof ALLOWED_RECALL_TARGET_TYPES)[number];
+type RecallTargetType = typeof ALLOWED_RECALL_TARGET_TYPES[number];
 export const OPENVIKING_ADD_RESOURCE_TOOL_NAME = "add_resource" as const;
 export const OPENVIKING_DEFAULT_ENABLED_TOOL_NAMES = [
   "add_skill",
@@ -196,11 +193,8 @@ export const OPENVIKING_ALL_TOOL_NAMES = [
   OPENVIKING_ADD_RESOURCE_TOOL_NAME,
   ...OPENVIKING_DEFAULT_ENABLED_TOOL_NAMES,
 ] as const;
-export type OpenVikingToolName = (typeof OPENVIKING_ALL_TOOL_NAMES)[number];
-export const OPENVIKING_TOOL_GROUPS: Record<
-  string,
-  readonly OpenVikingToolName[]
-> = {
+export type OpenVikingToolName = typeof OPENVIKING_ALL_TOOL_NAMES[number];
+export const OPENVIKING_TOOL_GROUPS: Record<string, readonly OpenVikingToolName[]> = {
   all: OPENVIKING_ALL_TOOL_NAMES,
   default: OPENVIKING_DEFAULT_ENABLED_TOOL_NAMES,
   memory: ["memory_recall", "memory_store", "memory_forget"],
@@ -263,9 +257,7 @@ function resolveSecret(
   }
   const obj = value as Record<string, unknown>;
   if (typeof obj.id !== "string" || !obj.id) {
-    throw new Error(
-      `OpenViking ${label} SecretRef requires a non-empty string "id"`,
-    );
+    throw new Error(`OpenViking ${label} SecretRef requires a non-empty string "id"`);
   }
   const id = obj.id;
   switch (obj.source) {
@@ -377,19 +369,11 @@ function toStringArray(value: unknown, fallback: string[]): string[] {
   return fallback;
 }
 
-function toIntegerInRange(
-  value: unknown,
-  fallback: number,
-  min: number,
-  max: number,
-): number {
+function toIntegerInRange(value: unknown, fallback: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, Math.floor(toNumber(value, fallback))));
 }
 
-function normalizeRecallTargetTypes(
-  value: unknown,
-  includeResources = false,
-): RecallTargetType[] {
+function normalizeRecallTargetTypes(value: unknown, includeResources = false): RecallTargetType[] {
   const entries = toStringArray(value, [...DEFAULT_RECALL_TARGET_TYPES]);
   const seen = new Set<RecallTargetType>();
   const normalized: RecallTargetType[] = [];
@@ -408,13 +392,10 @@ function normalizeRecallTargetTypes(
   }
 
   if (unknown.length > 0) {
-    throw new Error(
-      `openviking recallTargetTypes contains unknown resource types: ${unknown.join(", ")}`,
-    );
+    throw new Error(`openviking recallTargetTypes contains unknown resource types: ${unknown.join(", ")}`);
   }
 
-  const result =
-    normalized.length > 0 ? normalized : [...DEFAULT_RECALL_TARGET_TYPES];
+  const result = normalized.length > 0 ? normalized : [...DEFAULT_RECALL_TARGET_TYPES];
   if (includeResources && !seen.has("resource")) {
     result.push("resource");
   }
@@ -423,7 +404,7 @@ function normalizeRecallTargetTypes(
 
 function toRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
+    ? value as Record<string, unknown>
     : {};
 }
 
@@ -445,11 +426,7 @@ function toStringRecord(value: unknown, label: string): Record<string, string> {
   return out;
 }
 
-function expandToolSelectors(
-  value: unknown,
-  fallback: string[],
-  label: string,
-): OpenVikingToolName[] {
+function expandToolSelectors(value: unknown, fallback: string[], label: string): OpenVikingToolName[] {
   const entries = toStringArray(value, fallback);
   const seen = new Set<OpenVikingToolName>();
   const normalized: OpenVikingToolName[] = [];
@@ -458,8 +435,7 @@ function expandToolSelectors(
   for (const rawEntry of entries) {
     const entry = rawEntry.trim();
     const group = OPENVIKING_TOOL_GROUPS[entry];
-    const tools =
-      group ??
+    const tools = group ??
       ((OPENVIKING_ALL_TOOL_NAMES as readonly string[]).includes(entry)
         ? [entry as OpenVikingToolName]
         : undefined);
@@ -476,9 +452,7 @@ function expandToolSelectors(
   }
 
   if (unknown.length > 0) {
-    throw new Error(
-      `openviking ${label} contains unknown tool selectors: ${unknown.join(", ")}`,
-    );
+    throw new Error(`openviking ${label} contains unknown tool selectors: ${unknown.join(", ")}`);
   }
   return normalized;
 }
@@ -489,25 +463,17 @@ function normalizeEnabledTools(cfg: Record<string, unknown>): {
 } {
   const enableAddResourceTool = cfg.enableAddResourceTool === true;
   const defaultTools = enableAddResourceTool
-    ? [
-        OPENVIKING_ADD_RESOURCE_TOOL_NAME,
-        ...OPENVIKING_DEFAULT_ENABLED_TOOL_NAMES,
-      ]
+    ? [OPENVIKING_ADD_RESOURCE_TOOL_NAME, ...OPENVIKING_DEFAULT_ENABLED_TOOL_NAMES]
     : [...OPENVIKING_DEFAULT_ENABLED_TOOL_NAMES];
-  const selected = expandToolSelectors(
-    cfg.enabledTools,
-    defaultTools,
-    "enabledTools",
-  );
+  const selected = expandToolSelectors(cfg.enabledTools, defaultTools, "enabledTools");
   const disabled = expandToolSelectors(cfg.disabledTools, [], "disabledTools");
   const disabledSet = new Set(disabled);
   if (!enableAddResourceTool) {
     disabledSet.add(OPENVIKING_ADD_RESOURCE_TOOL_NAME);
   }
-  const enabledTools = selected.filter(
-    (tool) =>
-      !disabledSet.has(tool) &&
-      (tool !== OPENVIKING_ADD_RESOURCE_TOOL_NAME || enableAddResourceTool),
+  const enabledTools = selected.filter((tool) =>
+    !disabledSet.has(tool) &&
+    (tool !== OPENVIKING_ADD_RESOURCE_TOOL_NAME || enableAddResourceTool)
   );
 
   return {
@@ -526,11 +492,7 @@ function envFlag(name: string): boolean {
   return t === "1" || t === "true" || t === "yes";
 }
 
-function assertAllowedKeys(
-  value: Record<string, unknown>,
-  allowed: string[],
-  label: string,
-) {
+function assertAllowedKeys(value: Record<string, unknown>, allowed: string[], label: string) {
   const unknown = Object.keys(value).filter((key) => !allowed.includes(key));
   if (unknown.length === 0) {
     return;
@@ -571,6 +533,7 @@ export const memoryOpenVikingConfigSchema = {
         "captureMaxLength",
         "autoRecall",
         "autoRecallTimeoutMs",
+        "recallCompress",
         "recallResources",
         "recallLimit",
         "recallScoreThreshold",
@@ -613,21 +576,14 @@ export const memoryOpenVikingConfigSchema = {
     const agentExperienceRaw = toRecord(cfg.agentExperience);
     assertAllowedKeys(
       agentExperienceRaw,
-      [
-        "enabled",
-        "recallLimit",
-        "scoreThreshold",
-        "maxInjectedChars",
-        "minQueryChars",
-      ],
+      ["enabled", "recallLimit", "scoreThreshold", "maxInjectedChars", "minQueryChars"],
       "openviking config agentExperience",
     );
 
     const mode = "remote" as const;
     const peerRole = resolvePeerRole(cfg.peer_role);
     const peerPrefix = resolvePeerPrefix(cfg.peer_prefix);
-    const rawBaseUrl =
-      typeof cfg.baseUrl === "string" ? cfg.baseUrl : resolveDefaultBaseUrl();
+    const rawBaseUrl = typeof cfg.baseUrl === "string" ? cfg.baseUrl : resolveDefaultBaseUrl();
     const resolvedBaseUrl = resolveEnvVars(rawBaseUrl).replace(/\/+$/, "");
     // Support plain string, SecretRef object, and OPENVIKING_API_KEY fallback.
     // A user writing a SecretRef has explicitly opted out of the bare env
@@ -657,11 +613,11 @@ export const memoryOpenVikingConfigSchema = {
     const accountId =
       typeof cfg.accountId === "string" && cfg.accountId.trim()
         ? cfg.accountId.trim()
-        : getEnv("OPENVIKING_ACCOUNT_ID")?.trim() || "";
+        : (getEnv("OPENVIKING_ACCOUNT_ID")?.trim() || "");
     const userId =
       typeof cfg.userId === "string" && cfg.userId.trim()
         ? cfg.userId.trim()
-        : getEnv("OPENVIKING_USER_ID")?.trim() || "";
+        : (getEnv("OPENVIKING_USER_ID")?.trim() || "");
 
     const recallMaxInjectedChars = Math.max(
       100,
@@ -675,8 +631,13 @@ export const memoryOpenVikingConfigSchema = {
         ),
       ),
     );
-    const recallResources =
-      cfg.recallResources === true || envFlag("OPENVIKING_RECALL_RESOURCES");
+    const rawCompress = String(getEnv("OPENVIKING_RECALL_COMPRESS") ?? cfg.recallCompress ?? "off").trim().toLowerCase();
+    const recallCompress = ["1", "true", "yes"].includes(rawCompress) ? "auto"
+      : ["0", "false", "no"].includes(rawCompress) ? "off" : rawCompress;
+    if (recallCompress !== "off" && recallCompress !== "server" && recallCompress !== "auto") {
+      throw new Error("openviking recallCompress must be server, auto or off (no local compressor)");
+    }
+    const recallResources = cfg.recallResources === true || envFlag("OPENVIKING_RECALL_RESOURCES");
     const recallTargetTypes = normalizeRecallTargetTypes(
       cfg.recallTargetTypes,
       !("recallTargetTypes" in cfg) && recallResources,
@@ -688,62 +649,32 @@ export const memoryOpenVikingConfigSchema = {
       baseUrl: resolvedBaseUrl,
       peer_role: peerRole,
       peer_prefix: peerPrefix,
-      apiKey: rawApiKey
-        ? resolveEnvVars(resolveSecret(rawApiKey, "config.apiKey"))
-        : "",
+      apiKey: rawApiKey ? resolveEnvVars(resolveSecret(rawApiKey, "config.apiKey")) : "",
       headers: toStringRecord(cfg.headers, "openviking config headers"),
       accountId,
       userId,
-      targetUri:
-        typeof cfg.targetUri === "string" ? cfg.targetUri : DEFAULT_TARGET_URI,
-      timeoutMs: Math.max(
-        1000,
-        Math.floor(toNumber(cfg.timeoutMs, DEFAULT_TIMEOUT_MS)),
-      ),
+      targetUri: typeof cfg.targetUri === "string" ? cfg.targetUri : DEFAULT_TARGET_URI,
+      timeoutMs: Math.max(1000, Math.floor(toNumber(cfg.timeoutMs, DEFAULT_TIMEOUT_MS))),
       autoCapture: cfg.autoCapture !== false,
       captureMode: captureMode ?? DEFAULT_CAPTURE_MODE,
       captureMaxLength: Math.max(
         200,
-        Math.min(
-          200_000,
-          Math.floor(
-            toNumber(cfg.captureMaxLength, DEFAULT_CAPTURE_MAX_LENGTH),
-          ),
-        ),
+        Math.min(200_000, Math.floor(toNumber(cfg.captureMaxLength, DEFAULT_CAPTURE_MAX_LENGTH))),
       ),
       autoRecall: cfg.autoRecall !== false,
       autoRecallTimeoutMs: Math.max(
         1000,
-        Math.min(
-          300_000,
-          Math.floor(
-            toNumber(cfg.autoRecallTimeoutMs, DEFAULT_AUTO_RECALL_TIMEOUT_MS),
-          ),
-        ),
+        Math.min(300_000, Math.floor(toNumber(cfg.autoRecallTimeoutMs, DEFAULT_AUTO_RECALL_TIMEOUT_MS))),
       ),
       recallResources,
-      recallLimit: Math.max(
-        1,
-        Math.floor(toNumber(cfg.recallLimit, DEFAULT_RECALL_LIMIT)),
-      ),
+      recallLimit: Math.max(1, Math.floor(toNumber(cfg.recallLimit, DEFAULT_RECALL_LIMIT))),
       recallScoreThreshold: Math.min(
         1,
-        Math.max(
-          0,
-          toNumber(cfg.recallScoreThreshold, DEFAULT_RECALL_SCORE_THRESHOLD),
-        ),
+        Math.max(0, toNumber(cfg.recallScoreThreshold, DEFAULT_RECALL_SCORE_THRESHOLD)),
       ),
       recallMaxContentChars: Math.max(
         50,
-        Math.min(
-          10000,
-          Math.floor(
-            toNumber(
-              cfg.recallMaxContentChars,
-              DEFAULT_RECALL_MAX_CONTENT_CHARS,
-            ),
-          ),
-        ),
+        Math.min(10000, Math.floor(toNumber(cfg.recallMaxContentChars, DEFAULT_RECALL_MAX_CONTENT_CHARS))),
       ),
       recallPreferAbstract:
         typeof cfg.recallPreferAbstract === "boolean"
@@ -753,25 +684,14 @@ export const memoryOpenVikingConfigSchema = {
       recallTokenBudget: recallMaxInjectedChars,
       commitTokenThresholdRatio: Math.max(
         0,
-        Math.min(
-          1,
-          toNumber(
-            cfg.commitTokenThresholdRatio,
-            DEFAULT_COMMIT_TOKEN_THRESHOLD_RATIO,
-          ),
-        ),
+        Math.min(1, toNumber(cfg.commitTokenThresholdRatio, DEFAULT_COMMIT_TOKEN_THRESHOLD_RATIO)),
       ),
       commitRetentionMode: commitRetentionMode ?? "message_count",
       commitKeepRecentCount: Math.max(
         0,
         Math.min(
           1_000,
-          Math.floor(
-            toNumber(
-              cfg.commitKeepRecentCount,
-              DEFAULT_COMMIT_KEEP_RECENT_COUNT,
-            ),
-          ),
+          Math.floor(toNumber(cfg.commitKeepRecentCount, DEFAULT_COMMIT_KEEP_RECENT_COUNT)),
         ),
       ),
       bypassSessionPatterns: toStringArray(
@@ -837,17 +757,15 @@ export const memoryOpenVikingConfigSchema = {
         1,
         3650,
       ),
-      traceRecallIncludeContentByDefault:
-        cfg.traceRecallIncludeContentByDefault === true,
-      traceRecallIncludeRawUserPreview:
-        cfg.traceRecallIncludeRawUserPreview === true,
+      traceRecallIncludeContentByDefault: cfg.traceRecallIncludeContentByDefault === true,
+      traceRecallIncludeRawUserPreview: cfg.traceRecallIncludeRawUserPreview === true,
       recallTargetTypes,
+      recallCompress,
       enableAddResourceTool: cfg.enableAddResourceTool === true,
       enabledTools,
       disabledTools,
       runtimeQueryConfigPath:
-        typeof cfg.runtimeQueryConfigPath === "string" &&
-        cfg.runtimeQueryConfigPath.trim()
+        typeof cfg.runtimeQueryConfigPath === "string" && cfg.runtimeQueryConfigPath.trim()
           ? expandHomeDir(cfg.runtimeQueryConfigPath.trim())
           : "",
       agentExperience: {
@@ -859,46 +777,25 @@ export const memoryOpenVikingConfigSchema = {
           1,
           Math.min(
             10,
-            Math.floor(
-              toNumber(
-                agentExperienceRaw.recallLimit,
-                DEFAULT_AGENT_EXPERIENCE.recallLimit,
-              ),
-            ),
+            Math.floor(toNumber(agentExperienceRaw.recallLimit, DEFAULT_AGENT_EXPERIENCE.recallLimit)),
           ),
         ),
         scoreThreshold: Math.min(
           1,
-          Math.max(
-            0,
-            toNumber(
-              agentExperienceRaw.scoreThreshold,
-              DEFAULT_AGENT_EXPERIENCE.scoreThreshold,
-            ),
-          ),
+          Math.max(0, toNumber(agentExperienceRaw.scoreThreshold, DEFAULT_AGENT_EXPERIENCE.scoreThreshold)),
         ),
         maxInjectedChars: Math.max(
           500,
           Math.min(
             50_000,
-            Math.floor(
-              toNumber(
-                agentExperienceRaw.maxInjectedChars,
-                DEFAULT_AGENT_EXPERIENCE.maxInjectedChars,
-              ),
-            ),
+            Math.floor(toNumber(agentExperienceRaw.maxInjectedChars, DEFAULT_AGENT_EXPERIENCE.maxInjectedChars)),
           ),
         ),
         minQueryChars: Math.max(
           1,
           Math.min(
             500,
-            Math.floor(
-              toNumber(
-                agentExperienceRaw.minQueryChars,
-                DEFAULT_AGENT_EXPERIENCE.minQueryChars,
-              ),
-            ),
+            Math.floor(toNumber(agentExperienceRaw.minQueryChars, DEFAULT_AGENT_EXPERIENCE.minQueryChars)),
           ),
         ),
       },

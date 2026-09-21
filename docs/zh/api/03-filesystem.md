@@ -15,7 +15,7 @@ OpenViking 提供类 Unix 的文件系统操作来管理上下文。
 **参数**
 
 | 参数 | 类型 | 必填 | 默认值 | 说明 |
-| ------ | ------ | ------ | -------- | ------ |
+|------|------|------|--------|------|
 | uri | str | 是 | - | Viking URI |
 | simple | bool | 否 | False | 仅返回相对路径 |
 | recursive | bool | 否 | False | 递归列出所有子目录 |
@@ -27,9 +27,10 @@ OpenViking 提供类 Unix 的文件系统操作来管理上下文。
 | limit | int | 否 | None | `node_limit` 的别名 |
 | sort_by | str | 否 | None | 在分页前，分别按 `name` 或 `mtime` 排序目录组和文件组；目录仍优先 |
 | sort_order | str | 否 | `asc` | 排序方向：`asc` 或 `desc` |
+| extra_fields | list[str] | 否 | None | 额外返回的字段：`locked`、`id`、`count` |
 | tags | string[] | 否 | 未设置 | 仅返回同时匹配全部 `k=v` 检索标签的条目 |
 
-`tags` 使用 AND 语义，并在 `offset` 和 `limit` 前应用。带 tags 过滤的响应会返回 `tags`；未过滤时需传 `include_tags=true`（CLI：`-f tags`）才返回它们。`simple=true` 保持仅返回路径。
+`tags` 使用 AND 语义，并在 `offset` 和 `limit` 前应用。带 tags 过滤的响应会返回 `tags`；未过滤时需传 `include_tags=true`（CLI：`-f tags`）才返回它们。HTTP 的 `simple=true` 保持仅返回路径；CLI 同时指定 `--simple` 和 `--fields` 时会获取条目对象，再按指定列输出。
 
 **条目结构**
 
@@ -62,6 +63,7 @@ OpenViking 提供类 Unix 的文件系统操作来管理上下文。
 列举会保留无权限目录本身，但不会继续展开其内容，搜索结果也不会包含无权读取的
 内容。该行为只适用于共享的
 `viking://resources` 命名空间；个人和 peer 私有命名空间仍按原有规则隐藏。
+
 
 **Python HTTP SDK**
 
@@ -138,12 +140,21 @@ curl -G "http://localhost:1933/api/v1/fs/ls" \
 **CLI**
 
 ```bash
-openviking ls viking://resources/ [--simple] [--recursive] [--tags team=search,env=prod] [-f tags]
-openviking glob "**/*.md" [--uri viking://resources/] [--simple] [--tags team=search,env=prod] [-f tags]
+openviking ls viking://resources/ [--simple] [--recursive] [--tags team=search,env=prod] [-f FIELDS]
+openviking tree viking://resources/my-project/ [--simple] [--tags team=search,env=prod] [-f FIELDS]
+openviking glob "**/*.md" [--uri viking://resources/] [--simple] [--tags team=search,env=prod] [-f FIELDS]
 
-# 在人类可读列表中显示 tags；不能与 --simple 一起使用
-openviking ls viking://resources/ --fields tags
+# 在对齐的表格中显示名称和 tags
+openviking ls viking://resources/ --fields name,tags
+
+# 无表头，每行输出逗号分隔的 URI 和 tags
+openviking ls viking://resources/ --simple --fields uri,tags
 ```
+
+`-f` / `--fields` 接受逗号分隔的列名。在默认的 table 输出模式下，结果为带表头、按列对齐的表格。支持的字段为 `name`、`uri`、`path`、`type`、`size`、`mode`、`mtime`、`locked`、`id`、`count`、`abstract`、`tags`。同时指定 `--simple` 和 `-f` 时，每行输出逗号分隔的字段值，不带表头或树缩进；仅使用 `--simple` 时仍每行输出一个 URI。若未选择 `name`、`uri` 或 `path`，列表会自动补充 `name` 列，树会补充 `path` 列。
+
+CLI 会按所选列请求 `extra_fields`（`locked`、`id`、`count`）；选择 `tags` 列时会请求 `include_tags=true`。这些列选择不改变 `tags` 的 AND 过滤语义。
+
 
 **响应**
 
@@ -174,7 +185,7 @@ openviking ls viking://resources/ --fields tags
 **参数**
 
 | 参数 | 类型 | 必填 | 默认值 | 说明 |
-| ------ | ------ | ------ | -------- | ------ |
+|------|------|------|--------|------|
 | uri | str | 是 | - | Viking URI |
 | output | str | 否 | HTTP：`agent`；SDK：`original` | 输出格式：`agent` 或 `original` |
 | abs_limit | int | 否 | HTTP：256；SDK：128 | `agent` 输出中的摘要长度限制 |
@@ -183,9 +194,11 @@ openviking ls viking://resources/ --fields tags
 | offset | int | 否 | 0 | 跳过的可见节点数 |
 | limit | int | 否 | None | `node_limit` 的别名 |
 | level_limit | int | 否 | 3 | 最大目录遍历深度 |
+| extra_fields | list[str] | 否 | None | 额外返回的字段：`locked`、`id`、`count` |
 | tags | string[] | 否 | 未设置 | 仅保留同时匹配全部 `k=v` 检索标签的节点 |
 
 `tags` 使用 AND 语义，并在 `offset` 和 `limit` 前应用。带 tags 过滤的响应会返回 `tags`；未过滤时需传 `include_tags=true` 才返回它们，否则会省略 tags 以避免额外的向量库读取。
+
 
 **Python HTTP SDK**
 
@@ -246,8 +259,12 @@ curl -G "http://localhost:1933/api/v1/fs/tree" \
 **CLI**
 
 ```bash
-openviking tree viking://resources/my-project/ --fields tags
+openviking tree viking://resources/my-project/ --fields path,type,tags
+
+# 与 ls、glob 一样支持 --simple 和列选择组合
+openviking tree viking://resources/my-project/ --simple --fields path,tags
 ```
+
 
 **响应**
 
@@ -287,6 +304,7 @@ openviking tree viking://resources/my-project/ --fields tags
 | 参数 | 类型 | 必填 | 默认值 | 说明 |
 |------|------|------|--------|------|
 | uri | str | 是 | - | Viking URI（如 `viking://resources/docs/api.md`）或 32 字符十六进制向量记录 `id` |
+
 
 **Python HTTP SDK**
 
@@ -335,6 +353,7 @@ curl -X GET "http://localhost:1933/api/v1/fs/stat?uri=viking://resources/docs/ap
 openviking stat viking://resources/my-project/docs/api.md
 openviking stat viking://resources/my-project/docs
 ```
+
 
 **响应（文件）**
 
@@ -392,6 +411,7 @@ openviking stat viking://resources/my-project/docs
 |------|------|------|--------|------|
 | uri | str | 是 | - | Viking URI |
 
+
 **Python SDK (HTTP)**
 
 ```python
@@ -446,6 +466,7 @@ openviking attrs set-tags viking://resources/docs --tags team=search --mode appe
 
 目录目标会更新目录语义记录；`recursive=true` 还会更新已有子文件和子目录语义记录。
 
+
 **响应（Resource）**
 
 ```json
@@ -497,6 +518,7 @@ openviking attrs set-tags viking://resources/docs --tags team=search --mode appe
 | uri | str | 是 | - | 新目录的 Viking URI |
 | description | str | 否 | `null` | 目录初始说明。未传入时使用目录名作为默认 L0；传入后使用该说明。两种情况都会写入 `.abstract.md` 并进入 L0 向量化队列。 |
 
+
 **Python HTTP SDK**
 
 ```python
@@ -541,6 +563,7 @@ openviking mkdir viking://resources/new-project/
 openviking mkdir viking://resources/new-project/ --description "接口文档目录"
 ```
 
+
 **响应**
 
 ```json
@@ -568,6 +591,7 @@ URI 格式非法、scheme 不支持或使用非公开作用域时返回 `INVALID
 |------|------|------|--------|------|
 | uri | str | 是 | - | 要删除的 Viking URI |
 | recursive | bool | 否 | False | 递归删除目录 |
+
 
 **Python HTTP SDK**
 
@@ -618,6 +642,7 @@ curl -X DELETE "http://localhost:1933/api/v1/fs?uri=viking://resources/old-proje
 openviking rm viking://resources/old.md [--recursive]
 ```
 
+
 **响应（单个文件）**
 
 ```json
@@ -660,7 +685,7 @@ openviking rm viking://resources/old.md [--recursive]
 **参数**
 
 | 参数 | 类型 | 必填 | 默认值 | 说明 |
-| ------ | ------ | ------ | -------- | ------ |
+|------|------|------|--------|------|
 | from_uri | str | 是 | - | 源 Viking URI |
 | to_uri | str | 是 | - | 目标 Viking URI，必须包含新的文件名或目录名 |
 | recursive | bool | 否 | False | 源为目录时必须设为 `true` |
@@ -748,6 +773,7 @@ ov cp -r viking://resources/docs viking://resources/docs-backup
 | from_uri | str | 是 | - | 源 Viking URI |
 | to_uri | str | 是 | - | 目标 Viking URI |
 
+
 **Python HTTP SDK**
 
 ```python
@@ -795,6 +821,7 @@ curl -X POST http://localhost:1933/api/v1/fs/mv \
 ```bash
 openviking mv viking://resources/old-name/ viking://resources/new-name/
 ```
+
 
 **响应**
 

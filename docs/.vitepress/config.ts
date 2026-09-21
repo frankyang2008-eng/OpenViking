@@ -109,14 +109,12 @@ const gettingStartedSidebar = {
   en: [
     ['01-introduction.md', 'Introduction'],
     ['02-quickstart.md', 'Quick Start'],
-    ['03-quickstart-server.md', 'Server Deployment'],
     ['04-setup-for-agent.md', 'Server Setup for Agent'],
     ['05-cli-setup.md', 'OpenViking CLI']
   ],
   zh: [
     ['01-introduction.md', '简介'],
     ['02-quickstart.md', '快速开始'],
-    ['03-quickstart-server.md', '服务端部署'],
     ['04-setup-for-agent.md', '服务端安装（Agent 版）'],
     ['05-cli-setup.md', 'OpenViking CLI']
   ]
@@ -431,7 +429,8 @@ const guidesSidebar = {
         items: [
           ['05-observability.md', 'Observability & Diagnostics'],
           ['07-operation-telemetry.md', 'Operation Telemetry'],
-          ['11-grafana-prometheus.md', 'Prometheus / Grafana']
+          ['11-grafana-prometheus.md', 'Prometheus / Grafana'],
+          ['12-vikingbot-metrics-validation.md', 'VikingBot Metrics Validation']
         ]
       },
       {

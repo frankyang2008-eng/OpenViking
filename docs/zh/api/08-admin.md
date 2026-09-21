@@ -113,11 +113,10 @@ curl http://localhost:1933/api/v1/admin/agent-evolution \
 }
 ```
 
-`enabled` 优先读取
-`/local/{account_id}/_system/setting.json` 中的 account 级覆盖值；未配置时使用
-`server.agent_evolution.enabled`。Session commit 会实时读取生效值，无需重启。
+`enabled` 依次解析 Account 运行时覆盖、Cluster 运行时覆盖，以及
+`server.agent_evolution.enabled` 提供的启动值。
 
-现有更新接口名保持不变：
+现有接口作为 deprecated 兼容适配器保留：
 
 ```http
 PUT /api/v1/admin/agent-evolution
@@ -128,9 +127,8 @@ Content-Type: application/json
 
 ### account_settings
 
-ROOT 可管理任意 account，ADMIN 仅可管理自己所属的 account。通用配置接口仅允许
-显式列入白名单的字段；当前允许修改 `agent_evolution.enabled` 和
-`acl.enabled`。
+该接口已 deprecated。ROOT 可管理任意 account，ADMIN 仅可管理自己所属的 account。
+接口保留原有 ACL 与 Agent Evolution 请求和响应语义：
 
 ```http
 GET /api/v1/admin/accounts/{account_id}/settings
@@ -142,6 +140,9 @@ Content-Type: application/json
   "acl": {"enabled": true}
 }
 ```
+
+字段缺失或为 `null` 都表示不修改；传入对象则整体设置对应存量配置段，
+空 ACL 对象表示 `enabled=false`。新接入方应使用下述 configuration 接口。
 
 `acl.enabled` 默认为 `false`。关闭时，共享资源按原有规则完全共享，不执行 ACL
 鉴权。开启后，账号内新增共享资源会写入 ACL，并对带 ACL 的共享资源执行鉴权；
@@ -208,8 +209,12 @@ PUT 从**部署默认模板**补齐未传入的配置，不从上一次 Account 
 完整 GET `effective` 对象可以回传：锁定字段值与默认值相同则接受，任何锁定值变更、
 未知配置项、未知字段或重复字段名均返回 `INVALID_ARGUMENT`，当前生效文件不变。
 若仅调整一个 description 且需保留其他自定义内容，应先 GET，修改 `effective` 对象后
-整体 PUT。空对象会发布一份完整默认配置，状态仍为自定义；恢复系统默认应调用 DELETE。
-DELETE 幂等。
+整体 PUT。补齐并校验后的完整配置若与部署默认值完全一致（不含发布时间元数据），
+PUT 会移除该类型的自定义覆盖，返回 `status=system_default`、`updated_at=null`。
+这包括提交空对象、原样提交默认表单，以及在编辑页逐项恢复默认后保存；只要还有任意配置
+不同，就继续返回 `custom`。比较不忽略说明或正文中的空格、换行等内容差异。
+移除覆盖后，后续抽取跟随部署默认模板；此前已取得的抽取快照不变。
+DELETE 始终移除该类型的覆盖；重复 PUT 默认配置或 DELETE 都是幂等的。
 
 返回包含 `memory_type`、`status`（`system_default` / `custom`）、
 `updated_at`（UTC 发布时间，默认状态为 null），以及完整的 `defaults` / `effective`。
@@ -257,7 +262,7 @@ Registry；无关类型变更不会触发拆批。不同 Schema 分开合并、�
 
 白名单内提交的说明和正文模板必须是非空字符串；单文件序列化后不超过 1 MiB。
 `description`（类型说明及 `fields[].description`）统一支持受限 Jinja，不因来自部署默认值或账户覆盖而改变规则，不再记录或检查说明来源标志。
-仅开放已有上下文中的 `language`，不开放正文变量、`extract_context` 或任意对象。语法复用下节受限正文的条件、局部变量、有界字面量循环、安全字符串方法及测试；不支持过滤器或任意调用。
+仅开放已有上下文中的 `language`，不开放正文变量、`extract_context` 或任意对象。语法复用下节受限正文的条件、局部变量、有界字面量循环、安全字符串方法、白名单字符串过滤器及测试；不支持任意调用。
 例如已有 Schema 渲染上下文提供 `language=en` 时，<code v-pre>请使用 {{ language.upper() }}。</code> 会展开为 `请使用 EN。`，用户修改文字不会让变量停止展开。
 本次不新增语言传递链路，Python 协议原有的静态字段说明展示路径保持不变。缺失语言时保留原来的 undefined/空字符串行为，可用 `language or '中文'` 提供回退；上下文值中的 Jinja 不会被递归执行。
 越界的自定义表达式在保存前拒绝，已保存说明在抽取加载时重新校验；部署说明渲染也受同样限制，已有部署若使用白名单外语法，需要调整，不能凭来源绕过限制。
@@ -299,7 +304,10 @@ Events 的默认 embedding 模板引用正文，因此正文变化也可能影�
 - `get_event_content(ranges, summary[, ratio_threshold])`：按已有逻辑选择 ChatLog/摘要；省略阈值为 0.2，显式 0 表示存在原文时优先原文。
 - `get_year(ranges)`、`get_month(ranges)`、`get_day(ranges)`：来源日期分量。
 
-首个参数直接使用 `ranges`，不能自行构造消息范围；缺失字段会传入空字符串，无需过滤器兜底。
+首个参数可使用统一语法白名单内的表达式，包括局部变量、条件表达式及允许的过滤器链。
+每次实际调用方法前，参数求值结果必须是普通字符串，且与当前记忆原始 `ranges` 完全相等，或为空字符串（不读取来源消息）。
+例如 `ranges | default('') | trim` 在结果未改变时可用；也可先 `{% set selected = ranges %}`，再调用 `get_year(selected)`。
+比较范围时不做归一化；缺失字段本来就会传入空字符串。发布时仅校验语法，不执行方法；改变范围或传入非字符串会在实际渲染时返回 `content_template: invalid_ranges`，在方法读取消息前拒绝，并停止该次记忆文件写入。
 阈值只能为 0～1 的数字字面量。
 允许去掉 ChatLog 或资源事件分支，但去掉后不再自动展示这些正文/资源链接；原始 Session 仍保留。
 
@@ -309,12 +317,15 @@ Events 的默认 embedding 模板引用正文，因此正文变化也可能影�
 - `for` 遍历模板中显式写出的列表/元组，最多 32 项；支持标题/字段二元组和 `loop.index/index0/first/last/length`。不支持嵌套/递归循环、range() 或遍历消息/长字符串。
 - 字符串方法：`.upper()`、`.lower()`、`.strip()`，均不接受位置参数或关键字参数。可用于字符串字段、局部变量、字面量、Events 白名单方法返回的字符串，并支持链式调用，例如 `summary.strip().upper()`。
 - 方法语法与部署模板一致，但账户正文只开放上述少数方法；读取属性前先检查接收者必须是普通字符串，其他对象（包括字符串子类）的同名方法/属性不能借此被调用。也不允许只取出方法引用、保存后再调用。
-- 自定义正文不支持任何过滤器，包括 `| upper`、`| lower`、`| trim`、`| default(...)`、`| length`；该接口尚未上线，不为自定义正文保留过滤器兼容模式。空值回退使用 `summary or '待补充'` 或条件表达式。
+- 字符串过滤器：`| upper`、`| lower`、`| trim`，分别等价于 `.upper()`、`.lower()`、`.strip()`。同样只接受普通字符串，不接受位置参数或关键字参数。支持链式调用及与方法混用，例如 `summary | trim | upper` 或 `summary.strip() | upper`。
+- `default` 过滤器：支持无参数或一个字符串字面量，例如 `| default` / `| default()` / `| default('N/A')`。只替换未定义值，不替换空字符串或 `None`，与内置 Events 模板保持一致。接收者仅允许普通字符串、`None` 或未定义值，不转换任意对象；不支持第二个布尔参数、关键字参数或展开／动态参数。空值回退使用 `summary or '待补充'` 或条件表达式。
+- 其他过滤器仍不支持，包括 `| length`、`| d(...)`、`| attr(...)`。
 - 测试：`defined`、`undefined`、`none`、`string`。
 - 不支持模板导入/继承、宏、任意函数/对象属性访问、下标访问、算术或字符串倍增/拼接。不能注入系统保留的 `<!-- MEMORY_FIELDS ... -->` 元数据。
 
 模板 UTF-8 大小 ≤ 64 KiB，AST 节点 ≤ 2048，渲染正文 ≤ 1 MiB（不含系统追加元数据）。
 与部署默认值不同的 Account 正文在发布时和抽取加载时验证，运行时使用受限 Jinja 环境，只提供白名单字段/方法。
+内置 Events、Soul、Identity 正文也满足受限语法；仅修改标题、末尾换行或 CRLF 换行后仍可校验发布。这些改动不会绕过校验，也不会被标记为部署原样正文。
 受限路径渲染失败会报告错误并停止该次文件写入，不走旧的空正文 fallback。
 原样继承的正文继续使用部署渲染器，包括原有错误/fallback 语义，不受上述受限渲染器的源码、AST、正文输出上限约束；
 完整账户 YAML 仍受 1 MiB 上限约束。
@@ -341,6 +352,45 @@ Events 的默认 embedding 模板引用正文，因此正文变化也可能影�
 {% endif %}
 {% endfor %}
 ```
+
+### Runtime Configuration
+
+ROOT 可管理 Cluster 配置和任意 Account 配置；ADMIN 只能管理所属账号的 Account 层。
+
+```http
+GET /api/v1/admin/configuration
+PATCH /api/v1/admin/configuration
+
+GET /api/v1/admin/accounts/{account_id}/configuration
+PATCH /api/v1/admin/accounts/{account_id}/configuration
+Content-Type: application/json
+
+{"settings": {"agent_evolution": {"enabled": true}}}
+```
+
+`settings` 始终表示目标层的显式设置值。PATCH 为三态语义：字段缺失表示不修改，
+`null` 表示删除当前层配置，具体值表示更新。
+
+当前 Cluster 运行时配置面仅包含 `agent_evolution`。Account 配置面包含
+`feishu`、`agent_evolution`、`github` 和 `acl`，且均为动态字段。Account 的
+`vlm`、`memory`、`embedding` 和 `vectordb` 不在当前 API 范围内，即使创建
+Account 时提交也会被拒绝。Cluster 的 `embedding`、`vlm`、`query_planner`、
+`memory`、`feishu`、存储、解析器和检索配置没有声明为运行时字段，因此仍然只能
+在启动配置中修改。
+
+Account Agent Evolution 未设置时整段回落到 Cluster 配置。Account 未设置
+Feishu 时也整段使用 Cluster 配置；一旦设置，`app_id`、`app_secret`、
+`max_rows_per_sheet`、`max_records_per_table`、`download_images` 和
+`request_timeout` 来自 Account 配置或 Feishu 默认值，只有 `domain` 仍由
+Cluster 管理。GitHub 和 ACL 没有 Cluster fallback。
+
+PATCH 会先做结构校验，再构造合并后的配置：未知路径和运行时配置面之外的字段会被拒绝。
+对象递归合并，数组整体替换；嵌套 null 只删除对应叶子。删除整个对象覆盖需要在父路径
+传 null，传空对象仍表示显式空对象。
+
+两个 GET 接口只返回目标层持久化的显式值，不展开 fallback。配置持久化后会发布新配置并等待
+匹配的进程内 Consumer；Consumer 失败会记录日志但不会回滚已持久化的覆盖，因此接口成功只表示
+配置层更新成功，不保证所有派生客户端都已完成切换。当前业务接入状态见[运行时配置设计](../../design/runtime-configuration-design.md)。
 
 ### user_settings
 
@@ -468,7 +518,7 @@ curl -X POST http://localhost:1933/api/v1/admin/accounts \
 **Python SDK**
 
 ```python
-import openviking as ov
+import openviking_sdk as ov
 
 client = ov.SyncHTTPClient(api_key="<root-key>")
 client.initialize()
@@ -601,7 +651,7 @@ curl -X GET "http://localhost:1933/api/v1/admin/accounts?limit=50&page=2" \
 **Python SDK**
 
 ```python
-import openviking as ov
+import openviking_sdk as ov
 
 client = ov.SyncHTTPClient(api_key="<root-key>")
 client.initialize()
@@ -707,7 +757,7 @@ curl -X DELETE http://localhost:1933/api/v1/admin/accounts/acme \
 **Python SDK**
 
 ```python
-import openviking as ov
+import openviking_sdk as ov
 
 client = ov.SyncHTTPClient(api_key="<root-key>")
 client.initialize()
@@ -817,7 +867,7 @@ curl -X POST http://localhost:1933/api/v1/admin/accounts/acme/users \
 **Python SDK**
 
 ```python
-import openviking as ov
+import openviking_sdk as ov
 
 client = ov.SyncHTTPClient(api_key="<root-or-admin-key>")
 client.initialize()
@@ -963,7 +1013,7 @@ curl -X GET "http://localhost:1933/api/v1/admin/accounts/acme/users?limit=50&pag
 **Python SDK**
 
 ```python
-import openviking as ov
+import openviking_sdk as ov
 
 client = ov.SyncHTTPClient(api_key="<root-or-admin-key>")
 client.initialize()
@@ -1066,7 +1116,7 @@ curl -X DELETE http://localhost:1933/api/v1/admin/accounts/acme/users/bob \
 **Python SDK**
 
 ```python
-import openviking as ov
+import openviking_sdk as ov
 
 client = ov.SyncHTTPClient(api_key="<root-or-admin-key>")
 client.initialize()
@@ -1166,7 +1216,7 @@ curl -X PUT http://localhost:1933/api/v1/admin/accounts/acme/users/bob/role \
 **Python SDK**
 
 ```python
-import openviking as ov
+import openviking_sdk as ov
 
 client = ov.SyncHTTPClient(api_key="<root-key>")
 client.initialize()
@@ -1264,7 +1314,7 @@ curl -X POST http://localhost:1933/api/v1/admin/accounts/acme/users/bob/key \
 **Python SDK**
 
 ```python
-import openviking as ov
+import openviking_sdk as ov
 
 client = ov.SyncHTTPClient(api_key="<root-or-admin-key>")
 client.initialize()

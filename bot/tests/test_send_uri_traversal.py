@@ -10,7 +10,6 @@ files and channel image delivery would exfiltrate them.
 from pathlib import Path
 
 import pytest
-
 from vikingbot.channels.base import BaseChannel
 
 

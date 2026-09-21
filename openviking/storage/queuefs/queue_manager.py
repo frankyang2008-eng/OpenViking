@@ -146,6 +146,7 @@ class QueueManager:
         self._started = False
         self._queue_threads: Dict[str, threading.Thread] = {}
         self._queue_stop_events: Dict[str, threading.Event] = {}
+        self._embedding_worker_stopped = threading.Event()
         self._poll_interval = 0.2
         self._task_work_index = TaskWorkIndex()
         # Shared executor for every worker loop's asyncio.to_thread agfs calls:
@@ -215,7 +216,10 @@ class QueueManager:
         logger.info("Embedding queue initialized with TextEmbeddingHandler")
 
         # Semantic Queue
-        semantic_processor = SemanticProcessor(max_concurrent_llm=self._max_concurrent_semantic)
+        semantic_processor = SemanticProcessor(
+            max_concurrent_llm=self._max_concurrent_semantic,
+            embedding_worker_stopped=self._embedding_worker_stopped.is_set,
+        )
         self.get_queue(
             self.SEMANTIC,
             dequeue_handler=semantic_processor,
@@ -236,6 +240,8 @@ class QueueManager:
         max_concurrent = self._max_concurrent_for_queue(queue.name)
         stop_event = threading.Event()
         self._queue_stop_events[queue.name] = stop_event
+        if queue.name == self.EMBEDDING:
+            self._embedding_worker_stopped.clear()
         thread = threading.Thread(
             target=self._queue_worker_loop,
             args=(queue, stop_event, max_concurrent),
@@ -299,6 +305,10 @@ class QueueManager:
                                 stop_event.wait(poll_interval)
                         else:
                             stop_event.wait(poll_interval)
+                    except asyncio.CancelledError:
+                        if not stop_event.is_set():
+                            raise
+                        break
                     except asyncio.TimeoutError:
                         # agfs call stalled: back off to the stop_event checkpoint so
                         # stop() can always retire this thread.
@@ -321,6 +331,10 @@ class QueueManager:
             loop.run_until_complete(loop.shutdown_asyncgens())
             loop.run_until_complete(loop.shutdown_default_executor())
             loop.close()
+            if queue.name == self.EMBEDDING:
+                # No more deliveries can start and active handlers have exited,
+                # including protected writes. Pending messages remain durable.
+                self._embedding_worker_stopped.set()
 
     async def _worker_async_concurrent(
         self, queue: NamedQueue, stop_event: threading.Event, max_concurrent: int
@@ -428,6 +442,8 @@ class QueueManager:
         # Stop queue workers
         for stop_event in self._queue_stop_events.values():
             stop_event.set()
+        if self.EMBEDDING not in self._queue_threads:
+            self._embedding_worker_stopped.set()
         for name, thread in self._queue_threads.items():
             thread.join(timeout=join_timeout)
             if thread.is_alive():

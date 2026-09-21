@@ -17,6 +17,12 @@ Client-Server 模式通过 HTTP API 连接 OpenViking 服务器，支持多租�
 
 #### Python SDK 客户端
 
+先在运行代码的 Python 环境中安装独立 SDK：
+
+```bash
+python -m pip install --upgrade openviking-sdk
+```
+
 ```python
 from openviking_sdk import SyncHTTPClient
 
@@ -50,7 +56,7 @@ defer client.CloseIdleConnections()
 Go SDK 发送的身份请求头与 Python HTTP client 一致：
 
 | Config 字段 | HTTP Header |
-| ------------- | ------------- |
+|-------------|-------------|
 | `APIKey` | `X-API-Key` |
 | `Account` | `X-OpenViking-Account` |
 | `User` | `X-OpenViking-User` |
@@ -105,38 +111,37 @@ export OPENVIKING_CLI_CONFIG_FILE=/path/to/ovcli.conf
 配置字段说明：
 
 | 字段 | 说明 | 默认值 |
-| ------ | ------ | -------- |
+|------|------|--------|
 | `url` | 服务端地址 | （必填） |
 | `api_key` | API Key | `null`（无认证） |
 | `account` | 租户级请求的默认账户请求头 | `null` |
 | `user` | 租户级请求的默认用户请求头 | `null` |
-| `timeout` | HTTP 请求超时时间（秒） | `600.0` |
+| `timeout` | HTTP 请求超时时间（秒） | `60.0` |
 | `output` | 默认输出格式：`"table"` 或 `"json"` | `"table"` |
 
-详细内容请参见 [配置指南](../guides/01-configuration.md#ovcliconf)。
+详细内容请参见 [配置指南](../guides/01-configuration.md#ovcli-conf)。
 
 #### 完全不依赖配置文件使用 Python SDK 客户端
 
-`SyncHTTPClient` 和 `AsyncHTTPClient` 支持完全不依赖 `ovcli.conf` 配置文件，只需在初始化时**显式传入所有参数**即可：
+`SyncHTTPClient` 和 `AsyncHTTPClient` 可以在没有 `ovcli.conf` 文件时使用。先在运行代码的 Python 环境中安装独立 SDK：
+
+```bash
+python -m pip install --upgrade openviking-sdk
+```
 
 ```python
-import openviking as ov
+import openviking_sdk as ov
 
 client = ov.SyncHTTPClient(
-    url="http://localhost:1933",          # 显式传入
-    api_key="your-key",                    # 显式传入（默认情况下 api_key 已经能标识用户身份）
-    timeout=30.0,                          # 不要用默认值 600.0
-    extra_headers={}                       # 传空 dict 而不是 None，可用于某些场景的网关认证等
+    url="http://localhost:1933",
+    api_key="your-key",
+    timeout=30.0,
+    extra_headers={},
 )
 client.initialize()
 ```
 
-⚠️ **注意**：只要以下任一条件满足，客户端就会尝试加载配置文件：
-
-- `url` 为 `None`
-- `api_key` 为 `None`
-- `timeout` 等于 `600.0`（默认值）
-- `extra_headers` 为 `None`
+即使显式传入参数，SDK 仍会读取已有的 `ovcli.conf`。显式值覆盖对应配置，其他设置可能来自环境变量或配置文件，因此无效配置仍会导致客户端构造失败。默认超时为 60 秒。文件位置见[客户端配置](../configuration/02-client.md)。
 
 #### HTTP 调用示例
 
@@ -156,12 +161,12 @@ curl http://localhost:1933/api/v1/fs/ls?uri=viking:// \
 
 #### CLI 模式
 
-OpenViking CLI （可简写为 ov 命令）连接到 OpenViking 服务端，将所有操作暴露为 Shell 命令。CLI 同样从 `ovcli.conf` 读取连接信息（与 HTTP 客户端共享）。
+OpenViking CLI 的命令是 `ov`（通过 `npm install -g @openviking/cli` 安装），连接到 OpenViking 服务端，将所有操作暴露为 Shell 命令。CLI 同样从 `ovcli.conf` 读取连接信息（与 HTTP 客户端共享）。
 
 基本用法：
 
 ```bash
-openviking [全局选项] <command> [参数] [命令选项]
+ov [全局选项] <command> [参数] [命令选项]
 ```
 
 全局选项（必须放在命令名之前）：
@@ -174,7 +179,7 @@ openviking [全局选项] <command> [参数] [命令选项]
 示例：
 
 ```bash
-openviking -o json ls viking://resources/
+ov -o json ls viking://resources/
 ```
 
 ## 生命周期
@@ -182,7 +187,7 @@ openviking -o json ls viking://resources/
 ### Client-Server 模式
 
 ```python
-import openviking as ov
+import openviking_sdk as ov
 
 client = ov.SyncHTTPClient(url="http://localhost:1933")
 client.initialize()
@@ -195,7 +200,7 @@ client.close()
 CLI 则直接通过命令行调用，需要先配置 ovcli.conf 文件，无需额外初始化客户端：
 
 ```
-openviking -o json ls viking://resources/
+ov -o json ls viking://resources/
 ```
 
 ## 认证
@@ -249,18 +254,24 @@ Python HTTP SDK（`SyncHTTPClient` 和 `AsyncHTTPClient`）会把该 envelope �
 列表数据渲染为表格，非列表数据 fallback 到格式化 JSON：
 
 ```bash
-openviking ls viking://resources/
+ov ls viking://resources/
 # name          size  mode  isDir  uri
 # .abstract.md  100   420   false  viking://resources/.abstract.md
 ```
 
 ### JSON 模式（`--output json`）
 
-所有命令输出格式化 JSON，与 API 响应的 `result` 结构一致：
+`-o json` 默认使用紧凑输出，并带有 `{ok, result}` 包装：
 
 ```bash
-openviking -o json ls viking://resources/
-# [{ "name": "...", "size": 100, ... }, ...]
+ov -o json ls viking://resources/
+# {"ok":true,"result":[{"name":"...","size":100,...},...]}
+```
+
+使用 `--compact=false` 返回不带包装的格式化 JSON：
+
+```bash
+ov -o json --compact=false ls viking://resources/
 ```
 
 可在 `ovcli.conf` 中设置默认输出格式：
@@ -272,7 +283,7 @@ openviking -o json ls viking://resources/
 }
 ```
 
-### 紧凑模式（`--compact`, `-c`）
+### 紧凑模式（`--compact`, `-c`，默认开启）
 
 - 当 `--output=json` 时：紧凑 JSON 格式 + `{ok, result}` 包装，适用于脚本
 - 当 `--output=table` 时：对表格输出采取精简表示（如去除空列等）
@@ -299,16 +310,17 @@ JSON 输出 - 错误：
 **注：退出码是 CLI（命令行工具）的返回码，不是 HTTP API 的状态码。**
 
 | 退出码 | 说明 | 触发场景 |
-| -------- | ------ | ---------- |
+|--------|------|----------|
 | 0 | 成功 | 命令执行成功 |
-| 1 | 一般错误 | 命令执行失败（如 API 调用失败、网络错误、找不到二进制文件等） |
-| 2 | 配置错误 | 无法加载 `ovcli.conf` 配置文件、`--sudo` 需要 `root_api_key` 但未配置、`--sudo` 用于非管理员命令 |
-| 3 | 连接错误 | 无法连接到服务器 |
+| 1 | 运行错误 | 命令执行失败，包括 API 调用错误或连接错误 |
+| 2 | 参数或配置错误 | 命令行参数无效、配置加载失败、缺少必要凭据，或将 `--sudo` 用于不支持的命令 |
+
+当前 Rust CLI 的连接失败返回退出码 `1`，不使用单独的连接错误退出码 `3`。
 
 ## 错误码
 
 | 错误码 | HTTP 状态码 | 说明 |
-| -------- | ------------- | ------ |
+|--------|-------------|------|
 | `OK` | 200 | 成功 |
 | `INVALID_ARGUMENT` | 400 | 无效参数 |
 | `INVALID_URI` | 400 | 无效的 Viking URI 格式 |
@@ -340,7 +352,7 @@ JSON 输出 - 错误：
 ### [系统状态](07-system.md)
 
 | 方法 | 路径 | 说明 |
-| ------ | ------ | ------ |
+|------|------|------|
 | GET | `/health` | 基础健康检查（无需认证） |
 | GET | `/ready` | AGFS、VectorDB 和 API Key 管理器就绪检查（无需认证） |
 | GET | `/api/v1/system/status` | 系统状态 |
@@ -354,7 +366,7 @@ JSON 输出 - 错误：
 ### [资源](02-resources.md)与[文件系统](03-filesystem.md)
 
 | 方法 | 路径 | 说明 |
-| ------ | ------ | ------ |
+|------|------|------|
 | POST | `/api/v1/resources/temp_upload` | 上传后续导入所需的临时文件 |
 | POST | `/api/v1/resources` | 从 URL 或临时文件添加资源 |
 | GET | `/api/v1/fs/ls` | 列出目录 |
@@ -370,7 +382,7 @@ JSON 输出 - 错误：
 ### [ACL](12-acl.md)
 
 | 方法 | 路径 | 说明 |
-| ------ | ------ | ------ |
+|------|------|------|
 | GET | `/api/v1/acl` | 获取资源的直接、继承和有效 ACL |
 | PUT | `/api/v1/acl` | 替换资源的直接 ACL |
 | DELETE | `/api/v1/acl` | 清空资源的直接 ACL |
@@ -380,7 +392,7 @@ JSON 输出 - 错误：
 ### [内容](12-content.md)
 
 | 方法 | 路径 | 说明 |
-| ------ | ------ | ------ |
+|------|------|------|
 | GET | `/api/v1/content/read` | 读取完整内容（L2） |
 | GET | `/api/v1/content/abstract` | 读取摘要（L0） |
 | GET | `/api/v1/content/overview` | 读取概览（L1） |
@@ -393,7 +405,7 @@ JSON 输出 - 错误：
 ### [技能](04-skills.md)
 
 | 方法 | 路径 | 说明 |
-| ------ | ------ | ------ |
+|------|------|------|
 | GET | `/api/v1/skills` | 列出技能 |
 | POST | `/api/v1/skills` | 添加技能 |
 | POST | `/api/v1/skills/find` | 搜索技能 |
@@ -405,7 +417,7 @@ JSON 输出 - 错误：
 ### [会话](05-sessions.md)、[记忆](16-memory.md)与 [Agent 进化](19-agent-evolution.md)
 
 | 方法 | 路径 | 说明 |
-| ------ | ------ | ------ |
+|------|------|------|
 | POST | `/api/v1/sessions` | 创建会话 |
 | GET | `/api/v1/sessions` | 列出会话 |
 | GET | `/api/v1/sessions/{session_id}` | 获取会话 |
@@ -420,7 +432,6 @@ JSON 输出 - 错误：
 | POST | `/api/v1/sessions/{session_id}/extract` | 提取记忆 |
 | POST | `/api/v1/sessions/{session_id}/messages` | 添加单条消息 |
 | POST | `/api/v1/sessions/{session_id}/messages/batch` | 批量添加消息 |
-| POST | `/api/v1/sessions/{session_id}/used` | 记录实际使用的上下文或技能 |
 | POST | `/api/v1/search/recall` | 已弃用：search 接口 `mode="context"` 之上的轻量预设 |
 | GET | `/api/v1/agent-evolution/experiences/trajectories` | 分页查询应用过指定 Experience 的 Trajectory |
 | GET | `/api/v1/agent-evolution/experiences/outcomes` | 聚合应用过指定 Experience 的 Trajectory 结果分布 |
@@ -428,7 +439,7 @@ JSON 输出 - 错误：
 ### [检索](06-retrieval.md)
 
 | 方法 | 路径 | 说明 |
-| ------ | ------ | ------ |
+|------|------|------|
 | POST | `/api/v1/search/find` | 语义搜索 |
 | POST | `/api/v1/search/search` | 上下文感知搜索；`mode="context"` 返回可注入的组装上下文 |
 | POST | `/api/v1/search/grep` | 内容模式搜索 |
@@ -437,7 +448,7 @@ JSON 输出 - 错误：
 ### [Watch](15-watches.md)、[快照](11-snapshot.md)与 [OVPack](14-ovpack.md)
 
 | 方法 | 路径 | 说明 |
-| ------ | ------ | ------ |
+|------|------|------|
 | GET | `/api/v1/watches` | 列出 watch，或按 `to_uri` 查询 |
 | GET | `/api/v1/watches/{task_id}` | 按任务 ID 获取 watch |
 | PATCH | `/api/v1/watches` | 按 `to_uri` 更新 watch |
@@ -462,7 +473,7 @@ JSON 输出 - 错误：
 ### [后台任务](17-tasks.md)、[运行观测](18-observer.md)与 [Metrics](09-metrics.md)
 
 | 方法 | 路径 | 说明 |
-| ------ | ------ | ------ |
+|------|------|------|
 | POST | `/api/v1/compile` | 创建由 OV 托管的 Compile 任务 |
 | GET | `/api/v1/compile/capabilities` | 检查 Compile 可用性 |
 | GET | `/api/v1/compile/submissions/{key}` | 按提交键查询任务 |
@@ -481,11 +492,15 @@ JSON 输出 - 错误：
 ### [管理员](08-admin.md)与[隐私配置](10-privacy.md)
 
 | 方法 | 路径 | 说明 |
-| ------ | ------ | ------ |
-| GET | `/api/v1/admin/agent-evolution` | 获取调用方 account 的 Agent 进化状态 |
-| PUT | `/api/v1/admin/agent-evolution` | 更新调用方 account 的 Agent 进化状态 |
-| GET | `/api/v1/admin/accounts/{account_id}/settings` | 获取 account 生效配置 |
-| PATCH | `/api/v1/admin/accounts/{account_id}/settings` | 更新白名单内的 account 配置 |
+|------|------|------|
+| GET | `/api/v1/admin/configuration` | 获取 Cluster 层显式运行时配置 |
+| PATCH | `/api/v1/admin/configuration` | 更新 Cluster 层运行时配置 |
+| GET | `/api/v1/admin/accounts/{account_id}/configuration` | 获取 Account 层显式运行时配置 |
+| PATCH | `/api/v1/admin/accounts/{account_id}/configuration` | 更新 Account 层运行时配置 |
+| GET | `/api/v1/admin/agent-evolution` | 获取 Agent 进化状态（deprecated） |
+| PUT | `/api/v1/admin/agent-evolution` | 更新 Agent 进化状态（deprecated） |
+| GET | `/api/v1/admin/accounts/{account_id}/settings` | 获取存量账号配置（deprecated） |
+| PATCH | `/api/v1/admin/accounts/{account_id}/settings` | 更新存量账号配置（deprecated） |
 | GET | `/api/v1/admin/accounts/{account_id}/memory-templates` | 列出可编辑记忆模板、默认值及生效值 |
 | GET | `/api/v1/admin/accounts/{account_id}/memory-templates/{memory_type}` | 查询单个记忆模板 |
 | PUT | `/api/v1/admin/accounts/{account_id}/memory-templates/{memory_type}` | 补齐并发布单个记忆模板 |
@@ -518,7 +533,7 @@ JSON 输出 - 错误：
 ### [OpenViking Assets](22-openviking-assets.md)、[WebDAV](20-webdav.md)、[Agent Runtime API](23-agent-runtime.md) 与 [VikingBot API](24-vikingbot.md)
 
 | 方法 | 路径 | 说明 |
-| ------ | ------ | ------ |
+|------|------|------|
 | POST | `/api/v1/openviking-assets/resolve` | 解析并校验 Catalog 与 Manifest，返回标准化资产计划 |
 | POST | `/api/v1/openviking-assets/preflight` | 只读校验 Git 仓库和 ref 的访问权限 |
 | OPTIONS | `/webdav/resources`、`/webdav/resources/{resource_path}` | 查询 WebDAV 能力 |
@@ -546,7 +561,7 @@ JSON 输出 - 错误：
 左侧导航按职责而不是按历史文件体积组织：
 
 | 分组 | 适合查找的内容 |
-| ------ | ---------------- |
+|------|----------------|
 | 核心数据 | 资源、内容、文件系统、技能、会话、记忆 |
 | 检索 | 语义检索、代码检索 |
 | 数据生命周期 | Watch、快照、OVPack |

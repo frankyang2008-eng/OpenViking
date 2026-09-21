@@ -40,8 +40,10 @@ OpenViking supports various resource types, categorized by functionality:
 | Type | Resource Name | Description |
 |------|---------------|-------------|
 | Images | `*.jpg`, `*.jpeg`, `*.png`, `*.gif` ... | Various image formats, descriptions generated via VLM (Experimental) |
-| Video | `*.mp4`, `*.avi`, `*.mov` ... | Extracts keyframes and analyzes with VLM (Planning) |
-| Audio | `*.mp3`, `*.wav`, `*.m4a` ... | Performs speech transcription (Planning) |
+| Video | `*.mp4`, `*.avi`, `*.mov` ... | Stores the original file; optional VLM understanding requires compatible media configuration |
+| Audio | `*.mp3`, `*.wav`, `*.m4a` ... | Stores the original file; optional VLM understanding requires compatible media configuration |
+
+Audio/video parsers validate and store the original files. Content understanding runs later during semantic processing and is disabled by default (`vlm.media.enabled=false`). Enable it with a compatible provider/model; understanding formats and size limits differ from import formats. This is not a built-in Whisper transcription or local keyframe-extraction pipeline. See [audio/video configuration](../guides/01-configuration.md).
 
 **Cloud Documents**
 
@@ -112,7 +114,7 @@ Resource incremental updates are implemented via the **Watch Task** mechanism:
 
 #### Watch Task Creation
 - Set `watch_interval > 0` (in minutes) when calling `add_resource` with a re-readable source, such as a URL, sitemap, or RSS feed, to create a watch task
-- Uploaded content referenced by `temp_file_id` is a static snapshot and cannot be watched; re-add it when the local source changes
+- Uploaded content referenced by `temp_file_id` is a static snapshot and cannot be watched. The Python HTTP SDK also uploads local files/directories as snapshots, so do not combine a local path with `watch_interval > 0`; re-add it when the local source changes
 - You may specify `to` to define the target URI; if omitted, the task binds to the `root_uri` returned by this import
 - Pointing a watch at a sitemap/RSS/Atom URL keeps the **whole site** in sync: each refresh re-reads the feed and rebuilds the tree, so newly published pages are added and removed pages drop automatically
 - `WatchManager` handles task persistence
@@ -197,7 +199,7 @@ This endpoint is the core entry point for resource management. It supports vario
 - Resource targets may use public `viking://resources/...`, the home alias `viking://~/resources/...`, explicit user `viking://user/{user_id}/resources/...`, or peer `viking://user/{user_id}/peers/{peer_id}/resources/...` paths. The home alias is expanded to the canonical path using the authenticated request identity; the uid-less spelling `viking://user/resources/...` is rejected with an error pointing at `viking://~/resources/...`.
 - `user_id` and `peer_id` path segments must be safe single-segment identifiers, for example `alice` or `web-visitor-alice`. Values with path separators, `.`, `..`, `:`, or `+` are rejected.
 - `path` and `temp_file_id` cannot be specified together
-- Raw HTTP calls for local files require first uploading via [temp_upload](#temp_upload) to obtain `temp_file_id`
+- Raw HTTP calls for local files require first uploading via [temp_upload](#temp-upload) to obtain `temp_file_id`
 - Only Git repository sources use full background import when `wait=false`; OpenViking performs repository preflight and target planning before returning the `task_id`.
 - Native HTTPS Git credentials in `args.auth_config` remain request-local when `watch_interval <= 0`. When `watch_interval > 0`, OpenViking stores the repository-bound username/token in private watch state and restores it only for later Git fetches. The credentials are excluded from ordinary queue payloads and watch API/MCP/CLI responses. Git PATs have no generic refresh flow; rotate an expired or revoked token by recreating the watch. Legacy URL-embedded credentials such as `https://user:token@host/repo.git` remain accepted and are passed through unchanged; because that URL is also the source identifier, it may be recorded in process arguments, logs, queues, resource metadata, and watch state. Prefer `args.auth_config` for new integrations. Plaintext HTTP authentication and authenticated redirects for `args.auth_config` remain rejected.
 - The token travels in the HTTPS request body. Keep diagnostic request-body dumping disabled in production because explicitly enabling it can record secrets.
@@ -395,9 +397,9 @@ result = client.add_resource(
 # Check the latest import task; use its results after it reaches completed
 print(client.get_task(result["task_id"]))
 
-# Enable scheduled updates
+# Enable scheduled updates for a re-readable URL
 client.add_resource(
-    path="./documents/guide.md",
+    path="https://example.com/guide.md",
     to="viking://resources/guide.md",
     options={
         "watch_interval": 60,  # Update every 60 minutes
@@ -605,7 +607,7 @@ For Git repository sources with `wait=false`, the background task has `task_type
 
 ### temp_upload
 
-Upload a temporary file for subsequent importing of local files via [add_resource](#add_resource) or [add_skill](#add_skill).
+Upload a temporary file for subsequent importing of local files via [add_resource](#add-resource) or [add_skill](04-skills.md#add-skill).
 
 #### 1. API Implementation Overview
 

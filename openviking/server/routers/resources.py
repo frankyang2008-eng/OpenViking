@@ -18,7 +18,6 @@ from openviking.server.identity import RequestContext
 from openviking.server.local_input_guard import require_remote_resource_source
 from openviking.server.resource_ingest import ingest_temp_upload
 from openviking.server.responses import response_from_result
-from openviking.server.skill_source_metadata import persist_skill_source_metadata
 from openviking.server.telemetry import run_operation
 from openviking.server.temp_upload_store import TempUploadStore
 from openviking.service.skill_sources import describe_skill_sources, resolve_skill_source
@@ -257,6 +256,7 @@ async def add_resource(
     allow_local_path_resolution = False
     original_filename = None
     resolved = None
+    shared_source_ref = None
     if request.temp_file_id:
         if request.watch_interval > 0:
             raise InvalidArgumentError(
@@ -266,12 +266,20 @@ async def add_resource(
                 "sitemap / RSS source instead, or re-add the resource when the "
                 "source changes."
             )
-        resolved = await TempUploadStore.build(http_request.app.state.config).resolve_for_consume(
-            request.temp_file_id, _ctx
-        )
-        path = resolved.local_path
-        original_filename = resolved.original_filename
-        allow_local_path_resolution = True
+        store = TempUploadStore.build(http_request.app.state.config)
+        # A shared upload already lives in durable storage: the API only validates
+        # a reference and the SOURCE worker downloads it once, avoiding a second
+        # API-side download + task re-stage. Local uploads keep the copy path.
+        shared_source_ref = await store.resolve_shared_reference(request.temp_file_id, _ctx)
+        if shared_source_ref is not None:
+            path = shared_source_ref.original_filename or request.temp_file_id
+            original_filename = shared_source_ref.original_filename or None
+            allow_local_path_resolution = True
+        else:
+            resolved = await store.resolve_for_consume(request.temp_file_id, _ctx)
+            path = resolved.local_path
+            original_filename = resolved.original_filename
+            allow_local_path_resolution = True
     elif path is not None:
         path = require_remote_resource_source(path, declared_connector_add_type=request.add_type)
     if path is None:
@@ -321,6 +329,7 @@ async def add_resource(
                 internal_task=request.internal_task,
                 is_active=request.is_active,
                 args=request.args,
+                shared_source=shared_source_ref,
                 **kwargs,
             )
         except Exception:
@@ -402,8 +411,8 @@ async def add_skill(
                             allow_local_path_resolution=isinstance(skill_data, Path),
                             source_path_hint=source_path_hint,
                             target_uri=target_uri,
+                            source_metadata=skill_source,
                         )
-                        await persist_skill_source_metadata(service, _ctx, result, skill_source)
                         return result
 
                     # Each skill owns its own queue wait tracker and task ID.

@@ -1,8 +1,4 @@
-import type {
-  FindResultItem,
-  OpenVikingClient,
-  SearchContextEntry,
-} from "./client.js";
+import type { FindResultItem, OpenVikingClient, SearchContextEntry } from "./client.js";
 import type { MemoryOpenVikingConfig } from "./config.js";
 import type { EffectiveQueryConfig } from "./query-config.js";
 import { toJsonLog } from "./memory-ranking.js";
@@ -11,8 +7,12 @@ import {
   resolveRecallSearchPlan,
   type RecallResourceType,
 } from "./registries/recall-resource-types.js";
-import type { RecallTraceEntry, RecallTraceResult } from "./recall-trace.js";
+import {
+  type RecallTraceEntry,
+  type RecallTraceResult,
+} from "./recall-trace.js";
 import { sanitizeUserTextForCapture } from "./text-utils.js";
+import { selectRecallContent } from "./shared/recall-core.mjs";
 import { estimateTextTokens } from "./token-estimator.js";
 
 const RECALL_QUERY_MAX_CHARS = 4_000;
@@ -139,7 +139,7 @@ async function resolveMemoryContent(
       content =
         fullContent && typeof fullContent === "string" && fullContent.trim()
           ? fullContent.trim()
-          : item.abstract?.trim() || item.uri;
+          : (item.abstract?.trim() || item.uri);
     } catch {
       content = item.abstract?.trim() || item.uri;
     }
@@ -180,8 +180,7 @@ export async function buildMemoryLinesWithBudget(
   readFn: (uri: string) => Promise<string>,
   options: BuildMemoryLinesWithBudgetOptions,
 ): Promise<{ lines: string[]; estimatedTokens: number }> {
-  const charBudget =
-    options.recallMaxInjectedChars ?? options.recallTokenBudget ?? 0;
+  const charBudget = options.recallMaxInjectedChars ?? options.recallTokenBudget ?? 0;
   const lines: string[] = [];
   let totalTokens = 0;
   let totalChars = 0;
@@ -224,20 +223,14 @@ function newTraceId(): string {
   return `recall_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
 }
 
-function preview(
-  value: string | undefined,
-  maxChars: number,
-): string | undefined {
+function preview(value: string | undefined, maxChars: number): string | undefined {
   const trimmed = value?.trim();
   if (!trimmed) return undefined;
   return trimmed.length > maxChars ? trimmed.slice(0, maxChars) : trimmed;
 }
 
 function traceResourceType(entry: SearchContextEntry): RecallResourceType {
-  if (
-    entry.category === "resources" ||
-    entry.uri.startsWith("viking://resources")
-  ) {
+  if (entry.category === "resources" || entry.uri.startsWith("viking://resources")) {
     return "resource";
   }
   if (entry.origin === "actor_peer") {
@@ -258,10 +251,7 @@ function toTraceResult(entry: SearchContextEntry): RecallTraceResult {
   };
 }
 
-function boundTraceQuery(
-  query: string,
-  maxChars: number,
-): { query: string; queryTruncated?: boolean } {
+function boundTraceQuery(query: string, maxChars: number): { query: string; queryTruncated?: boolean } {
   if (query.length <= maxChars) {
     return { query };
   }
@@ -274,10 +264,7 @@ function runtimeFlag(runtimeContext: unknown, key: string): unknown {
     : undefined;
 }
 
-export function isCronSession(
-  sessionKey?: string,
-  runtimeContext?: unknown,
-): boolean {
+export function isCronSession(sessionKey?: string, runtimeContext?: unknown): boolean {
   return Boolean(
     sessionKey?.includes(":cron:") ||
       runtimeFlag(runtimeContext, "isCron") === true ||
@@ -306,11 +293,7 @@ export function shouldRecallAgentExperience(input: {
     return { recall: false, score: 0, reason: "already_injected" };
   }
 
-  const trigger =
-    input.triggerHint ??
-    (isCronSession(input.sessionKey, input.runtimeContext)
-      ? "cron_start"
-      : "task_start");
+  const trigger = input.triggerHint ?? (isCronSession(input.sessionKey, input.runtimeContext) ? "cron_start" : "task_start");
   if (trigger !== "task_start") {
     return { recall: true, trigger, score: 99, reason: "forced_trigger" };
   }
@@ -323,27 +306,14 @@ export function shouldRecallAgentExperience(input: {
   if (EXPERIENCE_INTENT_RE.test(text)) score += 1;
 
   if (CASUAL_RE.test(text)) score -= 3;
-  if (
-    QUESTION_ONLY_RE.test(text) &&
-    !ENGINEERING_OBJECT_RE.test(text) &&
-    !EXECUTION_RE.test(text)
-  ) {
+  if (QUESTION_ONLY_RE.test(text) && !ENGINEERING_OBJECT_RE.test(text) && !EXECUTION_RE.test(text)) {
     score -= 2;
   }
 
   if (score >= 3) {
-    return {
-      recall: true,
-      trigger: "task_start",
-      score,
-      reason: "task_execution",
-    };
+    return { recall: true, trigger: "task_start", score, reason: "task_execution" };
   }
-  return {
-    recall: false,
-    score,
-    reason: score < 0 ? "non_execution" : "below_threshold",
-  };
+  return { recall: false, score, reason: score < 0 ? "non_execution" : "below_threshold" };
 }
 
 export async function buildAutoRecallContext(params: {
@@ -355,10 +325,7 @@ export async function buildAutoRecallContext(params: {
   queryText: string;
   logger: Logger;
   verbose?: (message: string) => void;
-  traceRecorder?: {
-    record(entry: RecallTraceEntry): void;
-    recordAndFlush?: (entry: RecallTraceEntry) => Promise<unknown>;
-  };
+  traceRecorder?: { record(entry: RecallTraceEntry): void; recordAndFlush?: (entry: RecallTraceEntry) => Promise<unknown> };
   sessionId?: string;
   sessionKey?: string;
   ovSessionId?: string;
@@ -367,8 +334,7 @@ export async function buildAutoRecallContext(params: {
   resourceTypes?: RecallResourceType[];
   dedupTurns?: number;
 }): Promise<{ block?: string; memoryCount: number; estimatedTokens: number }> {
-  const { cfg, client, agentId, actorPeerId, queryText, logger, verbose } =
-    params;
+  const { cfg, client, agentId, actorPeerId, queryText, logger, verbose } = params;
   const queryConfig = params.queryConfig;
 
   if (!cfg.autoRecall || queryText.length < 5) {
@@ -377,56 +343,40 @@ export async function buildAutoRecallContext(params: {
 
   const precheck = await quickRecallPrecheck(client, actorPeerId);
   if (!precheck.ok) {
-    verbose?.(
-      `openviking: skipping auto-recall because precheck failed (${precheck.reason})`,
-    );
+    verbose?.(`openviking: skipping auto-recall because precheck failed (${precheck.reason})`);
     return { memoryCount: 0, estimatedTokens: 0 };
   }
 
   return withTimeout(
     (async () => {
-      const scoreThreshold =
-        queryConfig?.scoreThreshold ?? cfg.recallScoreThreshold;
+      const scoreThreshold = queryConfig?.scoreThreshold ?? cfg.recallScoreThreshold;
       const recallLimit = queryConfig?.recallLimit ?? cfg.recallLimit;
-      const maxInjectedChars =
-        queryConfig?.maxInjectedChars ?? cfg.recallMaxInjectedChars;
-      const recallPreferAbstract =
-        queryConfig?.recallPreferAbstract ?? cfg.recallPreferAbstract;
-      const searchPlan = resolveRecallSearchPlan(
-        params.resourceTypes ??
-          queryConfig?.resourceTypes ??
-          cfg.recallTargetTypes,
-        {
-          ovSessionId: params.ovSessionId,
-          agentId,
-        },
-      );
-      const contextTypes = [
-        ...new Set(searchPlan.searches.map((search) => search.contextType)),
-      ];
+      const maxInjectedChars = queryConfig?.maxInjectedChars ?? cfg.recallMaxInjectedChars;
+      const recallPreferAbstract = queryConfig?.recallPreferAbstract ?? cfg.recallPreferAbstract;
+      const searchPlan = resolveRecallSearchPlan(params.resourceTypes ?? queryConfig?.resourceTypes ?? cfg.recallTargetTypes, {
+        ovSessionId: params.ovSessionId,
+        agentId,
+      });
+      const contextTypes = [...new Set(searchPlan.searches.map((search) => search.contextType))];
       const maxTokens = Math.min(
         32_000,
         Math.max(64, Math.round(maxInjectedChars / LEGACY_CHARS_PER_TOKEN)),
       );
       const startedAt = Date.now();
-      let contextResult:
-        | Awaited<ReturnType<OpenVikingClient["searchContext"]>>
-        | undefined;
+      let contextResult: Awaited<ReturnType<OpenVikingClient["searchContext"]>> | undefined;
       let requestError: unknown;
 
       try {
         contextResult = await client.searchContext(queryText, {
           sessionId: params.ovSessionId,
           limit: recallLimit,
+          recallCompress: cfg.recallCompress,
           scoreThreshold,
-          contextType:
-            contextTypes.length === 1 ? contextTypes[0] : contextTypes,
+          contextType: contextTypes.length === 1 ? contextTypes[0] : contextTypes,
           queryExpansion: "auto",
           maxTokens,
           detail: recallPreferAbstract ? "abstract" : undefined,
-          dedupTurns:
-            params.dedupTurns ??
-            (params.ovSessionId ? AUTO_RECALL_DEDUP_TURNS : undefined),
+          dedupTurns: params.dedupTurns ?? (params.ovSessionId ? AUTO_RECALL_DEDUP_TURNS : undefined),
           peerScope: "actor",
           actorPeerId,
           requestTimeoutMs: cfg.autoRecallTimeoutMs,
@@ -436,9 +386,7 @@ export async function buildAutoRecallContext(params: {
       }
 
       const durationMs = Date.now() - startedAt;
-      const entries = (contextResult?.entries ?? []).filter((entry) =>
-        Boolean(entry.uri),
-      );
+      const entries = (contextResult?.entries ?? []).filter((entry) => Boolean(entry.uri));
       const rawRetrievalErrors = contextResult?.stats?.retrieval_errors;
       const retrievalErrors = Array.isArray(rawRetrievalErrors)
         ? rawRetrievalErrors.map((error) => String(error))
@@ -450,9 +398,7 @@ export async function buildAutoRecallContext(params: {
           : undefined;
 
       if (searchError) {
-        logger.warn?.(
-          `openviking: auto-recall context search failed: ${searchError}`,
-        );
+        logger.warn?.(`openviking: auto-recall context search failed: ${searchError}`);
       }
 
       const traceSearches: RecallTraceEntry["searches"] = [
@@ -469,7 +415,7 @@ export async function buildAutoRecallContext(params: {
           const matchingEntries = entries.filter((entry) =>
             search.contextType === "resource"
               ? traceResourceType(entry) === "resource"
-              : traceResourceType(entry) !== "resource",
+              : traceResourceType(entry) !== "resource"
           );
           return {
             resourceType: search.resourceType,
@@ -486,10 +432,9 @@ export async function buildAutoRecallContext(params: {
         }),
       ];
 
-      const candidateCount =
-        typeof contextResult?.stats?.candidates === "number"
-          ? contextResult.stats.candidates
-          : entries.length;
+      const candidateCount = typeof contextResult?.stats?.candidates === "number"
+        ? contextResult.stats.candidates
+        : entries.length;
       const recordTrace = async (
         injectedEntries: SearchContextEntry[],
         injectedCount: number,
@@ -510,9 +455,7 @@ export async function buildAutoRecallContext(params: {
             rawUserTextPreview: params.rawUserTextPreview,
             ...boundTraceQuery(queryText, cfg.traceRecallQueryMaxChars),
             derivedKeywords: [],
-            queryTruncated:
-              params.queryTruncated ||
-              queryText.length > cfg.traceRecallQueryMaxChars,
+            queryTruncated: params.queryTruncated || queryText.length > cfg.traceRecallQueryMaxChars,
           },
           searches: traceSearches,
           selected: injectedEntries.map((contextEntry) => ({
@@ -520,10 +463,7 @@ export async function buildAutoRecallContext(params: {
             resourceType: traceResourceType(contextEntry),
             category: contextEntry.category,
             score: contextEntry.score,
-            abstractPreview: preview(
-              contextEntry.text,
-              cfg.traceRecallPreviewChars,
-            ),
+            abstractPreview: preview(contextEntry.text, cfg.traceRecallPreviewChars),
             injected: true,
           })),
           stats: {
@@ -537,17 +477,17 @@ export async function buildAutoRecallContext(params: {
         params.traceRecorder?.record(entry);
       };
 
-      const rendered = contextResult?.rendered?.trim() ?? "";
-      if (requestError || entries.length === 0 || !rendered) {
+      const digest = contextResult?.digest?.trim() ?? "";
+      const rendered = selectRecallContent(contextResult);
+      if (requestError || !rendered) {
         await recordTrace([], 0, 0);
         return { memoryCount: 0, estimatedTokens: 0 };
       }
 
       const usedTokens = contextResult?.stats?.used_tokens;
-      const estimatedTokens =
-        typeof usedTokens === "number" && Number.isFinite(usedTokens)
-          ? Math.max(0, Math.ceil(usedTokens))
-          : estimateTokenCount(rendered);
+      const estimatedTokens = !digest && typeof usedTokens === "number" && Number.isFinite(usedTokens)
+        ? Math.max(0, Math.ceil(usedTokens))
+        : estimateTokenCount(rendered);
       const block = buildRecallContextBlock([rendered]);
       verbose?.(
         `openviking: injecting ${entries.length} memories (${block.length} chars, ~${estimatedTokens} tokens, serverMaxTokens=${maxTokens})`,

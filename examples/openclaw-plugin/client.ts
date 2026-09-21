@@ -51,6 +51,7 @@ export type SearchContextOptions = {
   scoreThreshold?: number;
   contextType?: string | string[];
   queryExpansion?: "off" | "auto";
+  recallCompress?: "off" | "server" | "auto";
   maxTokens?: number;
   detail?: "abstract" | "overview" | "full";
   dedupTurns?: number;
@@ -524,6 +525,7 @@ export class OpenVikingClient {
   ): Promise<SearchContextResult> {
     const contractConfig = {
       recallLimit: options.limit,
+      recallRewrite: options.recallCompress,
       recallLimitConfigured: options.limit !== undefined,
       recallMaxTokens: options.maxTokens,
       recallMaxTokensConfigured: options.maxTokens !== undefined,

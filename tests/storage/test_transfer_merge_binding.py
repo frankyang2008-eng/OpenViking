@@ -25,6 +25,12 @@ from openviking_cli.utils.config.agfs_config import AGFSConfig
 from openviking_cli.utils.config.vectordb_config import VectorDBBackendConfig
 
 
+class _EnabledAclConfig:
+    async def get_account(self, account_id: str, field: str):
+        del account_id, field
+        return SimpleNamespace(enabled=True)
+
+
 @pytest.fixture
 def binding_fs(tmp_path):
     client_type, _ = get_binding_client()
@@ -77,6 +83,120 @@ async def seed_vector(backend, uri, content):
 @pytest.mark.parametrize("operation", ["cp", "mv"])
 @pytest.mark.parametrize("directory", [False, True])
 @pytest.mark.parametrize("phase", ["source", "target"])
+async def test_transfer_uses_queries_without_count_or_sort(
+    indexed_fs, monkeypatch, operation, directory, phase
+):
+    fs, backend = indexed_fs
+    ctx = root_ctx()
+    source, target = "viking://resources/source", "viking://resources/target"
+    source_file = source + "/a.md" if directory else source
+    target_file = target + "/a.md" if directory else target
+    await fs.write_file_bytes(source_file, b"new", ctx=ctx)
+    await fs.write_file_bytes(target_file, b"old", ctx=ctx)
+    await seed_vector(backend, source_file, "new")
+    await seed_vector(backend, target_file, "old")
+    adapter = backend._get_backend_for_context(ctx)._adapter
+    original_count, original_query = adapter.count, adapter.query
+    count_calls, queries = [], []
+
+    def stale_count(*args, **kwargs):
+        count_calls.append(True)
+        count = original_count(*args, **kwargs)
+        return count + (len(count_calls) == (1 if phase == "source" else 2))
+
+    def query(**kwargs):
+        queries.append(kwargs)
+        return original_query(**kwargs)
+
+    monkeypatch.setattr(adapter, "count", stale_count)
+    monkeypatch.setattr(adapter, "query", query)
+    await getattr(fs, operation)(
+        source, target, ctx=ctx, **({"recursive": directory} if operation == "cp" else {})
+    )
+
+    assert not count_calls
+    assert len(queries) >= 2  # Both source reads and target replacement use this path.
+    assert all(
+        q.get("order_by") is None and q["offset"] == 0 and q["limit"] == 100 for q in queries
+    )
+    assert await fs.read_file_bytes(target_file, ctx=ctx) == b"new"
+    records = await backend.get([vector_record_id(ctx.account_id, target_file, 2)], ctx=ctx)
+    assert [record["abstract"] for record in records] == ["new"]
+    assert await fs.exists(source, ctx=ctx) == (operation == "cp")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("operation", ["cp", "mv"])
+@pytest.mark.parametrize("disappear_all", [False, True])
+async def test_transfer_skips_source_record_disappearing_before_fetch(
+    indexed_fs, monkeypatch, operation, disappear_all
+):
+    fs, backend = indexed_fs
+    ctx = root_ctx()
+    source, target = "viking://resources/source", "viking://resources/target"
+    a, b = source + "/a.md", source + "/b.md"
+    for uri in [a, b]:
+        await fs.write_file_bytes(uri, b"new", ctx=ctx)
+        await seed_vector(backend, uri, "new")
+    await seed_vector(backend, target + "/b.md", "old target index")
+    original_get = backend._strict_transfer_get
+
+    async def get_after_delete(ctx, ids):
+        missing = [uri for uri in ids if uri == b or (disappear_all and uri == a)]
+        if missing:
+            await backend._get_backend_for_context(ctx).strict_delete(missing)
+        return await original_get(ctx, ids)
+
+    monkeypatch.setattr(backend, "_strict_transfer_get", get_after_delete)
+    result = await getattr(fs, operation)(
+        source, target, ctx=ctx, **({"recursive": True} if operation == "cp" else {})
+    )
+    assert result["vectors"]["written"] == (0 if disappear_all else 1)
+    assert await fs.read_file_bytes(target + "/b.md", ctx=ctx) == b"new"
+    records = await backend.get([target + "/b.md"], ctx=ctx)
+    assert [record["abstract"] for record in records] == ["old target index"]
+    assert bool(
+        await backend.get([vector_record_id(ctx.account_id, target + "/a.md", 2)], ctx=ctx)
+    ) == (not disappear_all)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("operation", ["cp", "mv"])
+@pytest.mark.parametrize("failure", ["source_query", "target_query", "source_fetch"])
+async def test_transfer_propagates_legacy_read_errors(indexed_fs, monkeypatch, operation, failure):
+    fs, backend = indexed_fs
+    ctx = root_ctx()
+    source, target = "viking://resources/source.md", "viking://resources/target.md"
+    await fs.write_file_bytes(source, b"new", ctx=ctx)
+    await fs.write_file_bytes(target, b"old", ctx=ctx)
+    await seed_vector(backend, source, "new")
+    await seed_vector(backend, target, "old")
+    adapter = backend._get_backend_for_context(ctx)._adapter
+    original_query, original_get = adapter.query, adapter.get
+
+    def query(**kwargs):
+        records = original_query(**kwargs)
+        failed_uri = target if failure == "target_query" else source
+        if failure.endswith("query") and any(r["uri"] == failed_uri for r in records):
+            raise RuntimeError("backend unavailable")
+        return records
+
+    def get(ids):
+        if failure == "source_fetch" and source in ids:
+            raise RuntimeError("backend unavailable")
+        return original_get(ids)
+
+    monkeypatch.setattr(adapter, "query", query)
+    monkeypatch.setattr(adapter, "get", get)
+    with pytest.raises(RuntimeError, match="backend unavailable"):
+        await getattr(fs, operation)(source, target, ctx=ctx)
+    assert await fs.read_file_bytes(source, ctx=ctx) == b"new"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("operation", ["cp", "mv"])
+@pytest.mark.parametrize("directory", [False, True])
+@pytest.mark.parametrize("phase", ["source", "target"])
 @pytest.mark.parametrize("mutation", ["add", "delete"])
 async def test_transfer_ignores_concurrent_sibling_index_changes(
     indexed_fs, monkeypatch, operation, directory, phase, mutation
@@ -99,27 +219,30 @@ async def test_transfer_ignores_concurrent_sibling_index_changes(
         await fs.write_file_bytes(sibling, b"unrelated", ctx=ctx)
         await seed_vector(backend, sibling, "unrelated")
 
-    original_count = backend._strict_transfer_count
-    count_calls = 0
+    account_backend = backend._get_backend_for_context(ctx)
+    original_query = account_backend.strict_query
+    trigger_uri = source_file if phase == "source" else target_file
+    changed = False
 
-    async def count_with_sibling_change(*args, **kwargs):
-        nonlocal count_calls
-        count = await original_count(*args, **kwargs)
-        count_calls += 1
-        if count_calls == (1 if phase == "source" else 2):
+    async def query_with_sibling_change(*args, **kwargs):
+        nonlocal changed
+        records = await original_query(*args, **kwargs)
+        if not changed and any(record["uri"] == trigger_uri for record in records):
+            changed = True
             # No transfer lease is supplied: this is an independent writer.
             if mutation == "add":
                 await fs.write_file_bytes(sibling, b"unrelated", ctx=ctx)
                 await seed_vector(backend, sibling, "unrelated")
             else:
                 await fs.rm(sibling, ctx=ctx)
-        return count
+        return records
 
-    monkeypatch.setattr(backend, "_strict_transfer_count", count_with_sibling_change)
+    monkeypatch.setattr(account_backend, "strict_query", query_with_sibling_change)
     await getattr(fs, operation)(
         source, target, ctx=ctx, **({"recursive": directory} if operation == "cp" else {})
     )
 
+    assert changed
     assert await fs.read_file_bytes(target_file, ctx=ctx) == b"new"
     copied = await backend.get_context_by_uri(target_file, ctx=ctx)
     copied = await backend.get([record["id"] for record in copied], ctx=ctx)
@@ -162,7 +285,7 @@ async def test_transfer_preserves_legacy_independent_chunk_records(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("operation", ["cp", "mv"])
-async def test_directory_transfer_batches_exact_entries_with_native_storage(
+async def test_directory_transfer_reads_all_exact_entries_with_native_storage(
     indexed_fs, monkeypatch, operation
 ):
     fs, backend = indexed_fs
@@ -189,14 +312,15 @@ async def test_directory_transfer_batches_exact_entries_with_native_storage(
         ctx=ctx,
     )
     read_ids: set[str] = set()
-    original_page = backend._strict_transfer_page
+    account_backend = backend._get_backend_for_context(ctx)
+    original_query = account_backend.strict_query
 
-    async def tracked_page(*args, **kwargs):
-        page, cursor = await original_page(*args, **kwargs)
+    async def tracked_query(*args, **kwargs):
+        page = await original_query(*args, **kwargs)
         read_ids.update(record["id"] for record in page)
-        return page, cursor
+        return page
 
-    monkeypatch.setattr(backend, "_strict_transfer_page", tracked_page)
+    monkeypatch.setattr(account_backend, "strict_query", tracked_query)
     result = await getattr(fs, operation)(
         source, target, ctx=ctx, **({"recursive": True} if operation == "cp" else {})
     )
@@ -242,8 +366,7 @@ async def test_overwrite_preserves_target_acl_with_real_storage(
         ],
         ctx=ctx,
     )
-    acl = AclManager(backend)
-    acl.set_enabled(ctx.account_id, True)
+    acl = AclManager(backend, _EnabledAclConfig())
     fs.acl_manager = backend.acl_manager = acl
 
     await getattr(fs, operation)(source, target, ctx=ctx)
@@ -284,8 +407,7 @@ async def test_chunk_only_copy_preserves_private_target_main_record(indexed_fs):
         "acl_inherited_grants": [],
     }
     await backend._upsert_many_raw([old_main], ctx=ctx)
-    acl = AclManager(backend)
-    acl.set_enabled(ctx.account_id, True)
+    acl = AclManager(backend, _EnabledAclConfig())
     fs.acl_manager = backend.acl_manager = acl
     outsider = RequestContext(user=UserIdentifier(ctx.account_id, "outsider"), role=Role(Role.USER))
     with pytest.raises(PermissionDeniedError):
@@ -368,8 +490,7 @@ async def test_transfer_protects_chunk_shaped_target_file(
         ],
         ctx=ctx,
     )
-    acl = AclManager(backend)
-    acl.set_enabled(ctx.account_id, True)
+    acl = AclManager(backend, _EnabledAclConfig())
     fs.acl_manager = backend.acl_manager = acl
     outsider = RequestContext(user=UserIdentifier(ctx.account_id, "outsider"), role=Role(Role.USER))
     with pytest.raises(PermissionDeniedError):
@@ -505,11 +626,14 @@ async def test_acl_failure_restores_only_moved_vectors_after_directory_merge(
     await seed_vector(backend, f"{source}/file.txt", "new")
     await seed_vector(backend, f"{target}/only.txt", "keep")
     monkeypatch.setattr(fs, "_ensure_access", AsyncMock())
+    async def acl_enabled(_account_id):
+        return True
+
     monkeypatch.setattr(
         fs,
         "acl_manager",
         SimpleNamespace(
-            is_enabled=lambda _: True,
+            is_enabled=acl_enabled,
             refresh_context_subtree=AsyncMock(side_effect=RuntimeError("injected ACL failure")),
         ),
     )
