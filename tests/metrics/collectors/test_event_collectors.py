@@ -321,6 +321,37 @@ def test_embedding_collector_records_error_volume_and_error_code_counter(
     )
 
 
+def test_rerank_collector_records_error_code_counter(registry, render_prometheus):
+    """`rerank.error` must reach the registry instead of being dropped by the collector gate."""
+    RerankCollector().receive(
+        "rerank.error",
+        {"error_code": "all_failed"},
+        registry,
+    )
+    text = render_prometheus(registry)
+
+    assert (
+        'openviking_rerank_errors_total{account_id="__unknown__",error_code="all_failed"} 1'
+        in text
+        or 'openviking_rerank_errors_total{account_id="__unknown__",error_code="all_failed"} 1.0'
+        in text
+    )
+
+
+def test_rerank_error_event_is_bound_on_the_default_router(registry, render_prometheus):
+    """A collector hook is not enough: the event must also be bound in the default router.
+
+    `rerank.error` was emitted by the client for every failing batch, but no collector claimed
+    it and the router had no handler bound, so `openviking_rerank_errors_total` never appeared
+    while 689 transport failures were logged. This pins the binding, not just the hook.
+    """
+    router = global_api._build_event_router(registry)
+
+    router.dispatch("rerank.error", {"error_code": "all_failed"})
+
+    assert "openviking_rerank_errors_total" in render_prometheus(registry)
+
+
 def _emit_retrieval(registry, *, result_count, context_type="search", rerank_used=False):
     RetrievalCollector().receive(
         "retrieval.completed",

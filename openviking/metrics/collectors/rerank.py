@@ -54,15 +54,27 @@ class RerankCollector(EventMetricCollector):
     # rule: <METRICS_NAMESPACE>_<DOMAIN>_tokens_total
     # e.g.: openviking_rerank_tokens_total
     TOKENS_TOTAL: ClassVar[str] = MetricCollector.metric_name(DOMAIN, "tokens", unit="total")
+    # rule: <METRICS_NAMESPACE>_<DOMAIN>_errors_total
+    # e.g.: openviking_rerank_errors_total
+    ERRORS_TOTAL: ClassVar[str] = MetricCollector.metric_name(DOMAIN, "errors", unit="total")
 
-    SUPPORTED_EVENTS: ClassVar[frozenset[str]] = frozenset({"rerank.call"})
+    SUPPORTED_EVENTS: ClassVar[frozenset[str]] = frozenset({"rerank.call", "rerank.error"})
 
     def collect(self, registry=None) -> None:
         """Implement the unified collector interface as a no-op for this event-driven collector."""
         return None
 
     def receive_hook(self, event_name: str, payload: dict, registry) -> None:
-        """Translate one rerank-call payload into counters and histogram samples."""
+        """Translate one supported rerank event into the corresponding metric writes."""
+        if event_name == "rerank.error":
+            self.record_error(
+                registry,
+                error_code=str(payload.get("error_code") or "unknown"),
+                account_id=(
+                    None if payload.get("account_id") is None else str(payload.get("account_id"))
+                ),
+            )
+            return
         self.record_call(
             registry,
             provider=str(payload["provider"]),
@@ -126,3 +138,18 @@ class RerankCollector(EventMetricCollector):
                 amount=total_tokens,
                 account_id=account_id,
             )
+
+    def record_error(self, registry, *, error_code: str, account_id: str | None = None) -> None:
+        """Record one rerank error, labeled by its normalized error code.
+
+        Emitted once per failing batch by the provider client (``all_failed`` when the whole
+        batch failed, ``score_failed`` when only part of it did). Kept separate from
+        CALLS_TOTAL on purpose: a batch error is not a provider call, and mixing the two would
+        make the call counter incomparable with the token counters.
+        """
+        registry.inc_counter(
+            self.ERRORS_TOTAL,
+            labels={"error_code": str(error_code or "unknown")},
+            label_names=("error_code",),
+            account_id=account_id,
+        )

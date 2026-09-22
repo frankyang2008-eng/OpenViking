@@ -329,6 +329,7 @@ def _build_event_router(registry: MetricRegistry) -> EventCollectorRouter:
         ("embedding.success", embedding_collector),
         ("embedding.error", embedding_collector),
         ("rerank.call", rerank_collector),
+        ("rerank.error", rerank_collector),
         ("vlm.call", vlm_collector),
         ("session.lifecycle", session_collector),
         ("session.archive", session_collector),

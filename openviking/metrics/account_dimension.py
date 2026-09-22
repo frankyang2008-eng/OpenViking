@@ -54,6 +54,7 @@ ACCOUNT_DIMENSION_SUPPORTED_METRICS = frozenset(
         "openviking_rerank_tokens_input_total",
         "openviking_rerank_tokens_output_total",
         "openviking_rerank_tokens_total",
+        "openviking_rerank_errors_total",
     }
 )
 
