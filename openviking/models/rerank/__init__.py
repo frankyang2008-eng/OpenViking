@@ -9,12 +9,14 @@ Provides rerank functionality for hierarchical retrieval with multiple provider 
 - litellm: LiteLLM rerank (supports multiple providers)
 - openai: OpenAI-compatible rerank API
 - jev: Jev (TypeSafe System One) rerank
+- llm_score: chat-model pointwise scoring rerank
 """
 
 from openviking.models.rerank.base import RerankBase
 from openviking.models.rerank.cohere_rerank import CohereRerankClient
 from openviking.models.rerank.jev_rerank import JevRerankClient
 from openviking.models.rerank.litellm_rerank import LiteLLMRerankClient
+from openviking.models.rerank.llm_score_rerank import LlmScoreRerankClient
 from openviking.models.rerank.openai_rerank import OpenAIRerankClient
 from openviking.models.rerank.volcengine_rerank import RerankClient
 
@@ -23,6 +25,7 @@ __all__ = [
     "RerankClient",
     "CohereRerankClient",
     "JevRerankClient",
+    "LlmScoreRerankClient",
     "LiteLLMRerankClient",
     "OpenAIRerankClient",
 ]
