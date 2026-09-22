@@ -92,8 +92,13 @@ class LlmScoreRerankClient(RerankBase):
         )
         self._executor = ThreadPoolExecutor(max_workers=max(1, concurrency))
 
-    def _score_one(self, query: str, document: str) -> Optional[float]:
-        """Score one document; returns 0.0-1.0, or None on any failure."""
+    def _score_one(self, query: str, document: str) -> Optional[tuple]:
+        """Score one document; returns (score 0.0-1.0, usage dict), or None on failure.
+
+        Runs on a worker thread: touches no shared state here — token usage is
+        aggregated once on the calling thread in ``rerank_batch``
+        (JevRerankClient precedent; TokenUsageTracker is not thread-safe).
+        """
         body = {
             "model": self.model_name,
             "messages": _build_messages(query, document),
@@ -115,14 +120,13 @@ class LlmScoreRerankClient(RerankBase):
             data = resp.json()
             content = str(data["choices"][0]["message"]["content"]).strip()
             usage = data.get("usage") or {}
-            self.update_token_usage(
-                model_name=data.get("model") or self.model_name,
-                provider=self.provider,
-                prompt_tokens=int(usage.get("prompt_tokens") or 0)
+            usage_info = {
+                "model_name": data.get("model") or self.model_name,
+                "prompt_tokens": int(usage.get("prompt_tokens") or 0)
                 or self._estimate_tokens(query) + self._estimate_tokens(document),
-                completion_tokens=int(usage.get("completion_tokens") or 0),
-                duration_seconds=duration,
-            )
+                "completion_tokens": int(usage.get("completion_tokens") or 0),
+                "duration_seconds": duration,
+            }
             match = _SCORE_RE.search(content)
             if not match:
                 logger.warning("[LlmScoreRerank] Unparseable score content=%r", content)
@@ -131,7 +135,7 @@ class LlmScoreRerankClient(RerankBase):
             if not 0 <= score <= 100:
                 logger.warning("[LlmScoreRerank] Score out of range: %s", score)
                 return None
-            return score / 100.0
+            return score / 100.0, usage_info
         except Exception as e:
             logger.error("[LlmScoreRerank] Score failed: %s", e)
             return None
@@ -147,17 +151,21 @@ class LlmScoreRerankClient(RerankBase):
 
         futures = [self._executor.submit(self._score_one, query, doc) for doc in documents]
         scores: List[float] = []
+        usages: List[dict] = []
         failed = 0
         for fut in futures:
             try:
-                score = fut.result()
+                result = fut.result()
             except Exception as e:
                 logger.error("[LlmScoreRerank] Worker failed: %s", e)
-                score = None
-            if score is None:
+                result = None
+            if result is None:
                 failed += 1
-                score = 0.0
-            scores.append(score)
+                scores.append(0.0)
+            else:
+                score, usage_info = result
+                scores.append(score)
+                usages.append(usage_info)
 
         if failed == len(documents):
             logger.error(
@@ -165,6 +173,16 @@ class LlmScoreRerankClient(RerankBase):
                 len(documents),
             )
             return None
+
+        if usages:
+            # One token-usage update per batch, on the calling thread.
+            self.update_token_usage(
+                model_name=usages[0]["model_name"],
+                provider=self.provider,
+                prompt_tokens=sum(u["prompt_tokens"] for u in usages),
+                completion_tokens=sum(u["completion_tokens"] for u in usages),
+                duration_seconds=sum(u["duration_seconds"] for u in usages),
+            )
 
         logger.debug("[LlmScoreRerank] Reranked %s documents (failed=%s)", len(documents), failed)
         return scores

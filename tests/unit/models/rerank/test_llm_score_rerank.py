@@ -82,6 +82,7 @@ class TestLlmScoreRerankClient:
             api_key="test-key",
             api_base="https://ark.example.com/api/plan/v3",
             model_name="doubao-seed-2.0-mini",
+            concurrency=1,  # concurrency=1: deterministic side_effect consumption order
         )
         scores = client.rerank_batch("What is UCW?", ["doc A", "doc B", "doc C"])
 
@@ -134,7 +135,12 @@ class TestLlmScoreRerankClient:
             _mock_chat_response("40"),
         ]
 
-        client = LlmScoreRerankClient(api_key="k", api_base="https://x/v3", model_name="m")
+        client = LlmScoreRerankClient(
+            api_key="k",
+            api_base="https://x/v3",
+            model_name="m",
+            concurrency=1,  # concurrency=1: deterministic side_effect consumption order
+        )
         scores = client.rerank_batch("q", ["a", "b", "c"])
 
         assert scores == [0.95, 0.0, 0.4]  # partial success, failed doc sinks to 0.0
@@ -155,5 +161,28 @@ class TestLlmScoreRerankClient:
         # out-of-range score on one doc -> 0.0; the other doc unaffected
         mock_client.post.side_effect = [_mock_chat_response("900"), _mock_chat_response("50")]
 
-        client = LlmScoreRerankClient(api_key="k", api_base="https://x/v3", model_name="m")
+        client = LlmScoreRerankClient(
+            api_key="k",
+            api_base="https://x/v3",
+            model_name="m",
+            concurrency=1,  # concurrency=1: deterministic side_effect consumption order
+        )
         assert client.rerank_batch("q", ["a", "b"]) == [0.0, 0.5]
+
+    @patch("openviking.models.rerank.llm_score_rerank.httpx.Client")
+    def test_empty_documents_returns_empty_list(self, mock_client_class):
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+        client = LlmScoreRerankClient(api_key="k", api_base="https://x/v3", model_name="m")
+
+        assert client.rerank_batch("q", []) == []
+        mock_client.post.assert_not_called()  # no HTTP call for an empty batch
+
+    @patch("openviking.models.rerank.llm_score_rerank.httpx.Client")
+    def test_api_url_already_suffixed_not_duplicated(self, mock_client_class):
+        LlmScoreRerankClient(api_key="k", api_base="https://x/v3/chat/completions", model_name="m")
+        client = LlmScoreRerankClient(
+            api_key="k", api_base="https://x/v3/chat/completions", model_name="m"
+        )
+
+        assert client.api_url == "https://x/v3/chat/completions"
