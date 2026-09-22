@@ -138,3 +138,15 @@
 @media (prefers-reduced-motion: reduce) { .docs-home *, .docs-home *::before, .docs-home *::after { scroll-behavior: auto !important; transition: none !important; } }
 
 .integration-strip .eyebrow { margin-bottom: 12px; }
+
+/* ↗ (U+2197) is outside both webfont subsets, so it falls through to the stack's
+   generic: mono contexts land on Menlo/DejaVu and render a text arrow, while base
+   contexts land on the UI sans, which has no glyph — iOS then substitutes the
+   colour-emoji arrow. Serve U+2197 alone from a monospace face so every arrow on
+   the page matches the one on the retrieval card. */
+@font-face {
+  font-family: 'ov-arrow';
+  src: local('Menlo'), local('DejaVu Sans Mono'), local('Consolas'), local('Segoe UI Symbol'), local('Noto Sans Symbols 2');
+  unicode-range: U+2197;
+}
+.docs-home { font-family: 'ov-arrow', var(--vp-font-family-base); }
