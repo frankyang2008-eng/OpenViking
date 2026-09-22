@@ -501,21 +501,24 @@ def _stop_vikingbot_gateway(bot_process: BotProcess) -> None:
     if bot_process is None:
         return
 
-    print(f"\nStopping vikingbot gateway (PID: {bot_process.process.pid})...")
+    # flush=True on purpose: stdout is block-buffered when redirected to a file, and
+    # the re-raised shutdown signal terminates the process without flushing, which
+    # would swallow the only operator-visible confirmation that the child was stopped.
+    print(f"\nStopping vikingbot gateway (PID: {bot_process.process.pid})...", flush=True)
 
     try:
         # Try graceful termination first
         bot_process.process.terminate()
         try:
             bot_process.process.wait(timeout=5)
-            print("Vikingbot gateway stopped gracefully.")
+            print("Vikingbot gateway stopped gracefully.", flush=True)
         except subprocess.TimeoutExpired:
             # Force kill if it doesn't stop in time
             bot_process.process.kill()
             bot_process.process.wait()
-            print("Vikingbot gateway force killed.")
+            print("Vikingbot gateway force killed.", flush=True)
     except Exception as e:
-        print(f"Error stopping vikingbot gateway: {e}")
+        print(f"Error stopping vikingbot gateway: {e}", flush=True)
     finally:
         # Close the log file if it exists
         if bot_process.log_file is not None:
