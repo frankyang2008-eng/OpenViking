@@ -7,6 +7,7 @@ import asyncio
 import json
 import os
 import shutil
+import signal
 import socket
 import subprocess
 import sys
@@ -308,6 +309,7 @@ def main():
                 file=sys.stderr,
             )
             sys.exit(1)
+        _install_bot_shutdown_handler(bot_process)
 
     # Create and run server app
     app = create_app(
@@ -469,6 +471,29 @@ def _start_vikingbot_gateway(
             log_file.close()
         print(f"Warning: Failed to start vikingbot gateway: {e}")
         return None
+
+
+def _install_bot_shutdown_handler(bot_process: BotProcess) -> None:
+    """Stop the vikingbot child when uvicorn re-raises the shutdown signal.
+
+    uvicorn's ``capture_signals`` restores the previous handler and re-raises the
+    captured signal after the graceful shutdown. The default disposition for
+    SIGTERM/SIGINT terminates the process without unwinding the stack, so
+    ``main()``'s ``finally`` never runs and the child is left orphaned holding the
+    bot port — the next ``--with-bot`` start then refuses to bind.
+
+    Installing this handler before ``uvicorn.run`` makes it the "previous" handler
+    uvicorn restores, so the cleanup runs on the re-raised signal. The signal is
+    then re-raised with the default disposition to preserve the exit status.
+    """
+
+    def _stop_bot_then_reraise(signum, _frame) -> None:
+        _stop_vikingbot_gateway(bot_process)
+        signal.signal(signum, signal.SIG_DFL)
+        os.kill(os.getpid(), signum)
+
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        signal.signal(sig, _stop_bot_then_reraise)
 
 
 def _stop_vikingbot_gateway(bot_process: BotProcess) -> None:

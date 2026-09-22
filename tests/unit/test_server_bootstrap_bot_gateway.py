@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: AGPL-3.0
 
 
+from typing import cast
+
 import openviking.server.bootstrap as bootstrap
 from openviking_cli.utils.config.consts import OPENVIKING_CLI_CONFIG_ENV
 
@@ -169,3 +171,38 @@ def test_start_vikingbot_gateway_allows_slow_module_probe(monkeypatch):
     assert captured["probe_cmd"][1:] == ["-m", "vikingbot", "--help"]
     assert captured["probe_timeout"] == 15
     assert captured["cmd"][1:4] == ["-m", "vikingbot", "gateway"]
+
+
+def test_bot_shutdown_handler_stops_child_then_reraises(monkeypatch):
+    """Cleanup must hang off the signal handler, not main()'s finally.
+
+    uvicorn re-raises the shutdown signal after its graceful shutdown, and the
+    default disposition terminates the process without unwinding the stack - so a
+    ``finally`` never runs and the bot child would be orphaned holding its port.
+    """
+    stopped = []
+    installed = {}
+    killed = []
+
+    monkeypatch.setattr(bootstrap, "_stop_vikingbot_gateway", stopped.append)
+    monkeypatch.setattr(
+        bootstrap.signal,
+        "signal",
+        lambda sig, handler: installed.__setitem__(sig, handler),
+    )
+    monkeypatch.setattr(bootstrap.os, "kill", lambda pid, sig: killed.append((pid, sig)))
+
+    # ``_FakeProcess`` stands in for the Popen handle; the stop helper is patched
+    # below, so only the object identity matters here.
+    bot = cast(bootstrap.BotProcess, _FakeProcess())
+    bootstrap._install_bot_shutdown_handler(bot)
+
+    assert set(installed) == {bootstrap.signal.SIGTERM, bootstrap.signal.SIGINT}
+
+    installed[bootstrap.signal.SIGTERM](bootstrap.signal.SIGTERM, None)
+
+    assert stopped == [bot]
+    # Default disposition restored before the re-raise, so the exit status still
+    # reflects the signal the operator sent.
+    assert installed[bootstrap.signal.SIGTERM] is bootstrap.signal.SIG_DFL
+    assert killed == [(bootstrap.os.getpid(), bootstrap.signal.SIGTERM)]
