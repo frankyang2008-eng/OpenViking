@@ -41,7 +41,15 @@ async def test_find_works_without_rerank_config(monkeypatch) -> None:
     captured = {}
 
     class FakeRetriever:
-        def __init__(self, storage, embedder, rerank_config, retrieval_config):
+        def __init__(
+            self,
+            storage,
+            embedder,
+            rerank_config,
+            retrieval_config,
+            rerank_client=None,
+            rerank_executor=None,
+        ):
             captured["storage"] = storage
             captured["embedder"] = embedder
             captured["rerank_config"] = rerank_config
@@ -114,7 +122,15 @@ async def test_find_accepts_image_url_without_text_query(monkeypatch) -> None:
     captured = {}
 
     class FakeRetriever:
-        def __init__(self, storage, embedder, rerank_config, retrieval_config):
+        def __init__(
+            self,
+            storage,
+            embedder,
+            rerank_config,
+            retrieval_config,
+            rerank_client=None,
+            rerank_executor=None,
+        ):
             pass
 
         async def retrieve(
@@ -169,7 +185,15 @@ async def test_find_uses_quick_mode_with_rerank_config(monkeypatch) -> None:
     captured = {}
 
     class FakeRetriever:
-        def __init__(self, storage, embedder, rerank_config, retrieval_config):
+        def __init__(
+            self,
+            storage,
+            embedder,
+            rerank_config,
+            retrieval_config,
+            rerank_client=None,
+            rerank_executor=None,
+        ):
             captured["rerank_config"] = rerank_config
 
         async def retrieve(self, typed_query, **kwargs):

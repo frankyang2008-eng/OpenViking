@@ -62,6 +62,14 @@ class RerankBase:
         """
         raise NotImplementedError("rerank subclasses must implement rerank_batch")
 
+    def close(self) -> None:
+        """Release provider resources.
+
+        Providers that own an HTTP client or worker pool override this. The base
+        implementation is a no-op so shutdown paths can close any rerank client
+        without probing for the method first.
+        """
+
     def _estimate_tokens(self, text: str) -> int:
         """Estimate token count with the shared mixed-language fallback."""
         return max(1, estimate_text_tokens(text))

@@ -31,8 +31,12 @@ from openviking_cli.utils import get_logger
 
 logger = get_logger(__name__)
 
-_SCORE_REJECT_CHARS = (".", ",", "-", "－", "–", "/", "／")
-_SCORE_RE = re.compile(r"(\d{1,3})\s*分?\s*[。.．]?\s*$")
+# "." and "," are deliberately absent: a trailing period is a valid score suffix
+# ("85."), so decimals and thousands separators are rejected by _DECIMAL_RE
+# instead of by a blanket character ban.
+_SCORE_REJECT_CHARS = ("-", "－", "–", "/", "／")
+_SCORE_RE = re.compile(r"(?<!\d)(\d{1,3})\s*分?\s*[。.．]?\s*$")
+_DECIMAL_RE = re.compile(r"\d\s*[.,，．。]\s*\d")
 
 
 def _error_body(response: httpx.Response) -> str:
@@ -55,12 +59,17 @@ def _should_retry(max_retries: int, attempt: int, status: Optional[int]) -> bool
 def _parse_score(content: str) -> Optional[int]:
     """Parse a 0-100 integer score from model output, or None if unparseable.
 
-    End-anchored: takes the final integer ("100分满分给85" -> 85). Rejects
-    decimals, ranges, and thousands separators ("0.85", "90-100", "1,000") —
-    the old first-match regex misread those as 0/90/1.
+    End-anchored and left-bounded by a digit boundary: the final standalone
+    integer wins ("100分满分给85" -> 85) while digits glued to other digits are
+    rejected ("1085" -> None, previously misread as 85; "1000" -> None,
+    previously misread as 0). Decimals, ranges, and thousands separators
+    ("0.85", "90-100", "1,000", "85．5", "85。5") are rejected — the old
+    first-match regex misread those as 0/90/1/5.
     """
     text = content.strip()
     if not text or any(c in text for c in _SCORE_REJECT_CHARS):
+        return None
+    if _DECIMAL_RE.search(text):
         return None
     m = _SCORE_RE.search(text)
     if not m:
@@ -132,7 +141,15 @@ class LlmScoreRerankClient(RerankBase):
                 "Authorization": f"Bearer {self.api_key}",
                 "Content-Type": "application/json",
             },
-            timeout=timeout,
+            # Per-phase timeouts, not a total budget: the wall-clock cut is
+            # enforced one level up (RerankConfig.batch_timeout).
+            timeout=httpx.Timeout(connect=5.0, read=timeout, write=timeout, pool=5.0),
+            # Keep the pool aligned with the worker count. trust_env stays at the
+            # httpx default so deployment proxy/CA environment variables apply.
+            limits=httpx.Limits(
+                max_connections=max(1, concurrency),
+                max_keepalive_connections=max(1, concurrency),
+            ),
         )
         self._executor = ThreadPoolExecutor(max_workers=max(1, concurrency))
 
@@ -222,6 +239,21 @@ class LlmScoreRerankClient(RerankBase):
         if delay > 0:
             time.sleep(delay)
 
+    @staticmethod
+    def _record_error(error_code: str) -> None:
+        """Emit a rerank error event; metrics must never break rerank execution."""
+        try:
+            from openviking.metrics.datasources import RerankEventDataSource
+            from openviking.observability.context import get_root_observability_context
+
+            root_context = get_root_observability_context()
+            RerankEventDataSource.record_error(
+                error_code=error_code,
+                account_id=root_context.account_id if root_context is not None else None,
+            )
+        except Exception:
+            pass
+
     def rerank_batch(self, query: str, documents: List[str]) -> Optional[List[float]]:
         """Score documents against a query.
 
@@ -250,27 +282,19 @@ class LlmScoreRerankClient(RerankBase):
                 scores.append(score)
                 usages.append(usage_info)
 
+        if failed:
+            # Failure visibility: per-doc 0.0 is indistinguishable from "truly
+            # irrelevant" in scores alone, so failures must surface in metrics.
+            # Emitted before the all-failed early return — a provider-wide outage
+            # is exactly the case the error metric exists to catch.
+            self._record_error("all_failed" if failed == len(documents) else "score_failed")
+
         if failed == len(documents):
             logger.error(
                 "[LlmScoreRerank] All %s documents failed; falling back to vector scores",
                 len(documents),
             )
             return None
-
-        if failed:
-            # Failure visibility: per-doc 0.0 is indistinguishable from "truly
-            # irrelevant" in scores alone, so failures must surface in metrics.
-            try:
-                from openviking.metrics.datasources import RerankEventDataSource
-                from openviking.observability.context import get_root_observability_context
-
-                root_context = get_root_observability_context()
-                RerankEventDataSource.record_error(
-                    error_code="score_failed",
-                    account_id=root_context.account_id if root_context is not None else None,
-                )
-            except Exception:
-                pass  # Metrics must never break rerank execution.
 
         if usages:
             # One token-usage update per batch, on the calling thread.
@@ -287,7 +311,13 @@ class LlmScoreRerankClient(RerankBase):
         return scores
 
     def close(self) -> None:
-        self._executor.shutdown(wait=False)
+        """Stop scoring and release the HTTP pool.
+
+        In-flight documents are awaited first: closing the HTTP client underneath
+        a running worker turns its request into a per-doc failure (score 0.0),
+        which is indistinguishable from "irrelevant" in the ranking.
+        """
+        self._executor.shutdown(wait=True)
         self._client.close()
 
     @classmethod

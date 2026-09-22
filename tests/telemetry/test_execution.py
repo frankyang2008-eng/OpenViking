@@ -147,6 +147,7 @@ def test_operation_telemetry_summary_includes_search_breakdown():
     telemetry.set("search.intent_analysis.duration_ms", 24.6)
     telemetry.set("search.embed_query.duration_ms", 11.3)
     telemetry.set("search.vector_retrieval.duration_ms", 88.1)
+    telemetry.set("search.rerank.duration_ms", 41.5)
     telemetry.set("search.typed_queries_count", 3)
 
     summary = telemetry.finish().summary
@@ -156,6 +157,7 @@ def test_operation_telemetry_summary_includes_search_breakdown():
         "intent_analysis": {"duration_ms": 24.6},
         "embed_query": {"duration_ms": 11.3},
         "vector_retrieval": {"duration_ms": 88.1},
+        "rerank": {"duration_ms": 41.5},
         "typed_queries_count": 3,
     }
 

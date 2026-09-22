@@ -9,8 +9,8 @@ import pytest
 from openviking.server.identity import RequestContext, Role
 from openviking.storage.viking_fs import VikingFS
 from openviking_cli.retrieve.types import QueryResult
-from openviking_cli.utils.config.retrieval_config import RetrievalConfig
 from openviking_cli.session.user_id import UserIdentifier
+from openviking_cli.utils.config.retrieval_config import RetrievalConfig
 
 
 def _ctx() -> RequestContext:
@@ -53,7 +53,15 @@ async def test_search_skips_intent_and_uses_raw_query_when_disabled(monkeypatch)
             raise AssertionError("intent analysis must not run when disabled")
 
     class FakeRetriever:
-        def __init__(self, storage, embedder, rerank_config, retrieval_config):
+        def __init__(
+            self,
+            storage,
+            embedder,
+            rerank_config,
+            retrieval_config,
+            rerank_client=None,
+            rerank_executor=None,
+        ):
             pass
 
         async def retrieve(self, typed_query, **kwargs):

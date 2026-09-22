@@ -61,6 +61,26 @@ class RerankConfig(BaseModel):
         default=0.1, description="Relevance threshold (score > threshold is relevant)"
     )
 
+    batch_timeout: float = Field(
+        default=8.0,
+        ge=0,
+        description=(
+            "Wall-clock budget for a single rerank batch in seconds; 0 disables the cut. "
+            "On timeout the batch falls back to vector scores. Keep it below the provider "
+            "HTTP timeout so the batch cut wins over the transport."
+        ),
+    )
+
+    total_budget: float = Field(
+        default=20.0,
+        ge=0,
+        description=(
+            "Wall-clock budget for all rerank batches of one search in seconds; 0 disables "
+            "the cut. Once exhausted, remaining batches skip rerank and keep vector scores "
+            "(ordering quality only, no recall loss)."
+        ),
+    )
+
     max_input_tokens: int = Field(
         default=0,
         ge=0,

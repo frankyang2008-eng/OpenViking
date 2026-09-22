@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: AGPL-3.0
 """Tests for the llm_score (chat-model pointwise scoring) rerank client."""
 
+import threading
+import time
 from unittest.mock import MagicMock, patch
 
 import httpx
@@ -9,6 +11,7 @@ import pytest
 from pydantic import ValidationError
 
 from openviking.models.rerank import LlmScoreRerankClient, RerankClient
+from openviking.models.rerank.llm_score_rerank import _parse_score
 from openviking_cli.utils.config.rerank_config import RerankConfig
 
 
@@ -29,6 +32,60 @@ def _mock_chat_response(content: str):
     response.status_code = 200
     response.text = ""
     return response
+
+
+class TestRerankBudgetConfig:
+    """Batch and per-search rerank budgets (0 disables each cut)."""
+
+    def test_budget_defaults(self):
+        config = RerankConfig(ak="ak", sk="sk")
+        assert config.batch_timeout == 8.0
+        assert config.total_budget == 20.0
+
+    def test_zero_disables_both_cuts(self):
+        config = RerankConfig(ak="ak", sk="sk", batch_timeout=0, total_budget=0)
+        assert config.batch_timeout == 0.0
+        assert config.total_budget == 0.0
+
+    def test_negative_rejected(self):
+        with pytest.raises(ValidationError):
+            RerankConfig(ak="ak", sk="sk", batch_timeout=-1)
+        with pytest.raises(ValidationError):
+            RerankConfig(ak="ak", sk="sk", total_budget=-1)
+
+
+@patch("openviking.models.rerank.llm_score_rerank.httpx.Client")
+def test_close_waits_for_in_flight_batch(mock_client_class):
+    """close() must not cut a running request into a fake 0.0 score."""
+    mock_client = MagicMock()
+    mock_client_class.return_value = mock_client
+    in_flight = threading.Event()
+    release = threading.Event()
+
+    def slow_post(*args, **kwargs):
+        in_flight.set()
+        release.wait(5.0)
+        return _mock_chat_response("90")
+
+    mock_client.post.side_effect = slow_post
+    client = LlmScoreRerankClient(api_key="k", api_base="https://x/v3", model_name="m")
+    results: list = []
+
+    worker = threading.Thread(target=lambda: results.append(client.rerank_batch("q", ["a"])))
+    worker.start()
+    assert in_flight.wait(5.0)
+
+    closer = threading.Thread(target=client.close)
+    closer.start()
+    time.sleep(0.05)
+    assert closer.is_alive()  # close() waits instead of tearing the request down
+
+    release.set()
+    worker.join(5.0)
+    closer.join(5.0)
+
+    assert results == [[0.9]]  # the in-flight document kept its real score
+    mock_client.close.assert_called_once()
 
 
 class TestLlmScoreConfig:
@@ -156,14 +213,36 @@ class TestLlmScoreRerankClient:
 
         assert scores == [0.95, 0.0, 0.4]  # partial success, failed doc sinks to 0.0
 
+    @patch("openviking.metrics.datasources.RerankEventDataSource.record_error")
     @patch("openviking.models.rerank.llm_score_rerank.httpx.Client")
-    def test_all_failures_return_none(self, mock_client_class):
+    def test_all_failures_return_none_and_report_all_failed(
+        self, mock_client_class, mock_record_error
+    ):
         mock_client = MagicMock()
         mock_client_class.return_value = mock_client
         mock_client.post.side_effect = httpx.HTTPError("down")
 
         client = LlmScoreRerankClient(api_key="k", api_base="https://x/v3", model_name="m")
-        assert client.rerank_batch("q", ["a", "b"]) is None  # caller falls back to vector scores
+        # caller falls back to vector scores
+        assert client.rerank_batch("q", ["a", "b"]) is None
+        # ...and a provider-wide outage must still be visible in rerank.error
+        assert mock_record_error.call_args.kwargs["error_code"] == "all_failed"
+
+    @patch("openviking.metrics.datasources.RerankEventDataSource.record_error")
+    @patch("openviking.models.rerank.llm_score_rerank.httpx.Client")
+    def test_partial_failure_reports_score_failed(self, mock_client_class, mock_record_error):
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+        mock_client.post.side_effect = [
+            _mock_chat_response("95"),
+            httpx.HTTPError("boom"),
+        ]
+
+        client = LlmScoreRerankClient(
+            api_key="k", api_base="https://x/v3", model_name="m", concurrency=1
+        )
+        assert client.rerank_batch("q", ["a", "b"]) == [0.95, 0.0]
+        assert mock_record_error.call_args.kwargs["error_code"] == "score_failed"
 
     @patch("openviking.models.rerank.llm_score_rerank.httpx.Client")
     def test_score_out_of_range_is_failure(self, mock_client_class):
@@ -221,34 +300,62 @@ class TestLlmScoreDispatch:
 
 
 class TestScoreParsing:
-    """Adversarial matrix for the score parser (end-anchored extraction)."""
+    """Adversarial matrix for the score parser (end-anchored, digit-bounded).
+
+    Asserted directly on ``_parse_score``: routing the matrix through
+    ``rerank_batch`` mapped a parse failure to the same 0.0 that a genuine "0"
+    score produces, so the old ``("1000", None)`` case passed whatever the
+    parser returned.
+    """
 
     @pytest.mark.parametrize(
         ("content", "expected"),
         [
-            ("85", 0.85),
-            ("85分。", 0.85),
-            ("评分：85", 0.85),
-            ("约85分", 0.85),
-            ("100分满分给85", 0.85),  # end anchor takes the final score
+            ("85", 85),
+            ("85分。", 85),
+            ("85.", 85),  # trailing ASCII period is a valid suffix
+            ("85分.", 85),
+            ("85．", 85),
+            ("85。", 85),
+            ("评分：85", 85),
+            ("约85分", 85),
+            ("总分85", 85),
+            ("100分满分给85", 85),  # end anchor takes the final score
+            ("100", 100),
+            ("0", 0),
             ("0.85", None),  # decimal — reject
             ("8.5分", None),
-            ("1000", None),  # 4-digit garbage must not truncate to 100
+            ("85.5", None),
+            ("85．5", None),  # full-width decimal separator
+            ("85。5", None),
+            ("85,5", None),
+            ("85，5", None),
+            ("1000", None),  # 4-digit garbage must not truncate to 100 or 0
+            ("10000", None),
+            ("1085", None),  # embedded digits must not become a high score
+            ("总分1085", None),
+            ("1234", None),
             ("90-100", None),  # rubric range echo — reject
             ("1,000", None),  # thousands separator — reject
+            ("", None),
+            ("满分", None),
+            ("None", None),  # str(None) from a null content field
         ],
     )
+    def test_parse_score_matrix(self, content, expected):
+        assert _parse_score(content) == expected
+
     @patch("openviking.models.rerank.llm_score_rerank.httpx.Client")
-    def test_parse_score_matrix(self, mock_client_class, content, expected):
+    def test_trailing_period_score_flows_through_batch(self, mock_client_class):
         mock_client = MagicMock()
         mock_client_class.return_value = mock_client
-        # second doc always scores 50; first doc carries the adversarial content
-        mock_client.post.side_effect = [_mock_chat_response(content), _mock_chat_response("50")]
+        mock_client.post.side_effect = [_mock_chat_response("85."), _mock_chat_response("50")]
+
         client = LlmScoreRerankClient(
             api_key="k", api_base="https://x/v3", model_name="m", concurrency=1
         )
         # concurrency=1: deterministic side_effect consumption order
-        assert client.rerank_batch("q", ["a", "b"]) == [0.0 if expected is None else expected, 0.5]
+        assert client.rerank_batch("q", ["a", "b"]) == [0.85, 0.5]
 
 
 class TestRetry:

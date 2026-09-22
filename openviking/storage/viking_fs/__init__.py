@@ -130,6 +130,8 @@ class VikingFS(
         agfs: Any,
         query_embedder: Optional[Any] = None,
         rerank_config: Optional["RerankConfig"] = None,
+        rerank_client: Optional[Any] = None,
+        rerank_executor: Optional[Any] = None,
         vector_store: Optional["VikingVectorIndexBackend"] = None,
         acl_manager: Optional["AclManager"] = None,
         retrieval_config: Optional["RetrievalConfig"] = None,
@@ -142,6 +144,8 @@ class VikingFS(
         self._async_agfs = AsyncAGFSClient(agfs)
         self.query_embedder = query_embedder
         self.rerank_config = rerank_config
+        self.rerank_client = rerank_client
+        self.rerank_executor = rerank_executor
         self.vector_store = vector_store
         self.acl_manager = acl_manager
         self.retrieval_config = retrieval_config

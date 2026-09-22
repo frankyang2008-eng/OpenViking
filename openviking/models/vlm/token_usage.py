@@ -4,7 +4,8 @@
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Dict, Optional
+from threading import RLock
+from typing import Any, Dict, Optional
 
 from openviking.utils.time_utils import format_iso8601
 
@@ -105,7 +106,7 @@ class ModelTokenUsage:
         Returns:
             Token usage statistics in dictionary format
         """
-        result = {
+        result: Dict[str, Any] = {
             "model_name": self.model_name,
             "total_usage": self.total_usage.to_dict(),
             "usage_by_provider": {},
@@ -127,10 +128,16 @@ class ModelTokenUsage:
 
 
 class TokenUsageTracker:
-    """Token usage tracker"""
+    """Token usage tracker
+
+    Thread-safe: model clients update the shared singleton from worker threads
+    (``asyncio.to_thread``) while observability reads it from the metrics scrape
+    thread. ``RLock`` because ``to_dict`` delegates to ``get_total_usage``.
+    """
 
     def __init__(self):
         self._usage_by_model: Dict[str, ModelTokenUsage] = {}
+        self._lock = RLock()
 
     def update(
         self, model_name: str, provider: str, prompt_tokens: int, completion_tokens: int
@@ -143,10 +150,11 @@ class TokenUsageTracker:
             prompt_tokens: Number of input tokens
             completion_tokens: Number of output tokens
         """
-        if model_name not in self._usage_by_model:
-            self._usage_by_model[model_name] = ModelTokenUsage(model_name)
+        with self._lock:
+            if model_name not in self._usage_by_model:
+                self._usage_by_model[model_name] = ModelTokenUsage(model_name)
 
-        self._usage_by_model[model_name].update(provider, prompt_tokens, completion_tokens)
+            self._usage_by_model[model_name].update(provider, prompt_tokens, completion_tokens)
 
     def get_model_usage(self, model_name: str) -> Optional[ModelTokenUsage]:
         """Get token usage for specified model
@@ -157,7 +165,8 @@ class TokenUsageTracker:
         Returns:
             ModelTokenUsage object, or None if model doesn't exist
         """
-        return self._usage_by_model.get(model_name)
+        with self._lock:
+            return self._usage_by_model.get(model_name)
 
     def get_all_usage(self) -> Dict[str, ModelTokenUsage]:
         """Get token usage for all models
@@ -165,7 +174,8 @@ class TokenUsageTracker:
         Returns:
             Token usage dictionary by model
         """
-        return self._usage_by_model.copy()
+        with self._lock:
+            return self._usage_by_model.copy()
 
     def get_total_usage(self) -> TokenUsage:
         """Get total token usage
@@ -173,18 +183,20 @@ class TokenUsageTracker:
         Returns:
             Total token usage statistics
         """
-        total = TokenUsage()
-        for model_usage in self._usage_by_model.values():
-            total.prompt_tokens += model_usage.total_usage.prompt_tokens
-            total.completion_tokens += model_usage.total_usage.completion_tokens
+        with self._lock:
+            total = TokenUsage()
+            for model_usage in self._usage_by_model.values():
+                total.prompt_tokens += model_usage.total_usage.prompt_tokens
+                total.completion_tokens += model_usage.total_usage.completion_tokens
 
-            total.total_tokens += model_usage.total_usage.total_tokens
+                total.total_tokens += model_usage.total_usage.total_tokens
 
-        return total
+            return total
 
     def reset(self) -> None:
         """Reset all token usage statistics"""
-        self._usage_by_model.clear()
+        with self._lock:
+            self._usage_by_model.clear()
 
     def to_dict(self) -> Dict:
         """Convert to dictionary format
@@ -192,15 +204,16 @@ class TokenUsageTracker:
         Returns:
             Token usage statistics in dictionary format
         """
-        result = {
-            "total_usage": self.get_total_usage().to_dict(),
-            "usage_by_model": {},
-        }
+        with self._lock:
+            result = {
+                "total_usage": self.get_total_usage().to_dict(),
+                "usage_by_model": {},
+            }
 
-        for model_name, model_usage in self._usage_by_model.items():
-            result["usage_by_model"][model_name] = model_usage.to_dict()
+            for model_name, model_usage in self._usage_by_model.items():
+                result["usage_by_model"][model_name] = model_usage.to_dict()
 
-        return result
+            return result
 
     def __str__(self) -> str:
         models = ", ".join(
@@ -225,20 +238,21 @@ class TokenUsageTracker:
         merged = TokenUsageTracker()
 
         for tracker in trackers:
-            for model_name, model_usage in tracker._usage_by_model.items():
-                for provider_name, provider_usage in model_usage.usage_by_provider.items():
-                    merged.update(
-                        model_name=model_name,
-                        provider=provider_name,
-                        prompt_tokens=provider_usage.prompt_tokens,
-                        completion_tokens=provider_usage.completion_tokens,
-                    )
-                    # Update call count (update() only increments by 1)
-                    if provider_usage.call_count > 1:
-                        merged_model = merged._usage_by_model[model_name]
-                        merged_provider = merged_model.usage_by_provider[provider_name]
-                        merged_provider.call_count = provider_usage.call_count
-                        # Update last_updated
-                        merged_provider.last_updated = provider_usage.last_updated
+            with tracker._lock:
+                for model_name, model_usage in tracker._usage_by_model.items():
+                    for provider_name, provider_usage in model_usage.usage_by_provider.items():
+                        merged.update(
+                            model_name=model_name,
+                            provider=provider_name,
+                            prompt_tokens=provider_usage.prompt_tokens,
+                            completion_tokens=provider_usage.completion_tokens,
+                        )
+                        # Update call count (update() only increments by 1)
+                        if provider_usage.call_count > 1:
+                            merged_model = merged._usage_by_model[model_name]
+                            merged_provider = merged_model.usage_by_provider[provider_name]
+                            merged_provider.call_count = provider_usage.call_count
+                            # Update last_updated
+                            merged_provider.last_updated = provider_usage.last_updated
 
         return merged

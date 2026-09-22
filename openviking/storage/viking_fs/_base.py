@@ -167,7 +167,9 @@ def _get_cpu_count() -> int:
     if hasattr(os, "process_cpu_count"):
         return os.process_cpu_count() or 1
     try:
-        return len(os.sched_getaffinity(0))
+        # typeshed on this host omits the Linux-only attribute; the runtime guard
+        # above is what makes this safe (repo convention: targeted ignore).
+        return len(os.sched_getaffinity(0))  # type: ignore[attr-defined]
     except (AttributeError, NotImplementedError):
         return os.cpu_count() or 1
 
@@ -196,6 +198,8 @@ def init_viking_fs(
     agfs: Any,
     query_embedder: Optional[Any] = None,
     rerank_config: Optional["RerankConfig"] = None,
+    rerank_client: Optional[Any] = None,
+    rerank_executor: Optional[Any] = None,
     vector_store: Optional["VikingVectorIndexBackend"] = None,
     acl_manager: Optional["AclManager"] = None,
     retrieval_config: Optional["RetrievalConfig"] = None,
@@ -211,6 +215,8 @@ def init_viking_fs(
         agfs: Pre-initialized AGFS client (HTTP or Binding)
         query_embedder: Embedder instance
         rerank_config: Rerank configuration
+        rerank_client: Process-shared rerank client (built once by the service)
+        rerank_executor: Dedicated executor for blocking rerank provider calls
         retrieval_config: Retrieval ranking configuration
         grep_config: Grep engine configuration
         glob_config: Glob engine configuration
@@ -226,6 +232,8 @@ def init_viking_fs(
         agfs=agfs,
         query_embedder=query_embedder,
         rerank_config=rerank_config,
+        rerank_client=rerank_client,
+        rerank_executor=rerank_executor,
         vector_store=vector_store,
         acl_manager=acl_manager,
         retrieval_config=retrieval_config,

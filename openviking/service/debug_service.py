@@ -8,7 +8,6 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
 from openviking.server.identity import RequestContext
-from openviking.storage.vikingdb_manager import VikingDBManager
 from openviking.storage.observers import (
     FilesystemObserver,
     ModelsObserver,
@@ -18,6 +17,7 @@ from openviking.storage.observers import (
 )
 from openviking.storage.queuefs import get_queue_manager
 from openviking.storage.viking_fs import get_viking_fs
+from openviking.storage.vikingdb_manager import VikingDBManager
 from openviking_cli.utils import run_async
 from openviking_cli.utils.config import OpenVikingConfig
 from openviking_cli.utils.logger import get_logger
@@ -67,22 +67,27 @@ class ObserverService:
         vikingdb: Optional[VikingDBManager] = None,
         config: Optional[OpenVikingConfig] = None,
         agfs_client: Optional[Any] = None,
+        rerank_client: Optional[Any] = None,
     ):
         self._vikingdb = vikingdb
         self._config = config
         self._agfs_client = agfs_client
+        self._rerank_client = rerank_client
 
     def set_dependencies(
         self,
         vikingdb: VikingDBManager,
         config: OpenVikingConfig,
         agfs_client: Optional[Any] = None,
+        rerank_client: Optional[Any] = None,
     ) -> None:
         """Set dependencies after initialization."""
         self._vikingdb = vikingdb
         self._config = config
         if agfs_client is not None:
             self._agfs_client = agfs_client
+        if rerank_client is not None:
+            self._rerank_client = rerank_client
 
     @property
     def _dependencies_ready(self) -> bool:
@@ -145,8 +150,14 @@ class ObserverService:
         if self._config.embedding:
             embedding_instance = self._config.embedding.get_embedder()
 
-        # Get rerank instance if available
-        if self._config.rerank and self._config.rerank.is_available():
+        # Reuse the service-shared client: building one per status call leaked an
+        # HTTP pool plus a worker pool every time health was checked.
+        rerank_instance = self._rerank_client
+        if (
+            rerank_instance is None
+            and self._config.rerank
+            and self._config.rerank.is_available()
+        ):
             from openviking.models.rerank import RerankClient
 
             rerank_instance = RerankClient.from_config(self._config.rerank)
@@ -272,17 +283,19 @@ class DebugService:
         vikingdb: Optional[VikingDBManager] = None,
         config: Optional[OpenVikingConfig] = None,
         agfs_client: Optional[Any] = None,
+        rerank_client: Optional[Any] = None,
     ):
-        self._observer = ObserverService(vikingdb, config, agfs_client)
+        self._observer = ObserverService(vikingdb, config, agfs_client, rerank_client)
 
     def set_dependencies(
         self,
         vikingdb: VikingDBManager,
         config: OpenVikingConfig,
         agfs_client: Optional[Any] = None,
+        rerank_client: Optional[Any] = None,
     ) -> None:
         """Set dependencies after initialization."""
-        self._observer.set_dependencies(vikingdb, config, agfs_client)
+        self._observer.set_dependencies(vikingdb, config, agfs_client, rerank_client)
 
     @property
     def observer(self) -> ObserverService:

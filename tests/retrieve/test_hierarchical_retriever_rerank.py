@@ -6,12 +6,17 @@
 import asyncio
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from types import SimpleNamespace
 
 import pytest
 
 from openviking.core.context import ContextLevel
-from openviking.retrieve.hierarchical_retriever import HierarchicalRetriever, RetrieverMode
+from openviking.retrieve.hierarchical_retriever import (
+    HierarchicalRetriever,
+    RerankBudget,
+    RetrieverMode,
+)
 from openviking.server.identity import RequestContext, Role
 from openviking.storage.abstract_overview import render_abstract_overview
 from openviking.utils.token_estimation import estimate_text_tokens
@@ -207,12 +212,16 @@ class FakeRerankClient:
         self.scores = list(scores)
         self.calls = []
         self._cursor = 0
+        # A round scores its directories concurrently, so the fake must not race
+        # on the cursor that hands out canned scores.
+        self._lock = threading.Lock()
 
     def rerank_batch(self, query: str, documents: list[str]):
-        self.calls.append((query, list(documents)))
-        start = self._cursor
-        end = start + len(documents)
-        self._cursor = end
+        with self._lock:
+            self.calls.append((query, list(documents)))
+            start = self._cursor
+            end = start + len(documents)
+            self._cursor = end
         return list(self.scores[start:end])
 
 
@@ -429,6 +438,238 @@ async def test_rerank_scores_runs_blocking_client_off_event_loop():
     assert await rerank_task == [0.9]
     assert fake_client.thread_id != threading.get_ident()
     assert ticks >= 3
+
+
+@pytest.mark.asyncio
+async def test_round_rerank_batches_run_in_parallel(monkeypatch):
+    """One round's directories are scored concurrently, not one after another.
+
+    The barrier only releases when both round batches are in flight at the same
+    time; a serial ``await`` per directory leaves the first batch waiting alone
+    and breaks the barrier.
+    """
+
+    class TwoDirRoundStorage(DummyStorage):
+        async def search_in_tenant(
+            self,
+            ctx,
+            query_vector=None,
+            sparse_query_vector=None,
+            context_type=None,
+            target_directories=None,
+            extra_filter=None,
+            level=None,
+            limit: int = 10,
+            offset: int = 0,
+        ):
+            return [
+                _result("viking://resources/root-a", 0.2, level=1, abstract="root A"),
+                _result("viking://resources/root-b", 0.8, level=1, abstract="root B"),
+            ]
+
+        async def search_children_in_tenant(
+            self,
+            ctx,
+            parent_uri: str,
+            query_vector=None,
+            sparse_query_vector=None,
+            context_type=None,
+            target_directories=None,
+            extra_filter=None,
+            limit: int = 10,
+        ):
+            if parent_uri not in (
+                "viking://resources/root-a",
+                "viking://resources/root-b",
+            ):
+                return []
+            return [
+                _result(f"{parent_uri}/file-a", 0.2, abstract=f"{parent_uri} child A"),
+                _result(f"{parent_uri}/file-b", 0.8, abstract=f"{parent_uri} child B"),
+            ]
+
+    barrier = threading.Barrier(2, timeout=5)
+    serialized: list[int] = []
+
+    class BarrierRerankClient:
+        def __init__(self):
+            self.calls = []
+            self._lock = threading.Lock()
+
+        def rerank_batch(self, query: str, documents: list[str]):
+            with self._lock:
+                self.calls.append((query, list(documents)))
+                index = len(self.calls) - 1
+            # Call 0 is the directory pass; calls 1 and 2 are this round's two
+            # directory batches, which must overlap.
+            if 1 <= index <= 2:
+                try:
+                    barrier.wait()
+                except threading.BrokenBarrierError:
+                    serialized.append(index)
+            return [0.5 for _ in documents]
+
+    fake_client = BarrierRerankClient()
+    monkeypatch.setattr(
+        "openviking.retrieve.hierarchical_retriever.RerankClient.from_config",
+        lambda config: fake_client,
+    )
+    retriever = HierarchicalRetriever(
+        storage=TwoDirRoundStorage(),
+        embedder=DummyEmbedder(),
+        rerank_config=_config(),
+    )
+
+    result = await retriever.retrieve(_query(), ctx=_ctx(), limit=2, mode=RetrieverMode.THINKING)
+
+    assert serialized == []
+    assert len(fake_client.calls) == 3  # directory pass + one batch per round directory
+    assert result.matched_contexts
+
+
+def test_viking_fs_stores_injected_rerank_runtime():
+    """VikingFS carries the shared client/executor down to the retriever."""
+    from unittest.mock import MagicMock
+
+    from openviking.storage.viking_fs import VikingFS
+
+    fs = VikingFS(agfs=MagicMock(), rerank_client="client", rerank_executor="executor")
+
+    assert fs.rerank_client == "client"
+    assert fs.rerank_executor == "executor"
+
+
+@pytest.mark.asyncio
+async def test_injected_rerank_client_is_used_without_from_config(monkeypatch):
+    """A shared client is injected, so the retriever must not build its own."""
+    injected = FakeRerankClient([0.95, 0.05])
+
+    def _explode(config):
+        raise AssertionError("from_config must not be called when a client is injected")
+
+    monkeypatch.setattr(
+        "openviking.retrieve.hierarchical_retriever.RerankClient.from_config", _explode
+    )
+    retriever = HierarchicalRetriever(
+        storage=DummyStorage(),
+        embedder=DummyEmbedder(),
+        rerank_config=_config(),
+        rerank_client=injected,
+    )
+
+    assert retriever._rerank_client is injected
+    result = await retriever.retrieve(_query(), ctx=_ctx(), limit=2, mode=RetrieverMode.THINKING)
+
+    assert injected.calls
+    assert result.matched_contexts
+
+
+@pytest.mark.asyncio
+async def test_rerank_batch_runs_on_injected_executor():
+    """Rerank blocks in the dedicated pool, not the shared asyncio default pool."""
+    executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="ov-rerank-test")
+    seen: list[str] = []
+
+    class ThreadRecordingClient:
+        def rerank_batch(self, query: str, documents: list[str]):
+            seen.append(threading.current_thread().name)
+            return [0.5 for _ in documents]
+
+    retriever = HierarchicalRetriever(
+        storage=DummyStorage(),
+        embedder=DummyEmbedder(),
+        rerank_config=None,
+        rerank_executor=executor,
+    )
+    retriever._rerank_client = ThreadRecordingClient()
+    try:
+        scores = await retriever._rerank_scores("q", ["a", "b"], [0.1, 0.2])
+    finally:
+        executor.shutdown(wait=True)
+
+    assert scores == [0.5, 0.5]
+    assert seen == ["ov-rerank-test_0"]
+
+
+@pytest.mark.asyncio
+async def test_batch_timeout_falls_back_to_vector_scores():
+    """One slow batch is cut by batch_timeout and keeps the vector score."""
+
+    class SlowClient:
+        def rerank_batch(self, query: str, documents: list[str]):
+            time.sleep(0.3)
+            return [0.9 for _ in documents]
+
+    retriever = HierarchicalRetriever(
+        storage=DummyStorage(),
+        embedder=DummyEmbedder(),
+        rerank_config=RerankConfig(ak="ak", sk="sk", batch_timeout=0.05),
+        rerank_client=SlowClient(),
+    )
+
+    started = time.monotonic()
+    scores = await retriever._rerank_scores("q", ["a"], [0.42])
+    elapsed = time.monotonic() - started
+
+    assert scores == [0.42]
+    assert elapsed < 0.25
+
+
+@pytest.mark.asyncio
+async def test_total_budget_skips_remaining_batches():
+    """Once the search budget is spent, later batches skip rerank entirely."""
+
+    class CountingClient:
+        def __init__(self):
+            self.calls = 0
+
+        def rerank_batch(self, query: str, documents: list[str]):
+            self.calls += 1
+            time.sleep(0.1)
+            return [0.9 for _ in documents]
+
+    client = CountingClient()
+    retriever = HierarchicalRetriever(
+        storage=DummyStorage(),
+        embedder=DummyEmbedder(),
+        rerank_config=RerankConfig(ak="ak", sk="sk", total_budget=0.05),
+        rerank_client=client,
+    )
+    budget = RerankBudget(0.05)
+
+    first = await retriever._rerank_scores_timed("q", ["a"], [0.1], budget)
+    second = await retriever._rerank_scores_timed("q", ["b"], [0.2], budget)
+
+    assert client.calls == 1
+    assert first == [0.9]
+    assert second == [0.2]
+
+
+@pytest.mark.asyncio
+async def test_zero_budget_disables_the_skip():
+    """total_budget=0 keeps the documented 'budget off' behavior."""
+
+    class CountingClient:
+        def __init__(self):
+            self.calls = 0
+
+        def rerank_batch(self, query: str, documents: list[str]):
+            self.calls += 1
+            return [0.9 for _ in documents]
+
+    client = CountingClient()
+    retriever = HierarchicalRetriever(
+        storage=DummyStorage(),
+        embedder=DummyEmbedder(),
+        rerank_config=RerankConfig(ak="ak", sk="sk", total_budget=0),
+        rerank_client=client,
+    )
+    budget = RerankBudget(0.0)
+
+    await retriever._rerank_scores_timed("q", ["a"], [0.1], budget)
+    await retriever._rerank_scores_timed("q", ["b"], [0.2], budget)
+
+    assert client.calls == 2
 
 
 @pytest.mark.asyncio

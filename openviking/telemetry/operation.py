@@ -93,6 +93,7 @@ class TelemetrySummaryBuilder:
         "intent_analysis": "search.intent_analysis.duration_ms",
         "embed_query": "search.embed_query.duration_ms",
         "vector_retrieval": "search.vector_retrieval.duration_ms",
+        "rerank": "search.rerank.duration_ms",
     }
 
     @staticmethod
@@ -481,7 +482,7 @@ class TelemetrySummaryBuilder:
             }
 
         if cls._has_metric_prefix("search", counters, gauges):
-            search_summary = {
+            search_summary: Dict[str, Any] = {
                 public_key: {
                     "duration_ms": cls._f(gauges.get(metric_key), 0.0),
                 }

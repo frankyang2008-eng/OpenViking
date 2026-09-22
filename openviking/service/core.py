@@ -8,6 +8,7 @@ Main service class that composes all sub-services and manages infrastructure lif
 
 import asyncio
 import os
+from concurrent.futures import ThreadPoolExecutor
 from typing import TYPE_CHECKING, Any, Optional
 
 from openviking.core.directories import DirectoryInitializer
@@ -93,6 +94,8 @@ class OpenVikingService:
         self._vikingdb_manager: Optional[VikingDBManager] = None
         self._viking_fs: Optional[VikingFS] = None
         self._embedder: Optional[Any] = None
+        self._rerank_client: Optional[Any] = None
+        self._rerank_executor: Optional[Any] = None
         self._resource_processor: Optional[ResourceProcessor] = None
         self._skill_processor: Optional[SkillProcessor] = None
         self._session_compressor: Optional["SessionCompressorV3"] = None
@@ -374,6 +377,32 @@ class OpenVikingService:
         """Get the Compile task service."""
         return self._compile_service
 
+    def _init_shared_rerank_runtime(self, config: Any) -> None:
+        """Build the process-shared rerank client and its dedicated executor.
+
+        One client per process instead of one per search: the per-request path
+        re-created an HTTP pool plus a worker pool on every call, so the configured
+        ``concurrency`` capped a single batch rather than the process, and nothing
+        ever closed them. The executor doubles as the admission gate — batches queue
+        there instead of occupying the shared asyncio default pool.
+        """
+        rerank_config = getattr(config, "rerank", None)
+        if not rerank_config or not rerank_config.is_available():
+            return
+
+        from openviking.models.rerank import RerankClient
+
+        self._rerank_client = RerankClient.from_config(rerank_config)
+        self._rerank_executor = ThreadPoolExecutor(
+            max_workers=max(1, rerank_config.concurrency),
+            thread_name_prefix="ov-rerank",
+        )
+        logger.info(
+            "Shared rerank client initialized (provider=%s, concurrency=%s)",
+            rerank_config._effective_provider(),
+            rerank_config.concurrency,
+        )
+
     async def initialize(self) -> None:
         """Initialize OpenViking storage and indexes."""
         if self._initialized:
@@ -426,10 +455,13 @@ class OpenVikingService:
         if self._embedder is None:
             raise RuntimeError("Embedder not initialized")
 
+        self._init_shared_rerank_runtime(config)
         self._viking_fs = init_viking_fs(
             agfs=self._agfs_client,
             query_embedder=self._embedder,
             rerank_config=config.rerank,
+            rerank_client=self._rerank_client,
+            rerank_executor=self._rerank_executor,
             vector_store=self._vikingdb_manager,
             acl_manager=self._vikingdb_manager.acl_manager,
             retrieval_config=config.retrieval,
@@ -532,6 +564,7 @@ class OpenVikingService:
             vikingdb=self._vikingdb_manager,
             config=self._config,
             agfs_client=self._agfs_client,
+            rerank_client=self._rerank_client,
         )
         self._agent_evolution_service.set_dependencies(
             vikingdb=self._vikingdb_manager,
@@ -630,6 +663,19 @@ class OpenVikingService:
             await asyncio.to_thread(self._queue_manager.stop)
             self._queue_manager = None
             logger.info("Queue manager stopped")
+
+        # Guarded with getattr like the embedder below: close() is also exercised
+        # on partially constructed services in tests.
+        rerank_executor = getattr(self, "_rerank_executor", None)
+        if rerank_executor is not None:
+            # Wait for in-flight batches before closing the client underneath them.
+            await asyncio.to_thread(rerank_executor.shutdown, True)
+            self._rerank_executor = None
+        rerank_client = getattr(self, "_rerank_client", None)
+        if rerank_client is not None:
+            await asyncio.to_thread(rerank_client.close)
+            self._rerank_client = None
+            logger.info("Shared rerank client closed")
 
         self._config.vlm.close()
         await asyncio.sleep(0)

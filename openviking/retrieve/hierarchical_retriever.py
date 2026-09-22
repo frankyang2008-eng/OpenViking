@@ -8,6 +8,7 @@ and rerank-based relevance scoring.
 """
 
 import asyncio
+import contextvars
 import heapq
 import logging
 import math
@@ -45,6 +46,36 @@ from openviking_cli.utils.logger import get_logger
 logger = get_logger(__name__)
 
 
+class RerankBudget:
+    """Accumulated rerank wall-clock budget for a single search.
+
+    Charged per batch (never from request start), so intent analysis, embedding
+    and vector retrieval never eat the rerank budget. Exhaustion is a skip, not a
+    cancellation: remaining documents keep their vector scores, which costs
+    ordering quality but not recall.
+    """
+
+    def __init__(self, total_seconds: float) -> None:
+        self._total = max(0.0, float(total_seconds or 0.0))
+        self._spent = 0.0
+
+    @property
+    def total_seconds(self) -> float:
+        return self._total
+
+    @property
+    def spent_seconds(self) -> float:
+        return self._spent
+
+    @property
+    def exhausted(self) -> bool:
+        return self._total > 0 and self._spent >= self._total
+
+    def add(self, seconds: float) -> None:
+        if seconds > 0:
+            self._spent += seconds
+
+
 class RetrieverMode(str):
     THINKING = "thinking"
     QUICK = "quick"
@@ -65,6 +96,8 @@ class HierarchicalRetriever:
         embedder: Optional[Any],
         rerank_config: Optional[RerankConfig] = None,
         retrieval_config: Optional[RetrievalConfig] = None,
+        rerank_client: Optional[Any] = None,
+        rerank_executor: Optional[Any] = None,
     ):
         """Initialize hierarchical retriever with rerank_config.
 
@@ -73,20 +106,33 @@ class HierarchicalRetriever:
             embedder: Embedder instance (supports dense/sparse/hybrid)
             rerank_config: Rerank configuration (optional, will fallback to vector search only)
             retrieval_config: Retrieval ranking configuration.
+            rerank_client: Process-shared rerank client. When omitted the retriever builds
+                its own from ``rerank_config`` — the legacy per-call path kept for tests
+                and standalone scripts.
+            rerank_executor: Dedicated executor for the blocking provider call, so rerank
+                work does not occupy the shared asyncio default pool.
         """
         self.vector_store = storage
         self.embedder = embedder
         self.rerank_config = rerank_config
         self.rerank_max_input_tokens = rerank_config.max_input_tokens if rerank_config else 0
+        self.rerank_batch_timeout = rerank_config.batch_timeout if rerank_config else 0.0
+        self.rerank_total_budget = rerank_config.total_budget if rerank_config else 0.0
         self.retrieval_config = retrieval_config or RetrievalConfig()
         self.hotness_alpha = self.retrieval_config.hotness_alpha
         self.score_propagation_alpha = self.retrieval_config.score_propagation_alpha
+        self._rerank_executor = rerank_executor
 
         # Use rerank threshold if available, otherwise use a default
         self.threshold = rerank_config.threshold if rerank_config else 0
 
         # Initialize rerank client — all providers go through unified dispatch
-        if rerank_config and rerank_config.is_available():
+        if rerank_client is not None:
+            self._rerank_client = rerank_client
+            logger.info(
+                f"[HierarchicalRetriever] Rerank enabled (shared client), threshold={self.threshold}"
+            )
+        elif rerank_config and rerank_config.is_available():
             self._rerank_client = RerankClient.from_config(rerank_config)
             provider = rerank_config._effective_provider()
             logger.info(
@@ -122,6 +168,7 @@ class HierarchicalRetriever:
         t0 = time.monotonic()
         telemetry = get_current_telemetry()
         effective_threshold = self._resolve_threshold(score_threshold)
+        rerank_budget = RerankBudget(self.rerank_total_budget)
         image_query = bool(getattr(query, "image_query", False))
         if mode is None:
             mode = RetrieverMode.QUICK if not self._rerank_client else RetrieverMode.THINKING
@@ -246,11 +293,16 @@ class HierarchicalRetriever:
                 telemetry.count("vector.scored", len(leaf_results))
                 telemetry.count("vector.scanned", len(leaf_results))
                 if self._rerank_client and mode == RetrieverMode.THINKING and leaf_results:
-                    leaf_scores = await self._rerank_scores(
-                        query.query,
-                        [str(result.get("abstract", "")) for result in leaf_results],
-                        [self._finite_score(result.get("_score", 0.0)) for result in leaf_results],
-                    )
+                    with telemetry.measure("search.rerank"):
+                        leaf_scores = await self._rerank_scores_timed(
+                            query.query,
+                            [str(result.get("abstract") or "") for result in leaf_results],
+                            [
+                                self._finite_score(result.get("_score", 0.0))
+                                for result in leaf_results
+                            ],
+                            rerank_budget,
+                        )
                     leaf_results = [
                         {**result, "_score": score}
                         for result, score in zip(leaf_results, leaf_scores, strict=True)
@@ -276,11 +328,13 @@ class HierarchicalRetriever:
             # Step 3: Pick recursive entry points from directory hits and explicit roots.
             directory_scores = [self._finite_score(r.get("_score", 0.0)) for r in global_results]
             if self._rerank_client and mode == RetrieverMode.THINKING:
-                directory_scores = await self._rerank_scores(
-                    query.query,
-                    [str(r.get("abstract", "")) for r in global_results],
-                    directory_scores,
-                )
+                with telemetry.measure("search.rerank"):
+                    directory_scores = await self._rerank_scores_timed(
+                        query.query,
+                        [str(r.get("abstract") or "") for r in global_results],
+                        directory_scores,
+                        rerank_budget,
+                    )
 
             starting_points = []
             seen_starting_uris = set()
@@ -306,24 +360,26 @@ class HierarchicalRetriever:
                     candidate["_score"] = score
                     initial_candidates.append(candidate)
 
-            # Step 4: Recursive search
-            with telemetry.measure("search.vector_retrieval"):
-                candidates = await self._recursive_search(
-                    vector_proxy=vector_proxy,
-                    query=query.query,
-                    query_vector=query_vector,
-                    sparse_query_vector=sparse_query_vector,
-                    starting_points=starting_points,
-                    limit=limit,
-                    mode=mode,
-                    threshold=effective_threshold,
-                    score_gte=score_gte,
-                    context_type=context_type,
-                    target_dirs=target_dirs,
-                    scope_dsl=scope_dsl,
-                    initial_candidates=initial_candidates,
-                    level=level,
-                )
+            # Step 4: Recursive search. Child vector searches and rerank calls are
+            # measured inside `_recursive_search`, so this call adds no stage time
+            # of its own.
+            candidates = await self._recursive_search(
+                vector_proxy=vector_proxy,
+                query=query.query,
+                query_vector=query_vector,
+                sparse_query_vector=sparse_query_vector,
+                starting_points=starting_points,
+                limit=limit,
+                mode=mode,
+                threshold=effective_threshold,
+                score_gte=score_gte,
+                context_type=context_type,
+                target_dirs=target_dirs,
+                scope_dsl=scope_dsl,
+                initial_candidates=initial_candidates,
+                rerank_budget=rerank_budget,
+                level=level,
+            )
             apply_hotness = True
             rerank_used = self._rerank_client is not None and mode == RetrieverMode.THINKING
 
@@ -368,14 +424,64 @@ class HierarchicalRetriever:
             return score >= threshold
         return score > threshold
 
+    async def _rerank_scores_timed(
+        self,
+        query: str,
+        documents: List[str],
+        fallback_scores: List[float],
+        budget: Optional[RerankBudget],
+    ) -> List[float]:
+        """Score one sequential batch and charge its wall-clock time to the budget.
+
+        Concurrent batches (a recursion round) are charged once for the whole
+        gather at the call site, so parallel work never double-counts.
+        """
+        started = time.monotonic()
+        try:
+            return await self._rerank_scores(query, documents, fallback_scores, budget)
+        finally:
+            if budget is not None:
+                budget.add(time.monotonic() - started)
+
+    async def _run_rerank_batch(self, query: str, documents: List[str]) -> Optional[List[float]]:
+        """Run the blocking provider call off the event loop.
+
+        Uses the injected rerank executor when available so rerank threads stay out
+        of the shared asyncio default pool. ``run_in_executor`` does not copy
+        contextvars the way ``asyncio.to_thread`` does, so the copy is explicit —
+        without it the worker thread loses telemetry/observability attribution.
+        """
+        client = self._rerank_client
+        if client is None:
+            return None
+        if self._rerank_executor is None:
+            return await asyncio.to_thread(client.rerank_batch, query, documents)
+        context = contextvars.copy_context()
+        return await asyncio.get_running_loop().run_in_executor(
+            self._rerank_executor,
+            lambda: context.run(client.rerank_batch, query, documents),
+        )
+
     async def _rerank_scores(
         self,
         query: str,
         documents: List[str],
         fallback_scores: List[float],
+        budget: Optional[RerankBudget] = None,
     ) -> List[float]:
         """Return rerank scores or fall back to vector scores."""
         if not self._rerank_client or not documents:
+            return fallback_scores
+
+        if budget is not None and budget.exhausted:
+            logger.warning(
+                "[HierarchicalRetriever] Rerank budget of %.1fs exhausted (spent %.1fs); "
+                "skipping %s document(s) and keeping vector scores",
+                budget.total_seconds,
+                budget.spent_seconds,
+                len(documents),
+            )
+            get_current_telemetry().count("rerank.skipped", 1)
             return fallback_scores
 
         rerank_query = query
@@ -396,11 +502,21 @@ class HierarchicalRetriever:
             ]
 
         try:
-            scores = await asyncio.to_thread(
-                self._rerank_client.rerank_batch,
-                rerank_query,
-                [document for _, document in rerank_documents],
+            scores = await asyncio.wait_for(
+                self._run_rerank_batch(
+                    rerank_query, [document for _, document in rerank_documents]
+                ),
+                timeout=self.rerank_batch_timeout or None,
             )
+        except asyncio.TimeoutError:
+            # The executor thread keeps running to completion; the dedicated pool
+            # bounds that orphan instead of leaking it into the default pool.
+            logger.warning(
+                "[HierarchicalRetriever] Rerank batch exceeded %.1fs, fallback to vector scores",
+                self.rerank_batch_timeout,
+            )
+            get_current_telemetry().count("rerank.timeouts", 1)
+            return fallback_scores
         except Exception as e:
             logger.warning(
                 "[HierarchicalRetriever] Rerank failed, fallback to vector scores: %s", e
@@ -434,6 +550,7 @@ class HierarchicalRetriever:
         scope_dsl: Optional[FilterExpr | Dict[str, Any]] = None,
         initial_candidates: Optional[List[Dict[str, Any]]] = None,
         level: Optional[List[int]] = None,
+        rerank_budget: Optional[RerankBudget] = None,
     ) -> List[Dict[str, Any]]:
         """
         Recursive search with directory priority return and score propagation.
@@ -508,24 +625,42 @@ class HierarchicalRetriever:
             if not batch:
                 continue
 
-            batch_results = await asyncio.gather(
-                *(search_children(current_uri) for current_uri, _ in batch)
-            )
-
             telemetry = get_current_telemetry()
-            for (_, current_score), results in zip(batch, batch_results, strict=True):
+            with telemetry.measure("search.vector_retrieval"):
+                batch_results = await asyncio.gather(
+                    *(search_children(current_uri) for current_uri, _ in batch)
+                )
+
+            round_fallbacks: List[List[float]] = []
+            round_documents: List[List[str]] = []
+            for results in batch_results:
                 telemetry.count("vector.searches", 1)
                 telemetry.count("vector.scored", len(results))
                 telemetry.count("vector.scanned", len(results))
+                round_fallbacks.append([self._finite_score(r.get("_score", 0.0)) for r in results])
+                round_documents.append([str(r.get("abstract") or "") for r in results])
 
-                if not results:
-                    continue
+            # Rerank every directory of this round in parallel: the child searches
+            # above are gathered, so awaiting the batches one at a time would
+            # serialize the round behind its slowest directory.
+            if self._rerank_client and mode == RetrieverMode.THINKING:
+                with telemetry.measure("search.rerank"):
+                    round_rerank = [
+                        self._rerank_scores(query, documents, fallback, rerank_budget)
+                        for documents, fallback in zip(
+                            round_documents, round_fallbacks, strict=True
+                        )
+                    ]
+                    round_started = time.monotonic()
+                    round_scores = await asyncio.gather(*round_rerank)
+                    if rerank_budget is not None:
+                        rerank_budget.add(time.monotonic() - round_started)
+            else:
+                round_scores = round_fallbacks
 
-                query_scores = [self._finite_score(r.get("_score", 0.0)) for r in results]
-                if self._rerank_client and mode == RetrieverMode.THINKING:
-                    documents = [str(r.get("abstract", "")) for r in results]
-                    query_scores = await self._rerank_scores(query, documents, query_scores)
-
+            for (_, current_score), results, query_scores in zip(
+                batch, batch_results, round_scores, strict=True
+            ):
                 for r, score in zip(results, query_scores, strict=True):
                     uri = r.get("uri", "")
                     final_score = (
