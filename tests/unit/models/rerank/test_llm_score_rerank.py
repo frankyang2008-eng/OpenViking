@@ -50,6 +50,17 @@ class TestLlmScoreConfig:
         )
         assert config.concurrency == 5
 
+    def test_enabled_by_default(self):
+        config = RerankConfig(provider="llm_score", api_key="k", api_base="https://x", model="m")
+        assert config.enabled is True
+        assert config.is_available() is True
+
+    def test_enabled_false_disables_rerank(self):
+        config = RerankConfig(
+            provider="llm_score", api_key="k", api_base="https://x", model="m", enabled=False
+        )
+        assert config.is_available() is False
+
     def test_llm_score_requires_api_key_api_base_model(self):
         with pytest.raises(ValidationError):
             RerankConfig(provider="llm_score", api_key="k", api_base="https://x")

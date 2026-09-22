@@ -1055,6 +1055,7 @@ models (e.g. `doubao-seed-2.0-mini`) need `thinking_disabled: true`.
 | `provider` | str | `"vikingdb"`, `"cohere"`, `"openai"`, `"litellm"`, `"jev"`, or `"llm_score"`. Auto-detected if omitted; `llm_score` must be set explicitly. |
 | `ak` | str | VikingDB Access Key (vikingdb provider only) |
 | `sk` | str | VikingDB Secret Key (vikingdb provider only) |
+| `enabled` | bool | Master switch for rerank. Set to `false` to disable rerank entirely (retrieval falls back to vector scores, no rerank calls are made); provider credentials may stay configured. Default: `true` |
 | `model_name` | str | Model name (vikingdb provider only, default: `doubao-seed-rerank`) |
 | `api_key` | str | API key (for `openai`, `cohere`, or `jev` providers) |
 | `api_base` | str | Endpoint URL (for `openai` or `jev`; Jev defaults to `https://api.typesafe.ai`, Vercel uses `https://ai-gateway.vercel.sh/typesafe`) |

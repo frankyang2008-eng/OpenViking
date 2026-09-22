@@ -8,6 +8,14 @@ from pydantic import BaseModel, Field, model_validator
 class RerankConfig(BaseModel):
     """Configuration for rerank API. Supports VikingDB, Cohere, OpenAI-compatible, LiteLLM, Jev (TypeSafe), and llm_score (chat-model pointwise scoring) providers."""
 
+    enabled: bool = Field(
+        default=True,
+        description=(
+            "Master switch for rerank. Set to false to disable rerank entirely "
+            "(retrieval falls back to vector scores); provider credentials may stay configured."
+        ),
+    )
+
     provider: Optional[str] = Field(
         default=None,
         description=(
@@ -141,7 +149,9 @@ class RerankConfig(BaseModel):
         return self
 
     def is_available(self) -> bool:
-        """Check if rerank is configured."""
+        """Check if rerank is configured and enabled."""
+        if not self.enabled:
+            return False
         p = self._effective_provider()
         if p in ("cohere", "jev"):
             return self.api_key is not None
