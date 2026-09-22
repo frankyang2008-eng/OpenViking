@@ -246,6 +246,21 @@ class RerankEventDataSource(EventMetricDataSource):
             },
         )
 
+    @staticmethod
+    def record_error(*, error_code: str, account_id: str | None = None) -> None:
+        """Emit a rerank error event with a normalized error code label.
+
+        Mirrors EmbeddingEventDataSource.record_error; callers translate
+        provider/worker failures into bounded error codes before invoking.
+        """
+        EventMetricDataSource._emit(
+            "rerank.error",
+            {
+                "error_code": str(error_code or "unknown"),
+                "account_id": None if account_id is None else str(account_id),
+            },
+        )
+
 
 def _extract_usage_by_model(token_usage: dict, datasource: DomainStatsMetricDataSource) -> dict:
     """

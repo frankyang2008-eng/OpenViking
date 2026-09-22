@@ -1067,6 +1067,8 @@ models (e.g. `doubao-seed-2.0-mini`) need `thinking_disabled: true`.
 | `extra_headers` | object | Custom HTTP headers (for OpenAI-compatible providers, optional) |
 | `concurrency` | int | Parallel per-document scoring calls for the `llm_score` provider. Default: `8` |
 | `thinking_disabled` | bool | Send `thinking.type=disabled` in chat requests (Doubao-family models). Enable for `doubao-seed-2.0-mini`; leave off for models that reject the field. Default: `false` |
+| `max_retries` | int | Retry attempts for transient errors (429/5xx/transport); 4xx fails fast without retry. `0` disables retry. Default: `1` |
+| `retry_backoff_seconds` | float | Base backoff for rerank retries, doubling per attempt; the `Retry-After` response header takes precedence for 429. Default: `0.5` |
 
 **Supported providers:**
 - `vikingdb`: Volcengine VikingDB Rerank API (uses AK/SK)

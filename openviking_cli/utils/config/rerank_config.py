@@ -92,6 +92,23 @@ class RerankConfig(BaseModel):
             "Enable for doubao-seed-2.0-mini; leave off for models that reject the field."
         ),
     )
+    max_retries: int = Field(
+        default=1,
+        ge=0,
+        le=5,
+        description=(
+            "Retry attempts for transient rerank errors (429/5xx/transport); "
+            "4xx fails fast without retry. 0 disables retry."
+        ),
+    )
+    retry_backoff_seconds: float = Field(
+        default=0.5,
+        ge=0,
+        description=(
+            "Base backoff seconds for rerank retries; doubles per attempt, "
+            "Retry-After response header takes precedence for 429"
+        ),
+    )
 
     def _effective_provider(self) -> Optional[str]:
         """Auto-detect provider from config fields when not explicitly set."""
