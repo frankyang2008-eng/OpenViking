@@ -22,7 +22,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 import threading
-from typing import Optional
+from typing import Any, Coroutine, Optional, cast
 
 from openviking.observability.events import (
     make_payload_subscriber,
@@ -78,11 +78,15 @@ def _shutdown_exporters_best_effort(exporters: list) -> None:
             try:
                 result = exporter.shutdown()
                 if inspect.isawaitable(result):
+                    # inspect.isawaitable() does not narrow the type: the exporter API is
+                    # declared to return an arbitrary awaitable, while asyncio.run() and
+                    # create_task() take coroutines. Type-only cast, no behavior change.
+                    coroutine = cast(Coroutine[Any, Any, Any], result)
                     try:
                         loop = asyncio.get_running_loop()
                     except RuntimeError:
                         # No running event loop - use asyncio.run() to execute the coroutine
-                        asyncio.run(result)
+                        asyncio.run(coroutine)
                     else:
                         # There is a running event loop. We cannot block-wait from within
                         # the event loop thread (would cause deadlock). Instead, schedule
@@ -91,7 +95,7 @@ def _shutdown_exporters_best_effort(exporters: list) -> None:
                         #
                         # This is best-effort for synchronous re-initialization paths.
                         # The proper async shutdown path is used in app.py's lifespan.
-                        loop.create_task(result)
+                        loop.create_task(coroutine)
             except Exception as e:
                 logger.warning(
                     "[_shutdown_exporters_best_effort] failed to shutdown exporter: %s", e
