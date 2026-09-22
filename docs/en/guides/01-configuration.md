@@ -1035,7 +1035,7 @@ parallel in one request, and scores do not compete or have to sum to 1.
     "api_base": "https://ark.cn-beijing.volces.com/api/plan/v3",
     "model": "doubao-seed-2.0-mini",
     "thinking_disabled": true,
-    "threshold": 0.3
+    "threshold": 0.05
   }
 }
 ```
@@ -1044,9 +1044,12 @@ The `llm_score` provider scores each document independently against the query wi
 chat completion returning a single 0-100 integer, mapped to a 0.0-1.0 rerank score. It
 is intended for OpenAI-compatible chat endpoints where no native rerank API is
 available (e.g. Volcengine Ark). Quality is below dedicated rerank models and above
-vector-only retrieval. Start with threshold=0.3 and tune from logs; LLM absolute
-scores run high, so the default 0.1 keeps almost everything. Doubao-family thinking
-models (e.g. `doubao-seed-2.0-mini`) need `thinking_disabled: true`.
+vector-only retrieval. Start with threshold=0.05-0.1 and tune from logs: a 10-query
+A/B evaluation on a real memory corpus (2026-09-22) found rerank-only ordering beats
+vector-only (nDCG@5 0.992 vs 0.789), while threshold=0.3 silently dropped 42% of
+relevant documents below the cutoff (absolute LLM scores drift harsher than the
+rubric suggests). Doubao-family thinking models (e.g. `doubao-seed-2.0-mini`) need
+`thinking_disabled: true`.
 
 **Parameters**
 
