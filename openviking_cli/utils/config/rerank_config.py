@@ -6,11 +6,15 @@ from pydantic import BaseModel, Field, model_validator
 
 
 class RerankConfig(BaseModel):
-    """Configuration for rerank API. Supports VikingDB, Cohere, OpenAI-compatible, LiteLLM, and Jev (TypeSafe) providers."""
+    """Configuration for rerank API. Supports VikingDB, Cohere, OpenAI-compatible, LiteLLM, Jev (TypeSafe), and llm_score (chat-model pointwise scoring) providers."""
 
     provider: Optional[str] = Field(
         default=None,
-        description="Rerank provider: 'vikingdb', 'cohere', 'openai', 'litellm', or 'jev'. Auto-detected from config if omitted.",
+        description=(
+            "Rerank provider: 'vikingdb', 'cohere', 'openai', 'litellm', 'jev', or 'llm_score'. "
+            "Auto-detected from config if omitted, except 'llm_score' which must be set "
+            "explicitly (api_key+api_base alone auto-detects as 'openai')."
+        ),
     )
 
     # VikingDB fields
@@ -24,11 +28,13 @@ class RerankConfig(BaseModel):
 
     # Shared provider fields
     api_key: Optional[str] = Field(
-        default=None, description="API key for Cohere, OpenAI-compatible, or Jev providers"
+        default=None,
+        description="API key for Cohere, OpenAI-compatible, Jev, or llm_score providers",
     )
     api_base: Optional[str] = Field(default=None, description="Custom endpoint URL")
     model: Optional[str] = Field(
-        default=None, description="Model name for OpenAI-compatible, LiteLLM, or Jev providers"
+        default=None,
+        description="Model name for OpenAI-compatible, LiteLLM, Jev, or llm_score providers",
     )
 
     extra_headers: Optional[Dict[str, str]] = Field(
@@ -64,6 +70,21 @@ class RerankConfig(BaseModel):
         ),
     )
 
+    # llm_score fields
+    concurrency: int = Field(
+        default=8,
+        ge=1,
+        le=32,
+        description="Parallel per-document scoring calls for the llm_score provider",
+    )
+    thinking_disabled: bool = Field(
+        default=False,
+        description=(
+            "Send thinking.type=disabled in chat requests (Doubao-family models). "
+            "Enable for doubao-seed-2.0-mini; leave off for models that reject the field."
+        ),
+    )
+
     def _effective_provider(self) -> Optional[str]:
         """Auto-detect provider from config fields when not explicitly set."""
         if self.provider:
@@ -90,10 +111,11 @@ class RerankConfig(BaseModel):
             "openai",
             "litellm",
             "jev",
+            "llm_score",
         ]:
             raise ValueError(
                 "Rerank provider must be one of "
-                "['vikingdb', 'cohere', 'openai', 'litellm', 'jev'], got "
+                "['vikingdb', 'cohere', 'openai', 'litellm', 'jev', 'llm_score'], got "
                 f"'{provider}'"
             )
         if provider == "openai":
@@ -111,6 +133,11 @@ class RerankConfig(BaseModel):
         if provider == "vikingdb":
             if not self.ak or not self.sk:
                 raise ValueError("VikingDB rerank provider requires 'ak' and 'sk'")
+        if provider == "llm_score":
+            if not self.api_key or not self.api_base or not self.model:
+                raise ValueError(
+                    "llm_score rerank provider requires 'api_key', 'api_base', and 'model'"
+                )
         return self
 
     def is_available(self) -> bool:
@@ -124,4 +151,6 @@ class RerankConfig(BaseModel):
             return self.model is not None
         if p == "vikingdb":
             return self.ak is not None and self.sk is not None
+        if p == "llm_score":
+            return self.api_key is not None and self.api_base is not None and self.model is not None
         return False
