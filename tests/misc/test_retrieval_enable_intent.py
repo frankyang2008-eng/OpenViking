@@ -23,9 +23,12 @@ def _make_viking_fs(*, enable_intent: bool) -> VikingFS:
     fs.query_embedder = MagicMock(name="embedder")
     fs.rerank_config = None
     fs.retrieval_config = RetrievalConfig(enable_intent=enable_intent)
+    # Unit fixture: no ACL manager is wired up, so _acl_enabled() stays False and
+    # the search path falls through to _ensure_access().
+    fs.acl_manager = None
     fs.vector_store = MagicMock(name="vector_store")
     fs._bound_ctx = contextvars.ContextVar("vikingfs_bound_ctx_intent_test", default=None)
-    fs._ensure_access = MagicMock()
+    fs._ensure_access = AsyncMock()  # awaited by _ensure_retrieval_scope()
     fs._get_vector_store = MagicMock(return_value=fs.vector_store)
     fs._get_embedder = MagicMock(return_value=fs.query_embedder)
     fs._ctx_or_default = MagicMock(return_value=_ctx())
@@ -115,9 +118,10 @@ async def test_search_service_skips_session_context_when_intent_disabled():
     from openviking.service.search_service import SearchService
 
     fs = _make_viking_fs(enable_intent=False)
-    fs.search = AsyncMock(
+    search_mock = AsyncMock(
         return_value=MagicMock(name="find_result", query_plan=None, total=0)
     )
+    fs.search = search_mock
     session = MagicMock()
     session.get_context_for_search = AsyncMock(
         side_effect=AssertionError("must not scan session when intent disabled")
@@ -127,7 +131,9 @@ async def test_search_service_skips_session_context_when_intent_disabled():
     await svc.search(query="hello", ctx=_ctx(), session=session, target_uri="")
 
     session.get_context_for_search.assert_not_awaited()
-    assert fs.search.await_args.kwargs.get("session_info") is None
+    search_await_args = search_mock.await_args
+    assert search_await_args is not None
+    assert search_await_args.kwargs.get("session_info") is None
 
 
 @pytest.mark.asyncio
@@ -135,9 +141,10 @@ async def test_search_service_loads_session_context_when_intent_enabled():
     from openviking.service.search_service import SearchService
 
     fs = _make_viking_fs(enable_intent=True)
-    fs.search = AsyncMock(
+    search_mock = AsyncMock(
         return_value=MagicMock(name="find_result", query_plan=None, total=0)
     )
+    fs.search = search_mock
     session_info = {"latest_archive_overview": "ov", "current_messages": []}
     session = MagicMock()
     session.get_context_for_search = AsyncMock(return_value=session_info)
@@ -146,4 +153,6 @@ async def test_search_service_loads_session_context_when_intent_enabled():
     await svc.search(query="hello", ctx=_ctx(), session=session, target_uri="")
 
     session.get_context_for_search.assert_awaited_once()
-    assert fs.search.await_args.kwargs.get("session_info") is session_info
+    search_await_args = search_mock.await_args
+    assert search_await_args is not None
+    assert search_await_args.kwargs.get("session_info") is session_info
