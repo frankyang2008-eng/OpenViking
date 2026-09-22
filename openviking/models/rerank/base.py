@@ -7,7 +7,7 @@ Provides common token usage tracking functionality.
 """
 
 import logging
-from typing import Any, Dict
+from typing import Any, Dict, List, Optional
 
 from openviking.utils.token_estimation import estimate_text_tokens
 from openviking_cli.utils import get_logger
@@ -47,6 +47,20 @@ class RerankBase:
         """Initialize rerank client with token tracking"""
         # Token usage tracking
         self._token_tracker = _get_token_tracker()
+
+    def rerank_batch(self, query: str, documents: List[str]) -> Optional[List[float]]:
+        """Score documents against a query (the unified rerank contract).
+
+        Args:
+            query: The search query to score documents against
+            documents: Candidate document texts, in result order
+
+        Returns:
+            List of relevance scores (0.0-1.0) aligned with ``documents``, or
+            None when reranking is entirely unavailable so callers can fall
+            back to vector similarity scores.
+        """
+        raise NotImplementedError("rerank subclasses must implement rerank_batch")
 
     def _estimate_tokens(self, text: str) -> int:
         """Estimate token count with the shared mixed-language fallback."""
@@ -158,7 +172,7 @@ class RerankBase:
 
         self.update_token_usage(
             model_name=model_name,
-            provider=self.provider,
+            provider=getattr(self, "provider", "unknown"),
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,
             duration_seconds=duration_seconds,

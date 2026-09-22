@@ -189,7 +189,7 @@ class RerankClient(RerankBase):
             return None
 
     @classmethod
-    def from_config(cls, config) -> Optional["RerankClient"]:
+    def from_config(cls, config) -> Optional[RerankBase]:
         """
         Create RerankClient from RerankConfig.
 
@@ -197,7 +197,7 @@ class RerankClient(RerankBase):
             config: RerankConfig instance
 
         Returns:
-            RerankClient instance or None if config is not available
+            RerankBase instance (the vikingdb RerankClient or another provider client) or None if config is not available
         """
         if not config or not config.is_available():
             return None
@@ -223,6 +223,11 @@ class RerankClient(RerankBase):
             from openviking.models.rerank.jev_rerank import JevRerankClient
 
             return JevRerankClient.from_config(config)
+
+        if provider == "llm_score":
+            from openviking.models.rerank.llm_score_rerank import LlmScoreRerankClient
+
+            return LlmScoreRerankClient.from_config(config)
 
         return cls(
             ak=config.ak,

@@ -8,7 +8,7 @@ import httpx
 import pytest
 from pydantic import ValidationError
 
-from openviking.models.rerank import LlmScoreRerankClient
+from openviking.models.rerank import LlmScoreRerankClient, RerankClient
 from openviking_cli.utils.config.rerank_config import RerankConfig
 
 
@@ -186,3 +186,24 @@ class TestLlmScoreRerankClient:
         )
 
         assert client.api_url == "https://x/v3/chat/completions"
+
+
+class TestLlmScoreDispatch:
+    def test_from_config_dispatches_llm_score(self):
+        config = RerankConfig(
+            provider="llm_score",
+            api_key="k",
+            api_base="https://ark.example.com/api/plan/v3",
+            model="doubao-seed-2.0-mini",
+            concurrency=4,
+            thinking_disabled=True,
+        )
+        client = RerankClient.from_config(config)
+        assert isinstance(client, LlmScoreRerankClient)
+        assert client.api_url == "https://ark.example.com/api/plan/v3/chat/completions"
+        assert client.thinking_disabled is True
+
+    def test_auto_detect_prefers_openai_for_api_key_base(self):
+        # llm_score must be explicit: bare api_key+api_base auto-detect still resolves to openai
+        config = RerankConfig(api_key="k", api_base="https://x/v1/reranks")
+        assert config._effective_provider() == "openai"
