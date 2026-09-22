@@ -945,7 +945,8 @@ PDF parsing configuration. Three strategies are supported: `local` (local pdfplu
 ### rerank
 
 Reranking model for search result refinement. Supports VikingDB (Volcengine), Cohere,
-OpenAI-compatible APIs, LiteLLM, and Jev.
+OpenAI-compatible APIs, LiteLLM, Jev, and chat-model pointwise scoring
+(`llm_score`).
 
 **Volcengine (VikingDB):**
 
@@ -1024,11 +1025,34 @@ The Jev adapter sends the query and candidate documents as structured System One
 yes probability becomes that document's rerank score. All questions are evaluated in
 parallel in one request, and scores do not compete or have to sum to 1.
 
+**LLM score provider (e.g. Volcengine Ark):**
+
+```json
+{
+  "rerank": {
+    "provider": "llm_score",
+    "api_key": "<ark-plan-key>",
+    "api_base": "https://ark.cn-beijing.volces.com/api/plan/v3",
+    "model": "doubao-seed-2.0-mini",
+    "thinking_disabled": true,
+    "threshold": 0.3
+  }
+}
+```
+
+The `llm_score` provider scores each document independently against the query with a
+chat completion returning a single 0-100 integer, mapped to a 0.0-1.0 rerank score. It
+is intended for OpenAI-compatible chat endpoints where no native rerank API is
+available (e.g. Volcengine Ark). Quality is below dedicated rerank models and above
+vector-only retrieval. Start with threshold=0.3 and tune from logs; LLM absolute
+scores run high, so the default 0.1 keeps almost everything. Doubao-family thinking
+models (e.g. `doubao-seed-2.0-mini`) need `thinking_disabled: true`.
+
 **Parameters**
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `provider` | str | `"vikingdb"`, `"cohere"`, `"openai"`, `"litellm"`, or `"jev"`. Auto-detected if omitted. |
+| `provider` | str | `"vikingdb"`, `"cohere"`, `"openai"`, `"litellm"`, `"jev"`, or `"llm_score"`. Auto-detected if omitted; `llm_score` must be set explicitly. |
 | `ak` | str | VikingDB Access Key (vikingdb provider only) |
 | `sk` | str | VikingDB Secret Key (vikingdb provider only) |
 | `model_name` | str | Model name (vikingdb provider only, default: `doubao-seed-rerank`) |
@@ -1040,6 +1064,8 @@ parallel in one request, and scores do not compete or have to sum to 1.
 | `log_payloads` | bool | Log complete rerank request and response payloads. May expose query and document content. Default: `false` |
 | `threshold` | float | Score threshold between `0.0` and `1.0`; results below this are filtered out. Default: `0.1` |
 | `extra_headers` | object | Custom HTTP headers (for OpenAI-compatible providers, optional) |
+| `concurrency` | int | Parallel per-document scoring calls for the `llm_score` provider. Default: `8` |
+| `thinking_disabled` | bool | Send `thinking.type=disabled` in chat requests (Doubao-family models). Enable for `doubao-seed-2.0-mini`; leave off for models that reject the field. Default: `false` |
 
 **Supported providers:**
 - `vikingdb`: Volcengine VikingDB Rerank API (uses AK/SK)
@@ -1047,6 +1073,7 @@ parallel in one request, and scores do not compete or have to sum to 1.
 - `openai`: OpenAI-compatible Rerank API
 - `litellm`: LiteLLM Rerank API
 - `jev`: Jev (TypeSafe System One) structured-decision API; each document receives an independent Noul relevance score
+- `llm_score`: Chat-model pointwise scoring via OpenAI-compatible `/chat/completions` (e.g. Volcengine Ark). Quality is below dedicated rerank models; absolute scores drift across queries
 
 If rerank is not configured, search uses vector similarity only.
 
