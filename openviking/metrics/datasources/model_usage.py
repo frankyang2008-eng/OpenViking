@@ -247,8 +247,10 @@ class RerankEventDataSource(EventMetricDataSource):
         )
 
     @staticmethod
-    def record_error(*, error_code: str, account_id: str | None = None) -> None:
-        """Emit a rerank error event with a normalized error code label.
+    def record_error(
+        *, error_code: str, scope: str = "batch", account_id: str | None = None
+    ) -> None:
+        """Emit a rerank error event with a normalized error code and scope label.
 
         Mirrors EmbeddingEventDataSource.record_error; callers translate
         provider/worker failures into bounded error codes before invoking.
@@ -257,6 +259,7 @@ class RerankEventDataSource(EventMetricDataSource):
             "rerank.error",
             {
                 "error_code": str(error_code or "unknown"),
+                "scope": str(scope or "batch"),
                 "account_id": None if account_id is None else str(account_id),
             },
         )

@@ -222,7 +222,7 @@ class TestLlmScoreRerankClient:
 
     @patch("openviking.metrics.datasources.RerankEventDataSource.record_error")
     @patch("openviking.models.rerank.llm_score_rerank.httpx.Client")
-    def test_all_failures_return_none_and_report_all_failed(
+    def test_all_failures_return_none_and_report_cause(
         self, mock_client_class, mock_record_error
     ):
         mock_client = MagicMock()
@@ -232,12 +232,14 @@ class TestLlmScoreRerankClient:
         client = LlmScoreRerankClient(api_key="k", api_base="https://x/v3", model_name="m")
         # caller falls back to vector scores
         assert client.rerank_batch("q", ["a", "b"]) is None
-        # ...and a provider-wide outage must still be visible in rerank.error
-        assert mock_record_error.call_args.kwargs["error_code"] == "all_failed"
+        # ...and a provider-wide outage must still be visible in rerank.error, with the
+        # cause and the scope spelled out instead of one opaque "all_failed".
+        assert mock_record_error.call_args.kwargs["error_code"] == "exception"
+        assert mock_record_error.call_args.kwargs["scope"] == "all"
 
     @patch("openviking.metrics.datasources.RerankEventDataSource.record_error")
     @patch("openviking.models.rerank.llm_score_rerank.httpx.Client")
-    def test_partial_failure_reports_score_failed(self, mock_client_class, mock_record_error):
+    def test_partial_failure_reports_cause_and_scope(self, mock_client_class, mock_record_error):
         mock_client = MagicMock()
         mock_client_class.return_value = mock_client
         mock_client.post.side_effect = [
@@ -252,10 +254,12 @@ class TestLlmScoreRerankClient:
         assert scores is not None
         assert scores[0] == 0.95
         assert math.isnan(scores[1])
-        assert mock_record_error.call_args.kwargs["error_code"] == "score_failed"
+        assert mock_record_error.call_args.kwargs["error_code"] == "exception"
+        assert mock_record_error.call_args.kwargs["scope"] == "partial"
 
+    @patch("openviking.metrics.datasources.RerankEventDataSource.record_error")
     @patch("openviking.models.rerank.llm_score_rerank.httpx.Client")
-    def test_score_out_of_range_is_failure(self, mock_client_class):
+    def test_score_out_of_range_is_failure(self, mock_client_class, mock_record_error):
         mock_client = MagicMock()
         mock_client_class.return_value = mock_client
         # out-of-range score on one doc -> NaN (no score); the other doc unaffected
@@ -271,6 +275,94 @@ class TestLlmScoreRerankClient:
         assert scores is not None
         assert math.isnan(scores[0])
         assert scores[1] == 0.5
+        assert mock_record_error.call_args.kwargs["error_code"] == "parse"
+        assert mock_record_error.call_args.kwargs["scope"] == "partial"
+
+    @patch("openviking.metrics.datasources.RerankEventDataSource.record_error")
+    @patch("openviking.models.rerank.llm_score_rerank.httpx.Client")
+    def test_mixed_causes_collapse_to_mixed(self, mock_client_class, mock_record_error):
+        """A 429 on one document and an unparseable answer on another is not one cause."""
+
+        def _status_error(status: int) -> httpx.HTTPStatusError:
+            request = httpx.Request("POST", "https://x/v3/chat/completions")
+            response = httpx.Response(status, request=request, headers={"Retry-After": "0"})
+            return httpx.HTTPStatusError("err", request=request, response=response)
+
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+        mock_client.post.side_effect = [
+            _status_error(429),
+            _status_error(429),
+            _mock_chat_response("not a number"),
+        ]
+
+        client = LlmScoreRerankClient(
+            api_key="k",
+            api_base="https://x/v3",
+            model_name="m",
+            concurrency=1,
+            retry_backoff_seconds=0,
+        )
+        assert client.rerank_batch("q", ["a", "b"]) is None
+        assert mock_record_error.call_args.kwargs["error_code"] == "mixed"
+        assert mock_record_error.call_args.kwargs["scope"] == "all"
+
+    @patch("openviking.metrics.datasources.RerankEventDataSource.record_error")
+    @patch("openviking.models.rerank.llm_score_rerank.httpx.Client")
+    def test_http_status_failures_map_to_bounded_causes(
+        self, mock_client_class, mock_record_error
+    ):
+        """Quota, provider outage, and a rejected request must not share one series."""
+
+        def _status_error(status: int) -> httpx.HTTPStatusError:
+            request = httpx.Request("POST", "https://x/v3/chat/completions")
+            response = httpx.Response(status, request=request, headers={"Retry-After": "0"})
+            return httpx.HTTPStatusError("err", request=request, response=response)
+
+        for status, expected in (
+            (429, "rate_limited"),
+            (503, "server_error"),
+            (401, "client_error"),
+        ):
+            mock_client = MagicMock()
+            mock_client_class.return_value = mock_client
+            mock_client.post.side_effect = [_status_error(status)] * 2
+            client = LlmScoreRerankClient(
+                api_key="k",
+                api_base="https://x/v3",
+                model_name="m",
+                concurrency=1,
+                retry_backoff_seconds=0,
+            )
+
+            assert client.rerank_batch("q", ["a"]) is None
+            assert mock_record_error.call_args.kwargs["error_code"] == expected
+            assert mock_record_error.call_args.kwargs["scope"] == "all"
+
+    @patch("openviking.metrics.datasources.RerankEventDataSource.record_error")
+    @patch("openviking.models.rerank.llm_score_rerank.httpx.Client")
+    def test_timeout_and_transport_failures_are_distinguished(
+        self, mock_client_class, mock_record_error
+    ):
+        """A slow endpoint and a refused connection need different operator actions."""
+        for error, expected in (
+            (httpx.ReadTimeout("slow"), "timeout"),
+            (httpx.ConnectError("refused"), "transport"),
+        ):
+            mock_client = MagicMock()
+            mock_client_class.return_value = mock_client
+            mock_client.post.side_effect = [error, error]
+            client = LlmScoreRerankClient(
+                api_key="k",
+                api_base="https://x/v3",
+                model_name="m",
+                concurrency=1,
+                retry_backoff_seconds=0,
+            )
+
+            assert client.rerank_batch("q", ["a"]) is None
+            assert mock_record_error.call_args.kwargs["error_code"] == expected
+            assert mock_record_error.call_args.kwargs["scope"] == "all"
 
     @patch("openviking.models.rerank.llm_score_rerank.httpx.Client")
     def test_empty_documents_returns_empty_list(self, mock_client_class):

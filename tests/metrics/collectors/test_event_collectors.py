@@ -325,17 +325,24 @@ def test_rerank_collector_records_error_code_counter(registry, render_prometheus
     """`rerank.error` must reach the registry instead of being dropped by the collector gate."""
     RerankCollector().receive(
         "rerank.error",
-        {"error_code": "all_failed"},
+        {"error_code": "rate_limited", "scope": "all"},
         registry,
     )
     text = render_prometheus(registry)
 
     assert (
-        'openviking_rerank_errors_total{account_id="__unknown__",error_code="all_failed"} 1'
+        'openviking_rerank_errors_total{account_id="__unknown__",error_code="rate_limited",scope="all"} 1'
         in text
-        or 'openviking_rerank_errors_total{account_id="__unknown__",error_code="all_failed"} 1.0'
+        or 'openviking_rerank_errors_total{account_id="__unknown__",error_code="rate_limited",scope="all"} 1.0'
         in text
     )
+
+
+def test_rerank_collector_defaults_error_scope_when_absent(registry, render_prometheus):
+    """A payload without a scope still produces a bounded series instead of a bare label."""
+    RerankCollector().receive("rerank.error", {"error_code": "parse"}, registry)
+
+    assert 'scope="batch"' in render_prometheus(registry)
 
 
 def test_rerank_error_event_is_bound_on_the_default_router(registry, render_prometheus):
@@ -347,7 +354,7 @@ def test_rerank_error_event_is_bound_on_the_default_router(registry, render_prom
     """
     router = global_api._build_event_router(registry)
 
-    router.dispatch("rerank.error", {"error_code": "all_failed"})
+    router.dispatch("rerank.error", {"error_code": "rate_limited", "scope": "all"})
 
     assert "openviking_rerank_errors_total" in render_prometheus(registry)
 

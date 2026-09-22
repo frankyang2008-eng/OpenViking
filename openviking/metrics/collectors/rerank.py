@@ -70,6 +70,7 @@ class RerankCollector(EventMetricCollector):
             self.record_error(
                 registry,
                 error_code=str(payload.get("error_code") or "unknown"),
+                scope=str(payload.get("scope") or "batch"),
                 account_id=(
                     None if payload.get("account_id") is None else str(payload.get("account_id"))
                 ),
@@ -139,17 +140,30 @@ class RerankCollector(EventMetricCollector):
                 account_id=account_id,
             )
 
-    def record_error(self, registry, *, error_code: str, account_id: str | None = None) -> None:
-        """Record one rerank error, labeled by its normalized error code.
+    def record_error(
+        self,
+        registry,
+        *,
+        error_code: str,
+        scope: str = "batch",
+        account_id: str | None = None,
+    ) -> None:
+        """Record one rerank error, labeled by cause and scope.
 
-        Emitted once per failing batch by the provider client (``all_failed`` when the whole
-        batch failed, ``score_failed`` when only part of it did). Kept separate from
-        CALLS_TOTAL on purpose: a batch error is not a provider call, and mixing the two would
-        make the call counter incomparable with the token counters.
+        ``error_code`` names the cause (``rate_limited`` / ``server_error`` /
+        ``client_error`` / ``timeout`` / ``transport`` / ``parse`` / ``exception`` /
+        ``mixed``) and ``scope`` how much of the batch it hit (``all`` / ``partial``) -
+        the two things the old ``all_failed`` / ``score_failed`` codes conflated.
+        Kept separate from CALLS_TOTAL on purpose: a batch error is not a provider call,
+        and mixing the two would make the call counter incomparable with the token
+        counters.
         """
         registry.inc_counter(
             self.ERRORS_TOTAL,
-            labels={"error_code": str(error_code or "unknown")},
-            label_names=("error_code",),
+            labels={
+                "error_code": str(error_code or "unknown"),
+                "scope": str(scope or "batch"),
+            },
+            label_names=("error_code", "scope"),
             account_id=account_id,
         )

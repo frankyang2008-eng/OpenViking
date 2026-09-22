@@ -24,7 +24,7 @@ import random
 import re
 import time
 from concurrent.futures import ThreadPoolExecutor
-from typing import List, Optional
+from typing import List, NamedTuple, Optional
 
 import httpx
 
@@ -56,6 +56,34 @@ def _should_retry(max_retries: int, attempt: int, status: Optional[int]) -> bool
     if attempt >= max_retries:
         return False
     return status is None or _is_retryable_status(status)
+
+
+class _DocScore(NamedTuple):
+    """One document's outcome: a score (with its usage) or the reason it has none."""
+
+    score: Optional[float] = None
+    usage: Optional[dict] = None
+    failure: Optional[str] = None
+
+
+def _failure_kind(status: int) -> str:
+    """Map a terminal HTTP failure to a bounded error-code label."""
+    if status == 429:
+        return "rate_limited"
+    if 500 <= status < 600:
+        return "server_error"
+    return "client_error"
+
+
+def _transport_failure_kind(error: Exception) -> str:
+    """Map a terminal transport failure to a bounded error-code label."""
+    return "timeout" if isinstance(error, httpx.TimeoutException) else "transport"
+
+
+def _dominant_failure(failures: List[str]) -> str:
+    """Collapse per-document failure codes into one bounded batch-level code."""
+    distinct = set(failures)
+    return distinct.pop() if len(distinct) == 1 else "mixed"
 
 
 def _parse_score(content: str) -> Optional[int]:
@@ -155,8 +183,8 @@ class LlmScoreRerankClient(RerankBase):
         )
         self._executor = ThreadPoolExecutor(max_workers=max(1, concurrency))
 
-    def _score_one(self, query: str, document: str) -> Optional[tuple]:
-        """Score one document; returns (score 0.0-1.0, usage dict), or None on failure.
+    def _score_one(self, query: str, document: str) -> _DocScore:
+        """Score one document; returns its score or the reason it has none.
 
         Runs on a worker thread: touches no shared state here — token usage is
         aggregated once on the calling thread in ``rerank_batch``
@@ -176,9 +204,11 @@ class LlmScoreRerankClient(RerankBase):
                     "[LlmScoreRerank] Request payload=%s",
                     json.dumps(body, ensure_ascii=False),
                 )
-            resp = self._post_with_retry(body)
+            resp, failure = self._post_with_retry(body)
             if resp is None:
-                return None
+                # ``failure`` is always set when the response is missing; the fallback
+                # keeps the code bounded if a future path ever returns neither.
+                return _DocScore(failure=failure or "transport")
             data = resp.json()
             content = str(data["choices"][0]["message"]["content"]).strip()
             usage = data.get("usage") or {}
@@ -193,23 +223,27 @@ class LlmScoreRerankClient(RerankBase):
                 logger.warning(
                     "[LlmScoreRerank] Unparseable or out-of-range score content=%r", content
                 )
-                return None
-            return score / 100.0, usage_info
+                return _DocScore(failure="parse")
+            return _DocScore(score=score / 100.0, usage=usage_info)
         except Exception as e:
             logger.error("[LlmScoreRerank] Score failed: %s", e)
-            return None
+            return _DocScore(failure="exception")
 
-    def _post_with_retry(self, body: dict) -> Optional[httpx.Response]:
+    def _post_with_retry(self, body: dict) -> tuple[Optional[httpx.Response], Optional[str]]:
         """POST with bounded retry on transient errors (429/5xx/transport).
 
-        A transient failure must not become a fake 0.0 sinking a relevant
-        document below irrelevant ones. 4xx (except 429) fails fast.
+        Returns ``(response, None)`` on success and ``(None, failure_code)`` once the
+        attempts are exhausted, so the caller can report *why* a document has no score
+        (``rate_limited`` / ``server_error`` / ``client_error`` / ``timeout`` /
+        ``transport``) instead of one opaque failure. A transient failure must not become
+        a fake 0.0 sinking a relevant document below irrelevant ones. 4xx (except 429)
+        fails fast.
         """
         for attempt in range(self.max_retries + 1):
             try:
                 resp = self._client.post(self.api_url, json=body)
                 resp.raise_for_status()
-                return resp
+                return resp, None
             except httpx.HTTPStatusError as e:
                 status = e.response.status_code
                 if _should_retry(self.max_retries, attempt, status):
@@ -220,14 +254,14 @@ class LlmScoreRerankClient(RerankBase):
                     status,
                     _error_body(e.response),
                 )
-                return None
+                return None, _failure_kind(status)
             except httpx.TransportError as e:
                 if _should_retry(self.max_retries, attempt, None):
                     self._sleep_before_retry(attempt, None)
                     continue
                 logger.error("[LlmScoreRerank] Score failed after retries: %s", e)
-                return None
-        return None  # unreachable: every loop path returns — keeps mypy narrow
+                return None, _transport_failure_kind(e)
+        return None, "transport"  # unreachable: every loop path returns — keeps mypy narrow
 
     def _sleep_before_retry(self, attempt: int, response: Optional[httpx.Response]) -> None:
         """Backoff before a retry: Retry-After wins for 429, else exponential, always jittered.
@@ -253,7 +287,7 @@ class LlmScoreRerankClient(RerankBase):
             time.sleep(delay)
 
     @staticmethod
-    def _record_error(error_code: str) -> None:
+    def _record_error(error_code: str, *, scope: str = "batch") -> None:
         """Emit a rerank error event; metrics must never break rerank execution."""
         try:
             from openviking.metrics.datasources import RerankEventDataSource
@@ -262,6 +296,7 @@ class LlmScoreRerankClient(RerankBase):
             root_context = get_root_observability_context()
             RerankEventDataSource.record_error(
                 error_code=error_code,
+                scope=scope,
                 account_id=root_context.account_id if root_context is not None else None,
             )
         except Exception:
@@ -281,31 +316,39 @@ class LlmScoreRerankClient(RerankBase):
         futures = [self._executor.submit(self._score_one, query, doc) for doc in documents]
         scores: List[float] = []
         usages: List[dict] = []
+        failures: List[str] = []
         failed = 0
         for fut in futures:
             try:
                 result = fut.result()
             except Exception as e:
                 logger.error("[LlmScoreRerank] Worker failed: %s", e)
-                result = None
-            if result is None:
+                result = _DocScore(failure="exception")
+            if result.failure is not None:
                 failed += 1
+                failures.append(result.failure)
                 # NaN, not 0.0: "no score" must not be indistinguishable from
                 # "scored 0". The retriever maps a non-finite score back to the
                 # document's vector score, so a transient 429 cannot sink a
                 # relevant document below irrelevant ones.
                 scores.append(math.nan)
             else:
-                score, usage_info = result
-                scores.append(score)
-                usages.append(usage_info)
+                # A missing failure code means the score is set; the fallbacks keep
+                # mypy narrow without changing what the provider returned.
+                scores.append(result.score if result.score is not None else math.nan)
+                usages.append(result.usage if result.usage is not None else {})
 
         if failed:
             # Failure visibility: per-doc 0.0 is indistinguishable from "truly
             # irrelevant" in scores alone, so failures must surface in metrics.
             # Emitted before the all-failed early return — a provider-wide outage
-            # is exactly the case the error metric exists to catch.
-            self._record_error("all_failed" if failed == len(documents) else "score_failed")
+            # is exactly the case the error metric exists to catch. The code names
+            # the cause and the scope, so a 429 storm and a single unparseable
+            # document no longer collapse into one series.
+            self._record_error(
+                _dominant_failure(failures),
+                scope="all" if failed == len(documents) else "partial",
+            )
 
         if failed == len(documents):
             logger.error(
