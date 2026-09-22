@@ -4,6 +4,7 @@
 """Hierarchical retriever rerank behavior tests."""
 
 import asyncio
+import math
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -309,6 +310,84 @@ async def test_rerank_scores_preserves_fallbacks_for_empty_documents(monkeypatch
 
     assert scores == [0.95, 0.8, 0.7, 0.05]
     assert fake_client.calls == [("hello", ["root A", "root D"])]
+
+
+@pytest.mark.asyncio
+async def test_rerank_memo_reuses_scores_for_repeated_documents(monkeypatch):
+    """The same (query, document) is scored once per request, not once per phase."""
+    fake_client = FakeRerankClient([0.95, 0.05, 0.7])
+    monkeypatch.setattr(
+        "openviking.retrieve.hierarchical_retriever.RerankClient.from_config",
+        lambda config: fake_client,
+    )
+
+    retriever = HierarchicalRetriever(
+        storage=DummyStorage(),
+        embedder=DummyEmbedder(),
+        rerank_config=_config(),
+    )
+    memo: dict = {}
+
+    first = await retriever._rerank_scores("hello", ["doc A", "doc B"], [0.2, 0.3], None, memo)
+    # A later phase re-scores doc A; measured, the leaf and directory passes overlap.
+    second = await retriever._rerank_scores("hello", ["doc A", "doc C"], [0.2, 0.4], None, memo)
+
+    assert first == [0.95, 0.05]
+    assert second == [0.95, 0.7]  # doc A served from the memo, doc C from the provider
+    assert fake_client.calls == [("hello", ["doc A", "doc B"]), ("hello", ["doc C"])]
+
+
+@pytest.mark.asyncio
+async def test_rerank_memo_does_not_cache_a_fallback(monkeypatch):
+    """A transient failure must not be frozen into every later phase of the request."""
+
+    class FailingThenWorkingClient(FakeRerankClient):
+        def rerank_batch(self, query: str, documents: list[str]):
+            self.calls.append((query, list(documents)))
+            return None if len(self.calls) == 1 else [0.9] * len(documents)
+
+    fake_client = FailingThenWorkingClient([])
+    monkeypatch.setattr(
+        "openviking.retrieve.hierarchical_retriever.RerankClient.from_config",
+        lambda config: fake_client,
+    )
+
+    retriever = HierarchicalRetriever(
+        storage=DummyStorage(),
+        embedder=DummyEmbedder(),
+        rerank_config=_config(),
+    )
+    memo: dict = {}
+
+    first = await retriever._rerank_scores("hello", ["doc A"], [0.2], None, memo)
+    second = await retriever._rerank_scores("hello", ["doc A"], [0.2], None, memo)
+
+    assert first == [0.2]  # provider failed -> vector score
+    assert second == [0.9]  # retried instead of reusing a poisoned memo entry
+    assert len(fake_client.calls) == 2
+
+
+@pytest.mark.asyncio
+async def test_failed_document_keeps_its_vector_score(monkeypatch):
+    """A per-document provider failure (NaN) keeps the vector score, never 0.0."""
+    fake_client = FakeRerankClient([0.9, math.nan])
+    monkeypatch.setattr(
+        "openviking.retrieve.hierarchical_retriever.RerankClient.from_config",
+        lambda config: fake_client,
+    )
+
+    retriever = HierarchicalRetriever(
+        storage=DummyStorage(),
+        embedder=DummyEmbedder(),
+        rerank_config=_config(),
+    )
+    memo: dict = {}
+
+    scores = await retriever._rerank_scores("hello", ["doc A", "doc B"], [0.2, 0.35], None, memo)
+
+    assert scores == [0.9, 0.35]  # doc B keeps its vector score instead of sinking to 0.0
+    # Only the real provider score is cached; the failure must stay retryable.
+    assert list(memo) == [("hello", "doc A")]
 
 
 @pytest.mark.asyncio

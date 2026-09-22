@@ -169,6 +169,12 @@ class HierarchicalRetriever:
         telemetry = get_current_telemetry()
         effective_threshold = self._resolve_threshold(score_threshold)
         rerank_budget = RerankBudget(self.rerank_total_budget)
+        # Per-request rerank memo, keyed by (query, document) exactly as the provider
+        # sees them. The same pair is scored in several phases: measured, the leaf and
+        # directory passes overlapped on 100% of their documents and rounds re-scored
+        # 63% of theirs, so ~48% of a request's document calls were repeats whose
+        # score was already known.
+        rerank_memo: Dict[Tuple[str, str], float] = {}
         image_query = bool(getattr(query, "image_query", False))
         if mode is None:
             mode = RetrieverMode.QUICK if not self._rerank_client else RetrieverMode.THINKING
@@ -302,6 +308,7 @@ class HierarchicalRetriever:
                                 for result in leaf_results
                             ],
                             rerank_budget,
+                            rerank_memo,
                         )
                     leaf_results = [
                         {**result, "_score": score}
@@ -334,6 +341,7 @@ class HierarchicalRetriever:
                         [str(r.get("abstract") or "") for r in global_results],
                         directory_scores,
                         rerank_budget,
+                        rerank_memo,
                     )
 
             starting_points = []
@@ -378,6 +386,7 @@ class HierarchicalRetriever:
                 scope_dsl=scope_dsl,
                 initial_candidates=initial_candidates,
                 rerank_budget=rerank_budget,
+                rerank_memo=rerank_memo,
                 level=level,
             )
             apply_hotness = True
@@ -419,6 +428,14 @@ class HierarchicalRetriever:
         return score if math.isfinite(score) else default
 
     @staticmethod
+    def _is_finite_score(value: Any) -> bool:
+        """True when the provider returned a usable score (not NaN/None/garbage)."""
+        try:
+            return math.isfinite(float(value))
+        except (TypeError, ValueError):
+            return False
+
+    @staticmethod
     def _passes_threshold(score: float, threshold: float, score_gte: bool) -> bool:
         if score_gte:
             return score >= threshold
@@ -430,6 +447,7 @@ class HierarchicalRetriever:
         documents: List[str],
         fallback_scores: List[float],
         budget: Optional[RerankBudget],
+        memo: Optional[Dict[Tuple[str, str], float]] = None,
     ) -> List[float]:
         """Score one sequential batch and charge its wall-clock time to the budget.
 
@@ -438,7 +456,7 @@ class HierarchicalRetriever:
         """
         started = time.monotonic()
         try:
-            return await self._rerank_scores(query, documents, fallback_scores, budget)
+            return await self._rerank_scores(query, documents, fallback_scores, budget, memo)
         finally:
             if budget is not None:
                 budget.add(time.monotonic() - started)
@@ -468,6 +486,7 @@ class HierarchicalRetriever:
         documents: List[str],
         fallback_scores: List[float],
         budget: Optional[RerankBudget] = None,
+        memo: Optional[Dict[Tuple[str, str], float]] = None,
     ) -> List[float]:
         """Return rerank scores or fall back to vector scores."""
         if not self._rerank_client or not documents:
@@ -501,11 +520,25 @@ class HierarchicalRetriever:
                 for index, document in rerank_documents
             ]
 
+        # Reuse scores already computed for this (query, document) earlier in the
+        # request; only the misses reach the provider. Concurrent round batches can
+        # both miss the same document before either writes the memo, which measured
+        # as ~16% of document calls still duplicated (down from 48%); single-flight
+        # per key would close that, at the cost of a futures map here.
+        normalized_scores = list(fallback_scores)
+        pending: List[Tuple[int, str]] = []
+        for index, document in rerank_documents:
+            cached = memo.get((rerank_query, document)) if memo is not None else None
+            if cached is None:
+                pending.append((index, document))
+            else:
+                normalized_scores[index] = cached
+        if not pending:
+            return normalized_scores
+
         try:
             scores = await asyncio.wait_for(
-                self._run_rerank_batch(
-                    rerank_query, [document for _, document in rerank_documents]
-                ),
+                self._run_rerank_batch(rerank_query, [document for _, document in pending]),
                 timeout=self.rerank_batch_timeout or None,
             )
         except asyncio.TimeoutError:
@@ -516,22 +549,26 @@ class HierarchicalRetriever:
                 self.rerank_batch_timeout,
             )
             get_current_telemetry().count("rerank.timeouts", 1)
-            return fallback_scores
+            return normalized_scores
         except Exception as e:
             logger.warning(
                 "[HierarchicalRetriever] Rerank failed, fallback to vector scores: %s", e
             )
-            return fallback_scores
+            return normalized_scores
 
-        if not scores or len(scores) != len(rerank_documents):
+        if not scores or len(scores) != len(pending):
             logger.warning(
                 "[HierarchicalRetriever] Invalid rerank result, fallback to vector scores"
             )
-            return fallback_scores
+            return normalized_scores
 
-        normalized_scores = list(fallback_scores)
-        for score, (index, _) in zip(scores, rerank_documents, strict=True):
-            normalized_scores[index] = self._finite_score(score, fallback_scores[index])
+        for score, (index, document) in zip(scores, pending, strict=True):
+            value = self._finite_score(score, fallback_scores[index])
+            normalized_scores[index] = value
+            # Cache real provider scores only: caching a fallback would freeze one
+            # transient failure (a 429, say) into every later phase of the request.
+            if memo is not None and self._is_finite_score(score):
+                memo[(rerank_query, document)] = value
         return normalized_scores
 
     async def _recursive_search(
@@ -551,6 +588,7 @@ class HierarchicalRetriever:
         initial_candidates: Optional[List[Dict[str, Any]]] = None,
         level: Optional[List[int]] = None,
         rerank_budget: Optional[RerankBudget] = None,
+        rerank_memo: Optional[Dict[Tuple[str, str], float]] = None,
     ) -> List[Dict[str, Any]]:
         """
         Recursive search with directory priority return and score propagation.
@@ -646,7 +684,7 @@ class HierarchicalRetriever:
             if self._rerank_client and mode == RetrieverMode.THINKING:
                 with telemetry.measure("search.rerank"):
                     round_rerank = [
-                        self._rerank_scores(query, documents, fallback, rerank_budget)
+                        self._rerank_scores(query, documents, fallback, rerank_budget, rerank_memo)
                         for documents, fallback in zip(
                             round_documents, round_fallbacks, strict=True
                         )

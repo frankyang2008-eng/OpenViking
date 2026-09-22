@@ -19,6 +19,8 @@ rerank_batch(query, documents) -> List[float]
 """
 
 import json
+import math
+import random
 import re
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -228,14 +230,25 @@ class LlmScoreRerankClient(RerankBase):
         return None  # unreachable: every loop path returns — keeps mypy narrow
 
     def _sleep_before_retry(self, attempt: int, response: Optional[httpx.Response]) -> None:
-        """Backoff before a retry: Retry-After header wins for 429, else exponential."""
+        """Backoff before a retry: Retry-After wins for 429, else exponential, always jittered.
+
+        The jitter matters more than the mean delay: this client runs ``concurrency``
+        workers that hit the provider limit at the same instant, so a fixed backoff
+        makes them retry in lockstep and re-trigger the limiter. Equal jitter keeps
+        half the computed delay as a floor, so the retry still backs off.
+        """
         retry_after = 0.0
         if response is not None:
             try:
                 retry_after = min(float(response.headers.get("retry-after", 0) or 0), 10.0)
             except (TypeError, ValueError):
                 retry_after = 0.0
-        delay = max(retry_after, self.retry_backoff_seconds * (2**attempt))
+        computed = self.retry_backoff_seconds * (2**attempt)
+        # Equal jitter: keep half of our own backoff as a floor and randomize the
+        # rest, so workers that failed together do not retry together.
+        delay = computed / 2 + random.uniform(0, computed / 2)
+        # A server-provided Retry-After is a floor and is never undercut by jitter.
+        delay = max(delay, retry_after)
         if delay > 0:
             time.sleep(delay)
 
@@ -257,8 +270,9 @@ class LlmScoreRerankClient(RerankBase):
     def rerank_batch(self, query: str, documents: List[str]) -> Optional[List[float]]:
         """Score documents against a query.
 
-        Per-document failure -> 0.0 (sinks to the bottom). All failed -> None
-        so the caller falls back to vector scores.
+        Per-document failure -> NaN, so the caller keeps that document's vector
+        score instead of sinking it to the bottom. All failed -> None so the
+        caller falls back to vector scores for the whole batch.
         """
         if not documents:
             return []
@@ -276,7 +290,11 @@ class LlmScoreRerankClient(RerankBase):
                 result = None
             if result is None:
                 failed += 1
-                scores.append(0.0)
+                # NaN, not 0.0: "no score" must not be indistinguishable from
+                # "scored 0". The retriever maps a non-finite score back to the
+                # document's vector score, so a transient 429 cannot sink a
+                # relevant document below irrelevant ones.
+                scores.append(math.nan)
             else:
                 score, usage_info = result
                 scores.append(score)

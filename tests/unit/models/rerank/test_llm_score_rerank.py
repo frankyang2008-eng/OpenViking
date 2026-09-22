@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: AGPL-3.0
 """Tests for the llm_score (chat-model pointwise scoring) rerank client."""
 
+import math
 import threading
 import time
 from unittest.mock import MagicMock, patch
@@ -194,7 +195,7 @@ class TestLlmScoreRerankClient:
         assert client.rerank_batch("q", ["d"]) == [0.85]
 
     @patch("openviking.models.rerank.llm_score_rerank.httpx.Client")
-    def test_per_doc_failure_scores_zero(self, mock_client_class):
+    def test_per_doc_failure_yields_nan_not_zero(self, mock_client_class):
         mock_client = MagicMock()
         mock_client_class.return_value = mock_client
         mock_client.post.side_effect = [
@@ -211,7 +212,13 @@ class TestLlmScoreRerankClient:
         )
         scores = client.rerank_batch("q", ["a", "b", "c"])
 
-        assert scores == [0.95, 0.0, 0.4]  # partial success, failed doc sinks to 0.0
+        # A failed document reports "no score" (NaN), not 0.0: the caller maps a
+        # non-finite score back to that document's vector score, so a transient
+        # failure cannot sink a relevant document below irrelevant ones.
+        assert scores is not None
+        assert scores[0] == 0.95
+        assert math.isnan(scores[1])
+        assert scores[2] == 0.4
 
     @patch("openviking.metrics.datasources.RerankEventDataSource.record_error")
     @patch("openviking.models.rerank.llm_score_rerank.httpx.Client")
@@ -241,14 +248,17 @@ class TestLlmScoreRerankClient:
         client = LlmScoreRerankClient(
             api_key="k", api_base="https://x/v3", model_name="m", concurrency=1
         )
-        assert client.rerank_batch("q", ["a", "b"]) == [0.95, 0.0]
+        scores = client.rerank_batch("q", ["a", "b"])
+        assert scores is not None
+        assert scores[0] == 0.95
+        assert math.isnan(scores[1])
         assert mock_record_error.call_args.kwargs["error_code"] == "score_failed"
 
     @patch("openviking.models.rerank.llm_score_rerank.httpx.Client")
     def test_score_out_of_range_is_failure(self, mock_client_class):
         mock_client = MagicMock()
         mock_client_class.return_value = mock_client
-        # out-of-range score on one doc -> 0.0; the other doc unaffected
+        # out-of-range score on one doc -> NaN (no score); the other doc unaffected
         mock_client.post.side_effect = [_mock_chat_response("900"), _mock_chat_response("50")]
 
         client = LlmScoreRerankClient(
@@ -257,7 +267,10 @@ class TestLlmScoreRerankClient:
             model_name="m",
             concurrency=1,  # concurrency=1: deterministic side_effect consumption order
         )
-        assert client.rerank_batch("q", ["a", "b"]) == [0.0, 0.5]
+        scores = client.rerank_batch("q", ["a", "b"])
+        assert scores is not None
+        assert math.isnan(scores[0])
+        assert scores[1] == 0.5
 
     @patch("openviking.models.rerank.llm_score_rerank.httpx.Client")
     def test_empty_documents_returns_empty_list(self, mock_client_class):
@@ -396,6 +409,38 @@ class TestRetry:
         )
         assert client.rerank_batch("q", ["a"]) is None  # all failed -> None
         assert mock_client.post.call_count == 2  # 1 initial + 1 retry
+
+    @patch("openviking.models.rerank.llm_score_rerank.httpx.Client")
+    def test_retry_backoff_is_jittered(self, mock_client_class):
+        """Workers that hit the provider limit together must not retry together."""
+        client = LlmScoreRerankClient(
+            api_key="k", api_base="https://x/v3", model_name="m", retry_backoff_seconds=1.0
+        )
+        delays: list = []
+        with patch(
+            "openviking.models.rerank.llm_score_rerank.time.sleep", side_effect=delays.append
+        ):
+            for _ in range(20):
+                client._sleep_before_retry(0, None)
+
+        assert all(0.5 <= delay <= 1.0 for delay in delays)  # equal jitter band
+        assert len(set(delays)) > 1  # ...and actually spread out, not lockstep
+
+    @patch("openviking.models.rerank.llm_score_rerank.httpx.Client")
+    def test_retry_after_is_a_floor_not_jittered_away(self, mock_client_class):
+        """A server-provided Retry-After must never be undercut by jitter."""
+        client = LlmScoreRerankClient(
+            api_key="k", api_base="https://x/v3", model_name="m", retry_backoff_seconds=0.1
+        )
+        response = MagicMock()
+        response.headers = {"retry-after": "2"}
+        delays: list = []
+        with patch(
+            "openviking.models.rerank.llm_score_rerank.time.sleep", side_effect=delays.append
+        ):
+            client._sleep_before_retry(0, response)
+
+        assert delays == [2.0]
 
     @patch("openviking.models.rerank.llm_score_rerank.httpx.Client")
     def test_client_error_not_retried(self, mock_client_class):
