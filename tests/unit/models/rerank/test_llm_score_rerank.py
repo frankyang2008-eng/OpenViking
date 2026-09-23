@@ -451,6 +451,9 @@ class TestScoreParsing:
             ("相关性：85", 85),  # full-width colon label is tolerated
             ("Score: 85", 85),  # ASCII colon label is tolerated
             ('{"score":85}', None),  # JSON tail is not a score
+            ("８５", 85),  # full-width digits (\d is unicode-aware)
+            ("８５分", 85),  # full-width digits with suffix
+            ("85\u3000", 85),  # ideographic space suffix (\s is unicode-aware)
             ("", None),
             ("满分", None),
             ("None", None),  # str(None) from a null content field
@@ -806,3 +809,225 @@ class TestFromConfigGuardrails:
         client = LlmScoreRerankClient.from_config(config)
         assert client is not None
         assert client._client.timeout.read == 5.0
+
+
+class TestMalformedResponses:
+    """A1: provider responses that violate the happy-path shape must degrade safely."""
+
+    @staticmethod
+    def _response(payload) -> MagicMock:
+        response = MagicMock()
+        response.json.return_value = payload
+        response.raise_for_status = MagicMock()
+        return response
+
+    @patch("openviking.models.rerank.llm_score_rerank.httpx.Client")
+    def test_invalid_json_all_failed_returns_none(self, mock_client_class):
+        """Every doc failing the JSON shape -> whole-batch None channel."""
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+        mock_client.post.return_value = MagicMock()
+        mock_client.post.return_value.raise_for_status = MagicMock()
+        mock_client.post.return_value.json.side_effect = ValueError("bad json")
+        client = LlmScoreRerankClient(
+            api_key="k", api_base="https://x/v3", model_name="m", concurrency=1
+        )
+        assert client.rerank_batch("q", ["a", "b"]) is None
+
+    @patch("openviking.models.rerank.llm_score_rerank.httpx.Client")
+    def test_null_content_parses_as_failure(self, mock_client_class):
+        """Partial malformed batch: the failed doc gets NaN, the valid one scores."""
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+        mock_client.post.side_effect = [
+            self._response(
+                {"choices": [{"message": {"role": "assistant", "content": None}}], "usage": {"prompt_tokens": 10}}
+            ),
+            _mock_chat_response("85"),
+        ]
+        client = LlmScoreRerankClient(
+            api_key="k", api_base="https://x/v3", model_name="m", concurrency=1
+        )
+        scores = client.rerank_batch("q", ["bad", "good"])
+        assert scores is not None and math.isnan(scores[0]) and scores[1] == 0.85
+
+    @patch("openviking.models.rerank.llm_score_rerank.httpx.Client")
+    def test_missing_choices_degrades_to_nan(self, mock_client_class):
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+        mock_client.post.side_effect = [
+            self._response({"usage": {"prompt_tokens": 10}}),
+            _mock_chat_response("85"),
+        ]
+        client = LlmScoreRerankClient(
+            api_key="k", api_base="https://x/v3", model_name="m", concurrency=1
+        )
+        scores = client.rerank_batch("q", ["bad", "good"])
+        assert scores is not None and math.isnan(scores[0]) and scores[1] == 0.85
+
+    @patch("openviking.models.rerank.llm_score_rerank.httpx.Client")
+    def test_truncated_empty_content_degrades_to_nan(self, mock_client_class):
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+        mock_client.post.side_effect = [
+            self._response(
+                {"choices": [{"message": {"role": "assistant", "content": ""}}], "usage": {"prompt_tokens": 10}}
+            ),
+            _mock_chat_response("85"),
+        ]
+        client = LlmScoreRerankClient(
+            api_key="k", api_base="https://x/v3", model_name="m", concurrency=1
+        )
+        scores = client.rerank_batch("q", ["bad", "good"])
+        assert scores is not None and math.isnan(scores[0]) and scores[1] == 0.85
+
+    @patch("openviking.models.rerank.llm_score_rerank.httpx.Client")
+    def test_missing_usage_falls_back_to_estimation(self, mock_client_class):
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+        mock_client.post.return_value = self._response(
+            {"choices": [{"message": {"role": "assistant", "content": "85"}}]}
+        )
+        client = LlmScoreRerankClient(
+            api_key="k", api_base="https://x/v3", model_name="m", concurrency=1
+        )
+        with patch.object(client, "update_token_usage") as mock_update:
+            scores = client.rerank_batch("q", ["a"])
+
+        assert scores == [0.85]
+        mock_update.assert_called_once()
+        kwargs = mock_update.call_args.kwargs
+        assert kwargs["prompt_tokens"] > 0  # estimated, not zero
+
+    @patch("openviking.models.rerank.llm_score_rerank.httpx.Client")
+    @pytest.mark.parametrize("status", [500, 502, 503])
+    def test_5xx_family_retries_consistently(self, mock_client_class, status):
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+        mock_client.post.side_effect = [
+            self.__class__._http_error(status),
+            _mock_chat_response("85"),
+        ]
+        client = LlmScoreRerankClient(
+            api_key="k",
+            api_base="https://x/v3",
+            model_name="m",
+            concurrency=1,
+            retry_backoff_seconds=0,
+        )
+        assert client.rerank_batch("q", ["a"]) == [0.85]
+        assert mock_client.post.call_count == 2
+
+    @staticmethod
+    def _http_error(status: int) -> httpx.HTTPStatusError:
+        req = httpx.Request("POST", "https://x/v3/chat/completions")
+        resp = httpx.Response(status, request=req, headers={"Retry-After": "0"})
+        return httpx.HTTPStatusError("err", request=req, response=resp)
+
+    @patch("openviking.models.rerank.llm_score_rerank.httpx.Client")
+    def test_retry_after_http_date_falls_back_to_jitter(self, mock_client_class):
+        """HTTP-date Retry-After is not numeric: parse yields 0, retry still happens."""
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+        req = httpx.Request("POST", "https://x/v3/chat/completions")
+        resp = httpx.Response(
+            429, request=req, headers={"Retry-After": "Wed, 21 Oct 2026 07:28:00 GMT"}
+        )
+        mock_client.post.side_effect = [
+            httpx.HTTPStatusError("err", request=req, response=resp),
+            _mock_chat_response("85"),
+        ]
+        client = LlmScoreRerankClient(
+            api_key="k",
+            api_base="https://x/v3",
+            model_name="m",
+            concurrency=1,
+            retry_backoff_seconds=0,
+        )
+        assert client.rerank_batch("q", ["a"]) == [0.85]
+        assert mock_client.post.call_count == 2
+
+    def test_log_payloads_never_contains_api_key(self, caplog):
+        client = LlmScoreRerankClient(
+            api_key="super-secret-key",
+            api_base="https://x/v3",
+            model_name="m",
+            concurrency=1,
+            log_payloads=True,
+        )
+        with caplog.at_level("WARNING", logger="openviking.models.rerank.llm_score_rerank"):
+            client._score_one("q", "d")
+        joined = "\n".join(str(r.getMessage()) for r in caplog.records)
+        assert "super-secret-key" not in joined
+        client.close()
+
+
+class TestLifecycleRace:
+    """B3: shared-client races — concurrent batches and close-during-flight."""
+
+    @patch("openviking.models.rerank.llm_score_rerank.httpx.Client")
+    def test_concurrent_batches_share_client_safely(self, mock_client_class):
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+
+        def slow_post(url, json):
+            time.sleep(0.01)
+            return _mock_chat_response("85")
+
+        mock_client.post.side_effect = slow_post
+        client = LlmScoreRerankClient(
+            api_key="k", api_base="https://x/v3", model_name="m", concurrency=8
+        )
+        usage_lock = threading.Lock()
+        usage_totals = {"prompt": 0, "calls": 0}
+
+        def record_usage(**kwargs):
+            with usage_lock:
+                usage_totals["prompt"] += kwargs["prompt_tokens"]
+                usage_totals["calls"] += 1
+
+        results: list = []
+        threads = [
+            threading.Thread(
+                target=lambda: results.append(
+                    client.rerank_batch("q", ["a", "b", "c", "d"])
+                )
+            )
+            for _ in range(10)
+        ]
+        with patch.object(client, "update_token_usage", side_effect=record_usage):
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join(timeout=10)
+
+        assert len(results) == 10
+        assert all(r == [0.85] * 4 for r in results)  # no lost scores, no NaN
+        assert usage_totals["calls"] == 10  # one usage update per batch, none lost
+        assert usage_totals["prompt"] == 10 * 4 * 120
+        client.close()
+
+    @patch("openviking.models.rerank.llm_score_rerank.httpx.Client")
+    def test_close_during_in_flight_batch_completes_it(self, mock_client_class):
+        """close() drains in-flight docs before closing the HTTP pool under them."""
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+
+        def slow_post(url, json):
+            time.sleep(0.3)
+            return _mock_chat_response("85")
+
+        mock_client.post.side_effect = slow_post
+        client = LlmScoreRerankClient(
+            api_key="k", api_base="https://x/v3", model_name="m", concurrency=2
+        )
+        results: list = []
+        worker = threading.Thread(
+            target=lambda: results.append(client.rerank_batch("q", ["a", "b"]))
+        )
+        worker.start()
+        time.sleep(0.1)  # batch is now in flight
+        client.close()  # must wait for the batch, not close httpx under it
+        worker.join(timeout=10)
+
+        assert results == [[0.85, 0.85]]  # in-flight batch survived the close

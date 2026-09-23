@@ -9,6 +9,7 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -717,6 +718,143 @@ async def test_round_gather_charges_budget_once(monkeypatch):
     assert len(adds) >= 2  # directory pass + the parallel round
     # One charge ~= the 0.2s round wall clock; per-batch charging would sum to ~0.4.
     assert sum(adds) < 0.3
+
+
+@pytest.mark.asyncio
+async def test_threshold_boundary_exact_score():
+    """A3-01: score == threshold splits by the >/>= mode."""
+    retriever = HierarchicalRetriever(
+        storage=DummyStorage(),
+        embedder=DummyEmbedder(),
+        rerank_config=None,
+    )
+    assert retriever._passes_threshold(0.05, 0.05, score_gte=False) is False
+    assert retriever._passes_threshold(0.05, 0.05, score_gte=True) is True
+    assert retriever._passes_threshold(0.06, 0.05, score_gte=False) is True
+
+
+@pytest.mark.asyncio
+async def test_nan_score_never_passes_threshold():
+    """A3-02: a NaN score must not sneak through the threshold comparison."""
+    retriever = HierarchicalRetriever(
+        storage=DummyStorage(),
+        embedder=DummyEmbedder(),
+        rerank_config=None,
+    )
+    assert retriever._passes_threshold(float("nan"), 0.0, score_gte=False) is False
+    assert retriever._passes_threshold(float("nan"), 0.0, score_gte=True) is False
+
+
+@pytest.mark.asyncio
+async def test_degradation_paths_emit_distinct_signals():
+    """A3-03: timeout / budget-skip / all-fail each carry a distinguishable signal."""
+    class SlowClient:
+        def rerank_batch(self, query: str, documents: list[str]):
+            time.sleep(0.3)
+            return [0.9 for _ in documents]
+
+    retriever = HierarchicalRetriever(
+        storage=DummyStorage(),
+        embedder=DummyEmbedder(),
+        rerank_config=RerankConfig(ak="ak", sk="sk", batch_timeout=0.05),
+        rerank_client=SlowClient(),
+    )
+    telemetry = MagicMock()
+    with patch(
+        "openviking.retrieve.hierarchical_retriever.get_current_telemetry",
+        return_value=telemetry,
+    ):
+        await retriever._rerank_scores("q", ["a"], [0.42])
+    timeout_calls = [
+        c for c in telemetry.count.call_args_list if c.args[:1] == ("rerank.timeouts",)
+    ]
+    skip_calls = [
+        c for c in telemetry.count.call_args_list if c.args[:1] == ("rerank.skipped",)
+    ]
+    assert len(timeout_calls) == 1 and not skip_calls
+
+    budget_retriever = HierarchicalRetriever(
+        storage=DummyStorage(),
+        embedder=DummyEmbedder(),
+        rerank_config=RerankConfig(ak="ak", sk="sk", total_budget=0.01),
+        rerank_client=SlowClient(),
+    )
+    budget = RerankBudget(0.01)
+    telemetry2 = MagicMock()
+    with patch(
+        "openviking.retrieve.hierarchical_retriever.get_current_telemetry",
+        return_value=telemetry2,
+    ):
+        await budget_retriever._rerank_scores_timed("q", ["a"], [0.1], budget)
+        await budget_retriever._rerank_scores_timed("q", ["b"], [0.2], budget)
+    assert any(
+        c.args[:1] == ("rerank.skipped",) for c in telemetry2.count.call_args_list
+    )
+
+    class AllFailClient:
+        def rerank_batch(self, query: str, documents: list[str]):
+            return None
+
+    fail_retriever = HierarchicalRetriever(
+        storage=DummyStorage(),
+        embedder=DummyEmbedder(),
+        rerank_config=RerankConfig(ak="ak", sk="sk"),
+        rerank_client=AllFailClient(),
+    )
+    scores = await fail_retriever._rerank_scores("q", ["a"], [0.42])
+    assert scores == [0.42]  # whole-batch None falls back to vector scores
+
+
+@pytest.mark.asyncio
+async def test_all_blank_documents_skip_provider():
+    """A3-04: whitespace-only documents never reach the provider."""
+
+    class CountingClient:
+        def __init__(self):
+            self.calls = 0
+
+        def rerank_batch(self, query: str, documents: list[str]):
+            self.calls += 1
+            return [0.9 for _ in documents]
+
+    client = CountingClient()
+    retriever = HierarchicalRetriever(
+        storage=DummyStorage(),
+        embedder=DummyEmbedder(),
+        rerank_config=RerankConfig(ak="ak", sk="sk"),
+        rerank_client=client,
+    )
+    scores = await retriever._rerank_scores("q", ["   ", "", "\t\n"], [0.1, 0.2, 0.3])
+    assert scores == [0.1, 0.2, 0.3]
+    assert client.calls == 0
+
+
+@pytest.mark.asyncio
+async def test_truncated_memo_key_is_stable():
+    """A3-05: the memo key uses the truncated document, so repeats still hit."""
+
+    class CountingClient:
+        def __init__(self):
+            self.calls = 0
+
+        def rerank_batch(self, query: str, documents: list[str]):
+            self.calls += 1
+            return [0.9 for _ in documents]
+
+    client = CountingClient()
+    retriever = HierarchicalRetriever(
+        storage=DummyStorage(),
+        embedder=DummyEmbedder(),
+        rerank_config=RerankConfig(ak="ak", sk="sk", max_input_tokens=128),
+        rerank_client=client,
+    )
+    long_doc = "配置说明。" * 200
+    memo: dict = {}
+    first = await retriever._rerank_scores("q", [long_doc], [0.1], None, memo)
+    second = await retriever._rerank_scores("q", [long_doc], [0.1], None, memo)
+
+    assert first == [0.9] and second == [0.9]
+    assert client.calls == 1  # second call served from the memo
 
 
 def test_viking_fs_stores_injected_rerank_runtime():
