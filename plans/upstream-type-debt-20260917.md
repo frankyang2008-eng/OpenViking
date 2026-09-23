@@ -89,3 +89,26 @@ L360/L853 `.rstrip` on possibly-None、L1582/1602/1606 `enqueued_levels` possibl
 
 实证：纯净 upstream/main worktree 上同样 2 failed → 上游既有缺陷（来自 #5133 ACL-aware grep batch check），非 merge 回归。
 fork 对该文件的改动为纯格式化（Prettier/ruff 折行），无功能变化。
+
+## 追加（2026-09-23，第 13 次同步）
+
+`.github/workflows/pr.yml` —— yamllint 报 15 项（`[brackets]` 括号内空格、`[line-length]` 91/93/92/111/121 > 80、
+`[trailing-spaces]` L154/157/160）。已实证属上游自带债，按约定 report-only：
+
+- `git diff --stat 172c10507..ov-dev-opt -- .github/workflows/pr.yml` **为空** → 本地从未改过该文件
+- `git diff --stat 172c10507..main -- .github/workflows/pr.yml` = `1 +` → 上游本次新增 1 行
+- `git diff --quiet main:.github/workflows/pr.yml :.github/workflows/pr.yml` 干净 → 与上游 `main` 逐字节相同
+- 本仓库**无 `.yamllint` 配置**，pre-commit 无 yamllint；且 `pyproject.toml` 的 ruff 配置
+  `line-length = 100` 并把 `E501`（line too long）列入 `ignore` → 本仓库显式关闭行长规则。
+  故「line too long (91 > 80)」与本仓库自身规则直接冲突，80 列是 yamllint 的默认值而非本项目约定。
+
+`benchmark/aml/eval/evaluate.py` —— 3 项（L538 identity operators with literals、L108 call without try/except、
+L269 `compile()` on dynamic input）。已实证属上游自带债，按约定 report-only：
+
+- `git diff --stat 172c10507..ov-dev-opt -- benchmark/aml/eval/evaluate.py` **为空** → 本地从未改过该文件
+- `git diff --stat 172c10507..main -- benchmark/aml/eval/evaluate.py` = `597 +` → 上游本次整文件新增（#5276 AML adapter）
+- `git diff --quiet main:benchmark/aml/eval/evaluate.py :benchmark/aml/eval/evaluate.py` 干净 → 与上游 `main` 逐字节相同
+- L269 的 `compile()` 是该 benchmark 评测脚本的设计（编译模型生成代码以评测），非本 merge 引入
+
+结论：两者均 report-only。在此处修改上游文件会让 fork 偏离上游基线，并在每次同步重复冲突。
+正确路径是提上游 PR（scoped change），而非在 merge 中或 merge 旁修改。
