@@ -219,6 +219,30 @@ def test_bot_shutdown_handler_stops_child_then_reraises(monkeypatch):
     assert killed == [(bootstrap.os.getpid(), bootstrap.signal.SIGTERM)]
 
 
+def test_shutdown_handler_installed_before_readiness_wait(monkeypatch, tmp_path):
+    """The handler must exist before the readiness handshake runs.
+
+    ``_wait_for_bot_ready`` blocks for up to 900s while the sandbox starts, and
+    until the handler exists a SIGTERM terminates the process without unwinding
+    the stack - orphaning the child that already holds the bot port.
+    """
+    from unittest.mock import Mock
+
+    process = Mock(pid=123)
+    process.poll.return_value = None
+    monkeypatch.setattr(bootstrap.shutil, "which", lambda _: "/bin/vikingbot")
+    monkeypatch.setattr(bootstrap.subprocess, "Popen", lambda *_, **__: process)
+
+    order = []
+    monkeypatch.setattr(
+        bootstrap, "_install_bot_shutdown_handler", lambda _: order.append("handler")
+    )
+    monkeypatch.setattr(bootstrap, "_wait_for_bot_ready", lambda *_: order.append("readiness"))
+
+    assert bootstrap._start_vikingbot_gateway(False, str(tmp_path)) is not None
+    assert order == ["handler", "readiness"]
+
+
 def test_readiness_waits_for_matching_child_pid(monkeypatch, tmp_path):
     status = tmp_path / "status.json"
     process = SimpleNamespace(pid=123, poll=lambda: None)

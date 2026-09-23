@@ -484,11 +484,18 @@ def _start_vikingbot_gateway(
             creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0,
         )
 
+        # The readiness handshake below can block for up to 900s while the sandbox
+        # starts, so the handler has to exist before it runs: until then a SIGTERM
+        # terminates this process without unwinding the stack, orphaning the child
+        # that already holds the bot port.
+        started = BotProcess(process=process, log_file=log_file)
+        _install_bot_shutdown_handler(started)
+
         _wait_for_bot_ready(process, status_path)
 
         print(f"Vikingbot gateway started (PID: {process.pid})")
 
-        return BotProcess(process=process, log_file=log_file)
+        return started
 
     except BaseException as e:
         if process is not None and process.poll() is None:

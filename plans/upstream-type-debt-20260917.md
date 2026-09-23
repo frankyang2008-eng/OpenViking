@@ -112,3 +112,19 @@ L269 `compile()` on dynamic input）。已实证属上游自带债，按约定 r
 
 结论：两者均 report-only。在此处修改上游文件会让 fork 偏离上游基线，并在每次同步重复冲突。
 正确路径是提上游 PR（scoped change），而非在 merge 中或 merge 旁修改。
+
+## 追加（2026-09-23，第 13 次同步 / bootstrap 窗口修复）
+
+`openviking/server/bootstrap.py` —— mypy 报 3 项，均属上游既有债，report-only：
+
+- L223 `"resolved_config_path" is possibly unbound`（`main()` 的 config 加载 except 分支）
+- L272 `Cannot assign to attribute "host" for class "ServerConfig"`（`args.host` 为 `str | None`）
+- L570 `Cannot access attribute "close" for class "object"`（`BotProcess.log_file` 注解为 `Optional[object]`，
+  而 `object` 无 `close`）
+
+实证：`git diff main -- openviking/server/bootstrap.py` 中这三行均**不在 diff 内**（非本次改动），
+且上游 `main` 同位置存在同样代码（分别位于 L222 / L271 / L535）。本分支对该文件的 fork delta 是
+`_install_bot_shutdown_handler`、`flush=True` 与 `started = BotProcess(...)` 三处，与上述三项无关。
+
+根因（供上游 PR 参考）：`BotProcess.log_file: Optional[object]` 的类型注解过宽，应改为
+`Optional[IO[str]]` 或 `Optional[TextIO]`；`config.host` 需在赋值前收窄 `args.host` 的类型。
