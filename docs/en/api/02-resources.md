@@ -191,6 +191,7 @@ This endpoint is the core entry point for resource management. It supports vario
 | processing_mode | string | No | `semantic_and_vectors` | Post-ingest processing mode. `semantic_and_vectors` is the normal flow: generate semantic artifacts (`.abstract.md`, `.overview.md`) and vectors. `vectors_only` skips semantic understanding/VLM summarization and only vectorizes current resource files |
 | tags | string[] | No | None | Explicit `k=v` retrieval tags written with generated vector records. An empty list with `replace` does not change existing tags |
 | tag_mode | string | No | `replace` | Tag write mode: `replace`, `append`, or `clear`; `clear` removes existing tags without requiring `tags` and ignores supplied tag values |
+| acl | object | No | None | Direct ACL for the final import root; requires manage. Omission preserves existing permissions. See [ACL API](12-acl.md). |
 | telemetry | TelemetryRequest | No | False | Whether to return telemetry data |
 
 **Additional Notes**:

@@ -381,9 +381,13 @@ impl HttpClient {
         processing_mode: &str,
         tags: Vec<String>,
         tag_mode: &str,
+        acl: Option<Value>,
     ) -> Result<serde_json::Value> {
         let mut body = Self::build_write_body(uri, content, mode, wait, timeout, processing_mode);
         add_resource_tag_fields(&mut body, &tags, tag_mode);
+        if let Some(acl) = acl {
+            body["acl"] = acl;
+        }
         self.post("/api/v1/content/write", &body).await
     }
 
@@ -637,11 +641,19 @@ impl HttpClient {
         self.get("/api/v1/fs/tree", &params).await
     }
 
-    pub async fn mkdir(&self, uri: &str, description: Option<&str>) -> Result<serde_json::Value> {
-        let body = match description {
+    pub async fn mkdir(
+        &self,
+        uri: &str,
+        description: Option<&str>,
+        acl: Option<Value>,
+    ) -> Result<serde_json::Value> {
+        let mut body = match description {
             Some(description) => serde_json::json!({ "uri": uri, "description": description }),
             None => serde_json::json!({ "uri": uri }),
         };
+        if let Some(acl) = acl {
+            body["acl"] = acl;
+        }
         self.post("/api/v1/fs/mkdir", &body).await
     }
 
@@ -842,6 +854,7 @@ impl HttpClient {
         resource_args: Option<Map<String, Value>>,
         tags: Vec<String>,
         tag_mode: String,
+        acl: Option<Value>,
         show_progress: bool,
         verbose: bool,
     ) -> Result<serde_json::Value> {
@@ -861,6 +874,9 @@ impl HttpClient {
 
         let build_body = |base: serde_json::Value| {
             let mut body = base;
+            if let Some(acl) = &acl {
+                body["acl"] = acl.clone();
+            }
             add_resource_tag_fields(&mut body, &tags, &tag_mode);
             if create_parent {
                 body.as_object_mut()
@@ -2034,6 +2050,7 @@ mod tests {
                 None,
                 Vec::new(),
                 "replace".to_string(),
+                None,
                 false,
                 false,
             )
@@ -2070,6 +2087,7 @@ mod tests {
                 Some(no_split_args),
                 Vec::new(),
                 "replace".to_string(),
+                None,
                 false,
                 false,
             )

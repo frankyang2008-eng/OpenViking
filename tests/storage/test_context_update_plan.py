@@ -2637,6 +2637,7 @@ async def test_resource_processor_dispatches_direct_index_actions_without_semant
         "viking://resources/repo/c.py",
         ctx=ctx,
         file_md5="new-md5",
+        ingest_options=None,
         scalar_override={"_record_id": "id-c"},
         action="merge",
         field_patch=FieldPatch(
@@ -3275,6 +3276,7 @@ async def test_direct_only_plan_skips_semantic_queue(monkeypatch):
 async def test_vectors_only_context_plan_does_not_run_legacy_vectorization(monkeypatch):
     from openviking.server.identity import RequestContext, Role
     from openviking.storage.context_update_plan import ContextUpdatePlan, DirectIndexAction
+    from openviking.utils.ingest_options import IngestOptions
     from openviking.utils.resource_processor import ResourceProcessor
     from openviking_cli.session.user_id import UserIdentifier
 
@@ -3308,7 +3310,9 @@ async def test_vectors_only_context_plan_does_not_run_legacy_vectorization(monke
     )
 
     processor._enqueue_index_actions.assert_awaited_once_with(
-        plan.direct_index_actions, ctx=processor._enqueue_index_actions.await_args.kwargs["ctx"]
+        plan.direct_index_actions,
+        ctx=processor._enqueue_index_actions.await_args.kwargs["ctx"],
+        ingest_options=IngestOptions(),
     )
     processor._vectorize_prepared_files.assert_not_awaited()
 

@@ -303,10 +303,8 @@ class TestWatchTaskCreation:
         )
 
         assert "tags_result" not in result
-        assert resource_service._resource_processor.calls[-1]["ingest_options"] == IngestOptions(
-            search_tags=["team=search"],
-            search_tag_mode="append",
-        )
+        assert resource_service._resource_processor.calls[-1]["tags"] == ["team=search"]
+        assert resource_service._resource_processor.calls[-1]["tag_mode"] == "append"
 
     @pytest.mark.asyncio
     async def test_add_resource_rejects_invalid_tag_mode_before_processing(
@@ -404,19 +402,6 @@ class TestWatchTaskCreation:
             search_tags=["team=search"],
             search_tag_mode="append",
         )
-
-    def test_clear_without_tags_builds_clear_ingest_options(
-        self, resource_service: ResourceService
-    ):
-        assert resource_service._add_resource_ingest_tag_kwargs(
-            tags=None,
-            tag_mode="clear",
-        ) == {
-            "ingest_options": IngestOptions(
-                search_tags=[],
-                search_tag_mode="clear",
-            )
-        }
 
     def test_watch_persists_clear_without_tags(self, resource_service: ResourceService):
         assert resource_service._watch_processor_kwargs({}, None, "clear") == {

@@ -27,7 +27,6 @@ from openviking.parse.parsers.upload_utils import is_text_file
 from openviking.server.identity import RequestContext
 from openviking.service.task_work_index import TaskWorkRejected
 from openviking.storage.abstract_overview import body_for_preview, embedding_text_for_body
-from openviking.storage.acl import CreatorAclGrant
 from openviking.storage.index_action import FieldPatch, IndexAction
 from openviking.storage.queuefs import get_queue_manager
 from openviking.storage.queuefs.embedding_msg_converter import EmbeddingMsgConverter
@@ -109,7 +108,13 @@ def _apply_ingest_options(
     ingest_options: IngestOptions | None,
 ) -> None:
     ingest_options = IngestOptions.from_value(ingest_options)
-    if not embedding_msg or ingest_options.search_tags is None:
+    if not embedding_msg:
+        return
+    if ingest_options.acl_update is not None:
+        embedding_msg.context_data.setdefault("_upsert_options", {})["acl_update"] = (
+            ingest_options.acl_update.model_dump(mode="json")
+        )
+    if ingest_options.search_tags is None:
         return
     tag_mode = IngestOptions.vector_search_tag_mode(ingest_options.search_tag_mode)
     incoming_tags = list(ingest_options.search_tags or [])
@@ -400,7 +405,6 @@ async def vectorize_directory_meta(
     include_overview: bool = True,
     scalar_overrides: Optional[Dict[int, Dict[str, Any]]] = None,
     ingest_options: IngestOptions | None = None,
-    creator_acl_grant: CreatorAclGrant | None = None,
     include_abstract: bool = True,
     meta: Optional[Dict[str, Any]] = None,
     *,
@@ -462,7 +466,6 @@ async def vectorize_directory_meta(
             )
             msg_abstract = EmbeddingMsgConverter.from_context(
                 context_abstract,
-                creator_acl_grant,
                 action=IndexAction(
                     (actions or {}).get(
                         int(ContextLevel.ABSTRACT.value),
@@ -523,7 +526,6 @@ async def vectorize_directory_meta(
             )
             msg_overview = EmbeddingMsgConverter.from_context(
                 context_overview,
-                creator_acl_grant,
                 action=IndexAction(
                     (actions or {}).get(
                         int(ContextLevel.OVERVIEW.value),
@@ -583,7 +585,6 @@ async def vectorize_file(
     scalar_override: Optional[Dict[str, Any]] = None,
     field_patch: FieldPatch | None = None,
     ingest_options: IngestOptions | None = None,
-    creator_acl_grant: CreatorAclGrant | None = None,
     file_md5: Optional[str] = None,
     file_content: Optional[bytes] = None,
     action: str = "merge",
@@ -723,7 +724,6 @@ async def vectorize_file(
             raise ValueError(f"vectorize_file only supports upsert or merge actions: {action}")
         embedding_msg = EmbeddingMsgConverter.from_context(
             context,
-            creator_acl_grant,
             action=resolved_action,
         )
         if not embedding_msg:

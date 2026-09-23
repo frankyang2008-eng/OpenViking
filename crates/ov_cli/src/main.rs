@@ -353,7 +353,7 @@ enum Commands {
             conflicts_with_all = [
                 "add_type", "to", "parent", "parent_auto_create",
                 "strict_mode", "ignore_dirs", "include", "exclude",
-                "no_directly_upload_media", "tags", "tag_mode",
+                "no_directly_upload_media", "tags", "tag_mode", "acl",
                 "reason", "instruction"
             ]
         )]
@@ -465,6 +465,9 @@ enum Commands {
         tag_mode: String,
         #[command(flatten)]
         upload_options: UploadCliOptions,
+        /// ACL JSON, for example {"acl_mode":"restricted","entries":[]}
+        #[arg(long, value_parser = |s: &str| serde_json::from_str::<serde_json::Value>(s))]
+        acl: Option<serde_json::Value>,
     },
     /// [Data] Add skills from a source (same as `skills add`)
     AddSkill(SkillAddArgs),
@@ -614,6 +617,9 @@ enum Commands {
         /// Initial directory description
         #[arg(long, value_name = "text", help_heading = "Common options")]
         description: Option<String>,
+        /// ACL JSON, for example {"acl_mode":"restricted","entries":[]}
+        #[arg(long, value_parser = |s: &str| serde_json::from_str::<serde_json::Value>(s))]
+        acl: Option<serde_json::Value>,
     },
     /// [Data] Remove resource
     #[command(alias = "del", alias = "delete")]
@@ -749,6 +755,9 @@ enum Commands {
         /// Tag update mode; clear does not require --tags
         #[arg(long = "tag-mode", default_value = "replace", value_parser = ["replace", "append", "clear"])]
         tag_mode: String,
+        /// ACL JSON, for example {"acl_mode":"restricted","entries":[]}
+        #[arg(long, value_parser = |s: &str| serde_json::from_str::<serde_json::Value>(s))]
+        acl: Option<serde_json::Value>,
     },
     /// [Data] Update explicit retrieval tags metadata for a file or directory
     #[command(hide = true)]
@@ -3239,6 +3248,7 @@ async fn main() {
             timeout,
             tags,
             tag_mode,
+            acl,
             strict_mode,
             ignore_dirs,
             include,
@@ -3295,6 +3305,7 @@ async fn main() {
                     resource_args,
                     tags,
                     tag_mode,
+                    acl,
                     ctx,
                 )
                 .await
@@ -3579,7 +3590,11 @@ async fn main() {
             )
             .await
         }
-        Commands::Mkdir { uri, description } => handlers::handle_mkdir(uri, description, ctx).await,
+        Commands::Mkdir {
+            uri,
+            description,
+            acl,
+        } => handlers::handle_mkdir(uri, description, acl, ctx).await,
         Commands::Rm {
             uri,
             recursive,
@@ -3698,6 +3713,7 @@ async fn main() {
             timeout,
             tags,
             tag_mode,
+            acl,
         } => {
             let effective_mode = if let Some(m) = mode {
                 m
@@ -3716,6 +3732,7 @@ async fn main() {
                 processing_mode,
                 tags,
                 tag_mode,
+                acl,
                 ctx,
             )
             .await
