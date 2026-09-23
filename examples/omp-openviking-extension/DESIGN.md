@@ -22,7 +22,7 @@ Design comparison:
 | Memory stripping | None | Strip injected blocks before sync | Strip `<relevant-memories>` + `<system-reminder>` + `<openviking-context>` + `[Subagent Context]` + null bytes | ✅ Strip all 5 + null bytes |
 | History compression | None | OV archives replace transcript | Pi compaction (pre-compact commit preserves content in OV) | ❌ Pi has its own compaction |
 | Tools | 5 | 8 | 9 (via MCP) | 7 (no `add_skill` — pi has its own skill system) |
-| Profile injection | None | None | ✅ profile.md + preferences + entities at session start | ✅ Same |
+| Profile injection | None | None | ✅ profile.md + preferences + entities + skill catalog at session start | ✅ Same |
 
 ## Architecture
 
