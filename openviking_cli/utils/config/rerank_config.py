@@ -53,7 +53,9 @@ class RerankConfig(BaseModel):
         default=30.0,
         description=(
             "HTTP request timeout in seconds for rerank calls. Increase for local "
-            "LLM servers with model cold-start latency."
+            "LLM servers with model cold-start latency. For llm_score the effective "
+            "read timeout is clamped to batch_timeout + 2 when a batch_timeout is set, "
+            "so orphaned batches die near the batch cut instead of at the full timeout."
         ),
     )
 
@@ -67,7 +69,9 @@ class RerankConfig(BaseModel):
         description=(
             "Wall-clock budget for a single rerank batch in seconds; 0 disables the cut. "
             "On timeout the batch falls back to vector scores. Keep it below the provider "
-            "HTTP timeout so the batch cut wins over the transport."
+            "HTTP timeout so the batch cut wins over the transport. With 0 the only cut "
+            "is the transport itself: a hung provider can occupy a rerank worker for up "
+            "to timeout x (max_retries + 1) + backoff seconds."
         ),
     )
 

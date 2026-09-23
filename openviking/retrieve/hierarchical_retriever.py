@@ -492,17 +492,6 @@ class HierarchicalRetriever:
         if not self._rerank_client or not documents:
             return fallback_scores
 
-        if budget is not None and budget.exhausted:
-            logger.warning(
-                "[HierarchicalRetriever] Rerank budget of %.1fs exhausted (spent %.1fs); "
-                "skipping %s document(s) and keeping vector scores",
-                budget.total_seconds,
-                budget.spent_seconds,
-                len(documents),
-            )
-            get_current_telemetry().count("rerank.skipped", 1)
-            return fallback_scores
-
         rerank_query = query
         rerank_documents = [
             (index, document) for index, document in enumerate(documents) if document.strip()
@@ -534,6 +523,19 @@ class HierarchicalRetriever:
             else:
                 normalized_scores[index] = cached
         if not pending:
+            # Zero-cost memo hits survive budget exhaustion: the skip below only
+            # covers work that would reach the provider.
+            return normalized_scores
+
+        if budget is not None and budget.exhausted:
+            logger.warning(
+                "[HierarchicalRetriever] Rerank budget of %.1fs exhausted (spent %.1fs); "
+                "skipping %s document(s) and keeping vector scores",
+                budget.total_seconds,
+                budget.spent_seconds,
+                len(pending),
+            )
+            get_current_telemetry().count("rerank.skipped", 1)
             return normalized_scores
 
         try:

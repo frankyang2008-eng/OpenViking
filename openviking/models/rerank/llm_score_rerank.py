@@ -29,16 +29,24 @@ from typing import List, NamedTuple, Optional
 import httpx
 
 from openviking.models.rerank.base import RerankBase
+from openviking.telemetry import get_current_telemetry
 from openviking_cli.utils import get_logger
 
 logger = get_logger(__name__)
 
 # "." and "," are deliberately absent: a trailing period is a valid score suffix
 # ("85."), so decimals and thousands separators are rejected by _DECIMAL_RE
-# instead of by a blanket character ban.
-_SCORE_REJECT_CHARS = ("-", "－", "–", "/", "／")
+# instead of by a blanket character ban. Em-dash, tildes and the CJK wave dash
+# are rejected: "85—90" otherwise end-anchors on the upper bound (optimistic),
+# while the ASCII hyphen "85-90" is already rejected.
+_SCORE_REJECT_CHARS = ("-", "－", "–", "—", "/", "／", "~", "～", "〜")
 _SCORE_RE = re.compile(r"(?<!\d)(\d{1,3})\s*分?\s*[。.．]?\s*$")
 _DECIMAL_RE = re.compile(r"\d\s*[.,，．。]\s*\d")
+_GAP_RE = re.compile(r"\d\s+\d")
+
+# A server-provided Retry-After longer than this is waited out only up to the cap;
+# anything larger is treated as "not retryable within the batch window".
+_RETRY_AFTER_CAP = 10.0
 
 
 def _error_body(response: httpx.Response) -> str:
@@ -56,6 +64,16 @@ def _should_retry(max_retries: int, attempt: int, status: Optional[int]) -> bool
     if attempt >= max_retries:
         return False
     return status is None or _is_retryable_status(status)
+
+
+def _retry_after_seconds(response: Optional[httpx.Response]) -> float:
+    """Raw numeric Retry-After in seconds; missing header, HTTP-date or garbage -> 0."""
+    if response is None:
+        return 0.0
+    try:
+        return float(response.headers.get("retry-after", 0) or 0)
+    except (TypeError, ValueError):
+        return 0.0
 
 
 class _DocScore(NamedTuple):
@@ -93,13 +111,17 @@ def _parse_score(content: str) -> Optional[int]:
     integer wins ("100分满分给85" -> 85) while digits glued to other digits are
     rejected ("1085" -> None, previously misread as 85; "1000" -> None,
     previously misread as 0). Decimals, ranges, and thousands separators
-    ("0.85", "90-100", "1,000", "85．5", "85。5") are rejected — the old
-    first-match regex misread those as 0/90/1/5.
+    ("0.85", "90-100", "85—90", "85～90", "1,000", "85．5", "85。5") are
+    rejected — the old first-match regex misread those as 0/90/1/5, and the
+    un-rejected dash variants end-anchored on the optimistic upper bound.
+    Whitespace-separated digits ("1 0 0") are rejected too: the trailing "0"
+    otherwise fakes a genuine zero score and the document drops out of the
+    result set entirely.
     """
     text = content.strip()
     if not text or any(c in text for c in _SCORE_REJECT_CHARS):
         return None
-    if _DECIMAL_RE.search(text):
+    if _DECIMAL_RE.search(text) or _GAP_RE.search(text):
         return None
     m = _SCORE_RE.search(text)
     if not m:
@@ -154,6 +176,7 @@ class LlmScoreRerankClient(RerankBase):
         log_payloads: bool = False,
         max_retries: int = 1,
         retry_backoff_seconds: float = 0.5,
+        batch_timeout: float = 0.0,
     ) -> None:
         super().__init__()
         self.api_key = api_key
@@ -163,6 +186,9 @@ class LlmScoreRerankClient(RerankBase):
         self.log_payloads = log_payloads
         self.max_retries = max(0, max_retries)
         self.retry_backoff_seconds = max(0.0, retry_backoff_seconds)
+        # Batch-cut awareness for the retry decision: a Retry-After longer than
+        # the caller's batch window can never pay off (see _post_with_retry).
+        self.batch_timeout = max(0.0, batch_timeout)
         self.provider = "llm_score"
         base = api_base.rstrip("/")
         self.api_url = base if base.endswith("/chat/completions") else f"{base}/chat/completions"
@@ -188,7 +214,8 @@ class LlmScoreRerankClient(RerankBase):
 
         Runs on a worker thread: touches no shared state here — token usage is
         aggregated once on the calling thread in ``rerank_batch``
-        (JevRerankClient precedent; TokenUsageTracker is not thread-safe).
+        (JevRerankClient precedent; the tracker's RLock makes concurrent updates
+        safe, but one aggregation per batch keeps the usage record atomic).
         """
         body = {
             "model": self.model_name,
@@ -223,11 +250,17 @@ class LlmScoreRerankClient(RerankBase):
                 logger.warning(
                     "[LlmScoreRerank] Unparseable or out-of-range score content=%r", content
                 )
-                return _DocScore(failure="parse")
+                # The call already happened and was billed: keep the usage so the
+                # cost metrics account for parse failures too.
+                return _DocScore(failure="parse", usage=usage_info)
             return _DocScore(score=score / 100.0, usage=usage_info)
         except Exception as e:
             logger.error("[LlmScoreRerank] Score failed: %s", e)
             return _DocScore(failure="exception")
+
+    def _retry_after_exceeds_batch_window(self, response: httpx.Response) -> bool:
+        """True when honoring Retry-After could never return inside the batch cut."""
+        return self.batch_timeout > 0 and _retry_after_seconds(response) > self.batch_timeout
 
     def _post_with_retry(self, body: dict) -> tuple[Optional[httpx.Response], Optional[str]]:
         """POST with bounded retry on transient errors (429/5xx/transport).
@@ -247,6 +280,17 @@ class LlmScoreRerankClient(RerankBase):
             except httpx.HTTPStatusError as e:
                 status = e.response.status_code
                 if _should_retry(self.max_retries, attempt, status):
+                    if self._retry_after_exceeds_batch_window(e.response):
+                        # The server asks for longer than the batch cut allows: the
+                        # retry could never return before the caller gives up, so
+                        # spend no attempt on a guaranteed-second 429.
+                        logger.error(
+                            "[LlmScoreRerank] Retry-After exceeds batch_timeout=%.1fs; "
+                            "not retrying HTTP %s",
+                            self.batch_timeout,
+                            status,
+                        )
+                        return None, _failure_kind(status)
                     self._sleep_before_retry(attempt, e.response)
                     continue
                 logger.error(
@@ -271,18 +315,13 @@ class LlmScoreRerankClient(RerankBase):
         makes them retry in lockstep and re-trigger the limiter. Equal jitter keeps
         half the computed delay as a floor, so the retry still backs off.
         """
-        retry_after = 0.0
-        if response is not None:
-            try:
-                retry_after = min(float(response.headers.get("retry-after", 0) or 0), 10.0)
-            except (TypeError, ValueError):
-                retry_after = 0.0
         computed = self.retry_backoff_seconds * (2**attempt)
         # Equal jitter: keep half of our own backoff as a floor and randomize the
         # rest, so workers that failed together do not retry together.
         delay = computed / 2 + random.uniform(0, computed / 2)
-        # A server-provided Retry-After is a floor and is never undercut by jitter.
-        delay = max(delay, retry_after)
+        # A server-provided Retry-After is a floor and is never undercut by jitter;
+        # values beyond _RETRY_AFTER_CAP are truncated to bound the wait.
+        delay = max(delay, min(_retry_after_seconds(response), _RETRY_AFTER_CAP))
         if delay > 0:
             time.sleep(delay)
 
@@ -327,6 +366,10 @@ class LlmScoreRerankClient(RerankBase):
             if result.failure is not None:
                 failed += 1
                 failures.append(result.failure)
+                # A parse failure still burned real tokens; keep its usage so the
+                # cost metrics account for every document that reached the API.
+                if result.usage is not None:
+                    usages.append(result.usage)
                 # NaN, not 0.0: "no score" must not be indistinguishable from
                 # "scored 0". The retriever maps a non-finite score back to the
                 # document's vector score, so a transient 429 cannot sink a
@@ -349,16 +392,18 @@ class LlmScoreRerankClient(RerankBase):
                 _dominant_failure(failures),
                 scope="all" if failed == len(documents) else "partial",
             )
-
-        if failed == len(documents):
-            logger.error(
-                "[LlmScoreRerank] All %s documents failed; falling back to vector scores",
-                len(documents),
-            )
-            return None
+            if failed < len(documents):
+                # Partial-batch NaN docs fall back to vector scores on the caller
+                # side, mixing score scales within one batch; count them so that
+                # quality effect is observable instead of invisible.
+                try:
+                    get_current_telemetry().count("rerank.partial_fallback_docs", failed)
+                except Exception:  # metrics must never break rerank execution
+                    pass
 
         if usages:
-            # One token-usage update per batch, on the calling thread.
+            # One token-usage update per batch, on the calling thread, before the
+            # all-failed early return: failed documents were billed too.
             # duration is batch wall-clock, not the sum of parallel sub-calls.
             self.update_token_usage(
                 model_name=usages[0]["model_name"],
@@ -367,6 +412,13 @@ class LlmScoreRerankClient(RerankBase):
                 completion_tokens=sum(u["completion_tokens"] for u in usages),
                 duration_seconds=time.monotonic() - batch_started,
             )
+
+        if failed == len(documents):
+            logger.error(
+                "[LlmScoreRerank] All %s documents failed; falling back to vector scores",
+                len(documents),
+            )
+            return None
 
         logger.debug("[LlmScoreRerank] Reranked %s documents (failed=%s)", len(documents), failed)
         return scores
@@ -398,14 +450,23 @@ class LlmScoreRerankClient(RerankBase):
                 "models.",
                 config.model,
             )
+        # Clamp the read phase to the batch cut: an orphaned batch (the caller's
+        # wait_for fired but the worker keeps running) must die near the batch
+        # cut, not at the full HTTP timeout. +2s slack keeps the documented
+        # "batch cut wins over the transport" promise strict. batch_timeout=0
+        # (cut disabled) leaves the user's timeout untouched.
+        effective_timeout = config.timeout
+        if config.batch_timeout > 0:
+            effective_timeout = min(config.timeout, config.batch_timeout + 2.0)
         return cls(
             api_key=config.api_key,
             api_base=config.api_base,
             model_name=config.model,
-            timeout=config.timeout,
+            timeout=effective_timeout,
             concurrency=config.concurrency,
             thinking_disabled=config.thinking_disabled,
             log_payloads=config.log_payloads,
             max_retries=config.max_retries,
             retry_backoff_seconds=config.retry_backoff_seconds,
+            batch_timeout=config.batch_timeout,
         )

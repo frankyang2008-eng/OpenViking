@@ -59,6 +59,12 @@ class RerankBase:
             List of relevance scores (0.0-1.0) aligned with ``documents``, or
             None when reranking is entirely unavailable so callers can fall
             back to vector similarity scores.
+
+            Failure channels (two, not one): a provider may also emit
+            ``float("nan")`` entries for individual failed documents — the
+            retriever maps each NaN back to that document's vector score, so a
+            per-doc failure must not sink it to the bottom. ``None`` is the
+            whole-batch-unavailable channel.
         """
         raise NotImplementedError("rerank subclasses must implement rerank_batch")
 

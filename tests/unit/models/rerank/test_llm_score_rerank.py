@@ -442,6 +442,15 @@ class TestScoreParsing:
             ("1234", None),
             ("90-100", None),  # rubric range echo — reject
             ("1,000", None),  # thousands separator — reject
+            ("85—90", None),  # em-dash range — must not take the upper bound
+            ("85～90", None),  # full-width tilde range
+            ("85〜90", None),  # CJK wave dash range
+            ("85~90", None),  # ASCII tilde range
+            ("1 0 0", None),  # gap digits must not fake a trailing 0
+            ("10 0", None),  # gap digits (2-digit head)
+            ("相关性：85", 85),  # full-width colon label is tolerated
+            ("Score: 85", 85),  # ASCII colon label is tolerated
+            ('{"score":85}', None),  # JSON tail is not a score
             ("", None),
             ("满分", None),
             ("None", None),  # str(None) from a null content field
@@ -463,13 +472,87 @@ class TestScoreParsing:
         assert client.rerank_batch("q", ["a", "b"]) == [0.85, 0.5]
 
 
+class TestFailureUsage:
+    """Failed documents still consumed real tokens — usage must not vanish."""
+
+    @staticmethod
+    def _chat_response(content: str, prompt_tokens: int) -> MagicMock:
+        response = _mock_chat_response(content)
+        response.json.return_value["usage"] = {
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": 2,
+            "total_tokens": prompt_tokens + 2,
+        }
+        return response
+
+    @patch("openviking.models.rerank.llm_score_rerank.httpx.Client")
+    def test_parse_failure_usage_is_reported(self, mock_client_class):
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+        mock_client.post.side_effect = [
+            self._chat_response("满分", 120),  # unparseable -> NaN, tokens still burned
+            self._chat_response("85", 30),
+        ]
+        client = LlmScoreRerankClient(
+            api_key="k", api_base="https://x/v3", model_name="m", concurrency=1
+        )
+        with patch.object(client, "update_token_usage") as mock_update:
+            scores = client.rerank_batch("q", ["bad", "good"])
+
+        assert scores is not None and len(scores) == 2
+        assert scores[1] == 0.85
+        assert math.isnan(scores[0])
+        mock_update.assert_called_once()
+        assert mock_update.call_args.kwargs["prompt_tokens"] == 150  # 120 + 30
+
+    @patch("openviking.models.rerank.llm_score_rerank.httpx.Client")
+    def test_all_failed_batch_reports_usage(self, mock_client_class):
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+        mock_client.post.side_effect = [
+            self._chat_response("满分", 120),
+            self._chat_response("满分", 120),
+        ]
+        client = LlmScoreRerankClient(
+            api_key="k", api_base="https://x/v3", model_name="m", concurrency=1
+        )
+        with patch.object(client, "update_token_usage") as mock_update:
+            assert client.rerank_batch("q", ["a", "b"]) is None
+
+        mock_update.assert_called_once()
+        assert mock_update.call_args.kwargs["prompt_tokens"] == 240
+
+    @patch("openviking.models.rerank.llm_score_rerank.httpx.Client")
+    def test_partial_batch_counts_fallback_docs(self, mock_client_class):
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+        mock_client.post.side_effect = [
+            self._chat_response("满分", 120),
+            self._chat_response("85", 30),
+        ]
+        client = LlmScoreRerankClient(
+            api_key="k", api_base="https://x/v3", model_name="m", concurrency=1
+        )
+        telemetry = MagicMock()
+        with (
+            patch.object(client, "update_token_usage"),
+            patch(
+                "openviking.models.rerank.llm_score_rerank.get_current_telemetry",
+                return_value=telemetry,
+            ),
+        ):
+            client.rerank_batch("q", ["bad", "good"])
+
+        telemetry.count.assert_called_once_with("rerank.partial_fallback_docs", 1)
+
+
 class TestRetry:
     """Retryable errors (429/5xx/transport) retry within the client; 4xx does not."""
 
     @staticmethod
-    def _http_error(status: int) -> httpx.HTTPStatusError:
+    def _http_error(status: int, retry_after: str = "0") -> httpx.HTTPStatusError:
         req = httpx.Request("POST", "https://x/v3/chat/completions")
-        resp = httpx.Response(status, request=req, headers={"Retry-After": "0"})
+        resp = httpx.Response(status, request=req, headers={"Retry-After": retry_after})
         return httpx.HTTPStatusError("err", request=req, response=resp)
 
     @patch("openviking.models.rerank.llm_score_rerank.httpx.Client")
@@ -533,6 +616,60 @@ class TestRetry:
             client._sleep_before_retry(0, response)
 
         assert delays == [2.0]
+
+    @patch("openviking.models.rerank.llm_score_rerank.httpx.Client")
+    def test_retry_after_float_header_is_respected(self, mock_client_class):
+        """Float Retry-After headers (e.g. \"1.5\") parse and set the floor."""
+        client = LlmScoreRerankClient(
+            api_key="k", api_base="https://x/v3", model_name="m", retry_backoff_seconds=0.1
+        )
+        response = MagicMock()
+        response.headers = {"retry-after": "1.5"}
+        delays: list = []
+        with patch(
+            "openviking.models.rerank.llm_score_rerank.time.sleep", side_effect=delays.append
+        ):
+            client._sleep_before_retry(0, response)
+
+        assert delays == [1.5]
+
+    @patch("openviking.models.rerank.llm_score_rerank.httpx.Client")
+    def test_retry_after_over_batch_timeout_skips_retry(self, mock_client_class):
+        """A Retry-After the batch cut can never wait out is a terminal failure."""
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+        mock_client.post.side_effect = [self._http_error(429, retry_after="60")]
+        client = LlmScoreRerankClient(
+            api_key="k",
+            api_base="https://x/v3",
+            model_name="m",
+            concurrency=1,
+            max_retries=1,
+            retry_backoff_seconds=0,
+            batch_timeout=8.0,
+        )
+        assert client.rerank_batch("q", ["a"]) is None
+        assert mock_client.post.call_count == 1  # retrying could never return in time
+
+    @patch("openviking.models.rerank.llm_score_rerank.httpx.Client")
+    def test_retry_after_under_batch_timeout_still_retries(self, mock_client_class):
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+        mock_client.post.side_effect = [
+            self._http_error(429, retry_after="1"),
+            _mock_chat_response("85"),
+        ]
+        client = LlmScoreRerankClient(
+            api_key="k",
+            api_base="https://x/v3",
+            model_name="m",
+            concurrency=1,
+            max_retries=1,
+            retry_backoff_seconds=0,
+            batch_timeout=8.0,
+        )
+        assert client.rerank_batch("q", ["a"]) == [0.85]
+        assert mock_client.post.call_count == 2
 
     @patch("openviking.models.rerank.llm_score_rerank.httpx.Client")
     def test_client_error_not_retried(self, mock_client_class):
@@ -629,3 +766,43 @@ class TestFromConfigGuardrails:
         assert client is not None
         assert client.max_retries == 3
         assert client.retry_backoff_seconds == 0.1
+
+    def test_read_timeout_clamped_to_batch_timeout(self):
+        """Orphan batches must die near the batch cut, not at the full HTTP timeout."""
+        config = RerankConfig(
+            provider="llm_score",
+            api_key="k",
+            api_base="https://x",
+            model="m",
+            timeout=30.0,
+            batch_timeout=8.0,
+        )
+        client = LlmScoreRerankClient.from_config(config)
+        assert client is not None
+        assert client._client.timeout.read == 10.0  # batch_timeout + 2 slack
+
+    def test_read_timeout_untouched_when_batch_timeout_disabled(self):
+        config = RerankConfig(
+            provider="llm_score",
+            api_key="k",
+            api_base="https://x",
+            model="m",
+            timeout=30.0,
+            batch_timeout=0.0,
+        )
+        client = LlmScoreRerankClient.from_config(config)
+        assert client is not None
+        assert client._client.timeout.read == 30.0
+
+    def test_read_timeout_kept_when_already_below_clamp(self):
+        config = RerankConfig(
+            provider="llm_score",
+            api_key="k",
+            api_base="https://x",
+            model="m",
+            timeout=5.0,
+            batch_timeout=8.0,
+        )
+        client = LlmScoreRerankClient.from_config(config)
+        assert client is not None
+        assert client._client.timeout.read == 5.0

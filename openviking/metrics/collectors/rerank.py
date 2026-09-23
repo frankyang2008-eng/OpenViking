@@ -23,6 +23,22 @@ from openviking.metrics.core.base import MetricCollector
 from .base import EventMetricCollector
 
 
+def _to_int(value) -> int:
+    """Best-effort int coercion for metric payloads; garbage counts as 0."""
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _to_float(value) -> float:
+    """Best-effort float coercion for metric payloads; garbage counts as 0.0."""
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return 0.0
+
+
 @dataclass
 class RerankCollector(EventMetricCollector):
     """
@@ -35,6 +51,9 @@ class RerankCollector(EventMetricCollector):
     DOMAIN: ClassVar[str] = "rerank"
     # rule: <METRICS_NAMESPACE>_<DOMAIN>_calls_total
     # e.g.: openviking_rerank_calls_total
+    # One increment per rerank BATCH, not per provider API call: llm_score fans a
+    # single batch out to one API call per document inside it, so this series
+    # counts batches while the token counters count document-level usage.
     CALLS_TOTAL: ClassVar[str] = MetricCollector.metric_name(DOMAIN, "calls", unit="total")
     # rule: <METRICS_NAMESPACE>_<DOMAIN>_call_duration_seconds
     # e.g.: openviking_rerank_call_duration_seconds
@@ -80,9 +99,9 @@ class RerankCollector(EventMetricCollector):
             registry,
             provider=str(payload["provider"]),
             model_name=str(payload["model_name"]),
-            duration_seconds=float(payload["duration_seconds"]),
-            prompt_tokens=int(payload["prompt_tokens"]),
-            completion_tokens=int(payload["completion_tokens"]),
+            duration_seconds=_to_float(payload.get("duration_seconds")),
+            prompt_tokens=_to_int(payload.get("prompt_tokens")),
+            completion_tokens=_to_int(payload.get("completion_tokens")),
             account_id=(
                 None if payload.get("account_id") is None else str(payload.get("account_id"))
             ),
@@ -99,8 +118,15 @@ class RerankCollector(EventMetricCollector):
         completion_tokens: int,
         account_id: str | None = None,
     ) -> None:
-        """Record one rerank call as calls/tokens counters plus a latency histogram sample."""
+        """Record one rerank batch: calls/tokens counters plus a latency histogram sample.
+
+        The calls counter increments once per batch. For llm_score one batch fans
+        out to one provider API call per document, so ``calls`` is a batch count,
+        while the token counters accumulate document-level usage.
+        """
         labels = {"provider": str(provider), "model_name": str(model_name)}
+        prompt_tokens = _to_int(prompt_tokens)
+        completion_tokens = _to_int(completion_tokens)
         registry.inc_counter(
             self.CALLS_TOTAL,
             labels=labels,
@@ -109,28 +135,28 @@ class RerankCollector(EventMetricCollector):
         )
         registry.observe_histogram(
             self.CALL_DURATION_SECONDS,
-            float(duration_seconds),
+            _to_float(duration_seconds),
             labels=labels,
             label_names=("provider", "model_name"),
             account_id=account_id,
         )
-        if int(prompt_tokens) > 0:
+        if prompt_tokens > 0:
             registry.inc_counter(
                 self.TOKENS_INPUT_TOTAL,
                 labels=labels,
                 label_names=("provider", "model_name"),
-                amount=int(prompt_tokens),
+                amount=prompt_tokens,
                 account_id=account_id,
             )
-        if int(completion_tokens) > 0:
+        if completion_tokens > 0:
             registry.inc_counter(
                 self.TOKENS_OUTPUT_TOTAL,
                 labels=labels,
                 label_names=("provider", "model_name"),
-                amount=int(completion_tokens),
+                amount=completion_tokens,
                 account_id=account_id,
             )
-        total_tokens = int(prompt_tokens) + int(completion_tokens)
+        total_tokens = prompt_tokens + completion_tokens
         if total_tokens > 0:
             registry.inc_counter(
                 self.TOKENS_TOTAL,

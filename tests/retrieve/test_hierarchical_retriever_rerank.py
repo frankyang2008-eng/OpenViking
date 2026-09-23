@@ -606,6 +606,119 @@ async def test_round_rerank_batches_run_in_parallel(monkeypatch):
     assert result.matched_contexts
 
 
+@pytest.mark.asyncio
+async def test_budget_exhausted_still_returns_memo_hits():
+    """Zero-cost memo hits survive budget exhaustion; only provider work is skipped."""
+
+    class CountingClient:
+        def __init__(self):
+            self.calls = 0
+
+        def rerank_batch(self, query: str, documents: list[str]):
+            self.calls += 1
+            time.sleep(0.05)
+            return [0.9 for _ in documents]
+
+    client = CountingClient()
+    retriever = HierarchicalRetriever(
+        storage=DummyStorage(),
+        embedder=DummyEmbedder(),
+        rerank_config=RerankConfig(ak="ak", sk="sk", total_budget=0.01),
+        rerank_client=client,
+    )
+    budget = RerankBudget(0.01)
+    memo: dict = {}
+
+    first = await retriever._rerank_scores_timed("q", ["a"], [0.1], budget, memo)
+    assert client.calls == 1
+    assert first == [0.9]
+
+    second = await retriever._rerank_scores_timed("q", ["a"], [0.1], budget, memo)
+    assert client.calls == 1  # served from memo, no new provider call
+    assert second == [0.9]  # memo hit, not the vector fallback 0.1
+
+
+@pytest.mark.asyncio
+async def test_batch_timeout_includes_executor_queue_wait():
+    """The batch cut covers queueing behind a busy executor, not just execution."""
+    executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="ov-rerank-test")
+
+    class SlowClient:
+        def rerank_batch(self, query: str, documents: list[str]):
+            time.sleep(0.3)
+            return [0.9 for _ in documents]
+
+    retriever = HierarchicalRetriever(
+        storage=DummyStorage(),
+        embedder=DummyEmbedder(),
+        rerank_config=RerankConfig(ak="ak", sk="sk", batch_timeout=0.05),
+        rerank_client=SlowClient(),
+        rerank_executor=executor,
+    )
+    try:
+        executor.submit(time.sleep, 0.3)  # occupy the single worker
+        started = time.monotonic()
+        scores = await retriever._rerank_scores("q", ["a"], [0.42])
+        elapsed = time.monotonic() - started
+    finally:
+        executor.shutdown(wait=True)
+
+    assert scores == [0.42]  # queued behind the blocker -> cut -> vector fallback
+    assert elapsed < 0.25
+
+
+@pytest.mark.asyncio
+async def test_round_gather_charges_budget_once(monkeypatch):
+    """A parallel round charges the budget once for the whole gather, never per batch."""
+
+    class TwoDirRoundStorage(DummyStorage):
+        async def search_in_tenant(self, ctx, **kwargs):
+            return [
+                _result("viking://resources/root-a", 0.2, level=1, abstract="root A"),
+                _result("viking://resources/root-b", 0.8, level=1, abstract="root B"),
+            ]
+
+        async def search_children_in_tenant(self, ctx, parent_uri, **kwargs):
+            if parent_uri not in ("viking://resources/root-a", "viking://resources/root-b"):
+                return []
+            return [
+                _result(f"{parent_uri}/file-a", 0.2, abstract=f"{parent_uri} child A"),
+                _result(f"{parent_uri}/file-b", 0.8, abstract=f"{parent_uri} child B"),
+            ]
+
+    class RoundSleepClient:
+        def rerank_batch(self, query: str, documents: list[str]):
+            # Round batches carry the child marker; the directory pass does not.
+            if "child" in documents[0]:
+                time.sleep(0.2)
+            return [0.5 for _ in documents]
+
+    adds: list[float] = []
+    original_add = RerankBudget.add
+
+    def recording_add(self, seconds: float) -> None:
+        adds.append(seconds)
+        original_add(self, seconds)
+
+    monkeypatch.setattr(RerankBudget, "add", recording_add)
+    monkeypatch.setattr(
+        "openviking.retrieve.hierarchical_retriever.RerankClient.from_config",
+        lambda config: RoundSleepClient(),
+    )
+    retriever = HierarchicalRetriever(
+        storage=TwoDirRoundStorage(),
+        embedder=DummyEmbedder(),
+        rerank_config=_config(),
+    )
+
+    result = await retriever.retrieve(_query(), ctx=_ctx(), limit=2, mode=RetrieverMode.THINKING)
+
+    assert result.matched_contexts
+    assert len(adds) >= 2  # directory pass + the parallel round
+    # One charge ~= the 0.2s round wall clock; per-batch charging would sum to ~0.4.
+    assert sum(adds) < 0.3
+
+
 def test_viking_fs_stores_injected_rerank_runtime():
     """VikingFS carries the shared client/executor down to the retriever."""
     from unittest.mock import MagicMock
