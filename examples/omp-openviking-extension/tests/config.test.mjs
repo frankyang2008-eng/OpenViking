@@ -19,6 +19,8 @@ async function withConfigFile(body, fn, env = {}) {
     OPENVIKING_CREDENTIAL_SOURCE: process.env.OPENVIKING_CREDENTIAL_SOURCE,
     OPENVIKING_CLI_CONFIG_FILE: process.env.OPENVIKING_CLI_CONFIG_FILE,
     OPENVIKING_CONFIG_FILE: process.env.OPENVIKING_CONFIG_FILE,
+    OPENVIKING_SKILL_CATALOG: process.env.OPENVIKING_SKILL_CATALOG,
+    OPENVIKING_SKILL_CATALOG_TOKEN_BUDGET: process.env.OPENVIKING_SKILL_CATALOG_TOKEN_BUDGET,
   };
   process.env.OPENVIKING_CREDENTIAL_SOURCE = "env";
   process.env.OPENVIKING_URL = "http://127.0.0.1:1933";
@@ -142,4 +144,42 @@ test("loadConfig keeps explicit peer and actor recall scope", async () => {
     assert.equal(cfg.workspacePeer, false);
     assert.equal(cfg.recallPeerScope, "actor");
   }, { OPENVIKING_PEER_ID: "explicit-peer" });
+});
+
+// The resolved config is the only thing that turns the catalog on: index.ts
+// hands it to buildProfileBlock, and without the knob the session block loses
+// <available-skills> entirely.
+test("loadConfig enables the skill catalog the session block reads", async () => {
+  await withConfigFile({}, async (cfg) => {
+    assert.equal(cfg.skillCatalog, true);
+    assert.equal(cfg.skillCatalogTokenBudget, 1200);
+
+    const { buildProfileBlock } = await import("../shared/profile-inject.mjs");
+    const fetchJSON = async (path) => {
+      if (path.startsWith("/api/v1/skills")) {
+        return {
+          ok: true,
+          result: {
+            skills: [{
+              name: "pr-review",
+              uri: "viking://user/default/skills/pr-review",
+              description: "Review checklist",
+            }],
+          },
+        };
+      }
+      if (path === "/api/v1/system/status") return { ok: true, result: { user: "default" } };
+      if (path.startsWith("/api/v1/content/read")) return { ok: false, status: 404 };
+      return { ok: true, result: [] };
+    };
+
+    const profile = await buildProfileBlock(fetchJSON, cfg.profileTokenBudget, cfg.peerId, cfg);
+    assert.match(profile.block, /<available-skills>/);
+    assert.match(profile.block, /pr-review/);
+  });
+
+  await withConfigFile({ skillCatalog: false }, (cfg) => assert.equal(cfg.skillCatalog, false));
+  await withConfigFile({}, (cfg) => assert.equal(cfg.skillCatalog, false), {
+    OPENVIKING_SKILL_CATALOG: "0",
+  });
 });

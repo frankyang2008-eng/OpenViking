@@ -35,6 +35,8 @@ export interface OVConfig {
   scoreThreshold: number;
   minQueryLength: number;
   profileTokenBudget: number;
+  skillCatalog: boolean;
+  skillCatalogTokenBudget: number;
   resumeContextBudget: number;
   commitTokenThreshold: number;
   commitKeepRecentCount: number;
@@ -79,6 +81,10 @@ const DEFAULT_CONFIG: OVConfig = {
   scoreThreshold: 0.35,
   minQueryLength: 3,
   profileTokenBudget: 10000,
+  // The catalog costs one extra GET /skills at session start, and the session
+  // block is the only place the agent learns the account's skills exist.
+  skillCatalog: true,
+  skillCatalogTokenBudget: 1200,
   resumeContextBudget: 32000,
   commitTokenThreshold: 20000,
   commitKeepRecentCount: 10,
@@ -160,6 +166,12 @@ export function loadConfig(extensionDir: string): OVConfig {
   if (process.env.OPENVIKING_RECALL_LEDGER !== undefined) {
     config.recallLedger = envBool(process.env.OPENVIKING_RECALL_LEDGER, config.recallLedger);
   }
+  if (process.env.OPENVIKING_SKILL_CATALOG !== undefined) {
+    config.skillCatalog = envBool(process.env.OPENVIKING_SKILL_CATALOG, config.skillCatalog);
+  }
+  if (process.env.OPENVIKING_SKILL_CATALOG_TOKEN_BUDGET) {
+    config.skillCatalogTokenBudget = Number(process.env.OPENVIKING_SKILL_CATALOG_TOKEN_BUDGET);
+  }
 
   config.recallLimit = clampInt(config.recallLimit, 1, 50, DEFAULT_CONFIG.recallLimit);
   config.recallMaxContentChars = clampInt(config.recallMaxContentChars, 100, 5000, DEFAULT_CONFIG.recallMaxContentChars);
@@ -167,6 +179,7 @@ export function loadConfig(extensionDir: string): OVConfig {
   config.scoreThreshold = clampNumber(config.scoreThreshold, 0, 1, DEFAULT_CONFIG.scoreThreshold);
   config.minQueryLength = clampInt(config.minQueryLength, 1, 64, DEFAULT_CONFIG.minQueryLength);
   config.profileTokenBudget = clampInt(config.profileTokenBudget, 500, 50000, DEFAULT_CONFIG.profileTokenBudget);
+  config.skillCatalogTokenBudget = clampInt(config.skillCatalogTokenBudget, 0, 20000, DEFAULT_CONFIG.skillCatalogTokenBudget);
   config.resumeContextBudget = clampInt(config.resumeContextBudget, 1024, 128000, DEFAULT_CONFIG.resumeContextBudget);
   config.commitTokenThreshold = clampInt(config.commitTokenThreshold, 1000, 1000000, DEFAULT_CONFIG.commitTokenThreshold);
   config.commitKeepRecentCount = clampInt(config.commitKeepRecentCount, 0, 1000, DEFAULT_CONFIG.commitKeepRecentCount);
@@ -182,6 +195,7 @@ export function loadConfig(extensionDir: string): OVConfig {
   config.recallPeerScope = config.recallPeerScope === "actor" ? "actor" : "all";
   config.recallQueryExpansion = config.recallQueryExpansion === "off" ? "off" : "auto";
   config.recallLedger = config.recallLedger !== false;
+  config.skillCatalog = config.skillCatalog !== false;
   if (!Array.isArray(config.bypassPatterns)) config.bypassPatterns = [];
   config.peerId = resolveEffectivePeerId({ cfg: config as any, cwd: process.cwd() }).peerId;
   return config;
