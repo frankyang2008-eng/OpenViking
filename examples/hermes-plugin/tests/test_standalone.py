@@ -24,6 +24,63 @@ def test_external_discovery_preserves_profile_config_and_relative_setup(external
     assert (home_a / "config.yaml").read_bytes() == before
 
 
+@pytest.mark.parametrize("target", ["memory", "user"])
+def test_external_native_memory_lifecycle_survives_restart(external_provider, target):
+    from agent.memory_manager import MemoryManager
+
+    files, requests = {}, []
+
+    class Client:
+        _endpoint, _api_key, _account, _user, _agent = "http://test", "", "test", "alice", ""
+
+        def get(self, path, **kwargs):
+            return {"result": {"user": self._user}}
+
+        def post(self, path, payload):
+            requests.append(("write", dict(payload)))
+            files[payload["uri"]] = payload["content"]
+            return {"result": {"uri": payload["uri"]}}
+
+        def delete(self, path, *, params):
+            requests.append(("delete", dict(params)))
+            del files[params["uri"]]
+            return {"result": {"uri": params["uri"]}}
+
+    client = Client()
+    operations = [
+        {"action": "add", "new_text": "Preferred shell is zsh"},
+        {"action": "replace", "old_text": "zsh", "new_text": "Preferred shell is fish"},
+        {"action": "remove", "old_text": "fish"},
+    ]
+    uri = None
+    for index, operation in enumerate(operations):
+        home, provider, _, _ = external_provider("mirror-restart")
+        provider._hermes_home = str(home)
+        provider._ensure_client = provider._new_client = lambda: client
+        manager = MemoryManager()
+        manager.add_provider(provider)
+        result = {"success": True}
+        if index == 1:
+            result["replaced_entries"] = {1: "Preferred shell is zsh"}
+        elif index == 2:
+            result["removed_entries"] = {1: "Preferred shell is fish"}
+        manager.notify_memory_tool_write(result, {"target": target, "operations": [operation]})
+        provider.shutdown()
+        registry = json.loads((home / "openviking/memory_mirror_registry.json").read_text())
+        if index == 0:
+            uri = next(iter(files))
+            assert files == {uri: "Preferred shell is zsh"}
+        elif index == 1:
+            assert files == {uri: "Preferred shell is fish"}
+        else:
+            assert files == {}
+        assert [entry["uri"] for entry in registry["entries"]] == ([uri] if files else [])
+
+    assert [payload["uri"] for _, payload in requests] == [uri, uri, uri]
+    assert requests[1][1]["wait"] is True
+    assert requests[2][1] == {"uri": uri, "recursive": False, "wait": True}
+
+
 def test_external_provider_dispatches_search_over_http(external_provider):
     _, provider, module, _ = external_provider("search")
     requests = []
@@ -337,7 +394,8 @@ def test_external_provider_keeps_user_identity_across_reload(
         resume.set()
         worker.join(timeout=10)
         assert not worker.is_alive()
-        assert provider._join_all(lambda: list(provider._memory_write_threads), 10)
+        if operation == "mirror":
+            provider._native_memory_mirror.shutdown(timeout=10)
         block = provider.prefetch("", session_id="bob-session")
         assert "viking://user/bob/memories/profile.md" in block
         assert "viking://user/alice/" not in block

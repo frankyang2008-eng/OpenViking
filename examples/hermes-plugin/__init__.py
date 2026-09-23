@@ -69,6 +69,7 @@ _REMOTE_RESOURCE_PREFIXES = ("http://", "https://", "git@", "ssh://", "git://")
 _SYNC_TRACE_ENV = "HERMES_OPENVIKING_SYNC_TRACE"
 _RECALL_QUERY_MIN_CHARS = 5
 _RECALL_MIN_TIMEOUT_SECONDS = 0.05
+_DEFAULT_RECALL_REQUEST_TIMEOUT_SECONDS = 3.0
 _READ_BATCH_LIMIT = 3
 _READ_BATCH_FULL_LIMIT = 2500
 _LEVEL_ENDPOINTS = {"abstract": "/api/v1/content/abstract", "overview": "/api/v1/content/overview", "full": "/api/v1/content/read"}
@@ -105,7 +106,7 @@ _CONFIG_SCHEMA = [
     _cfg_field("recall_max_injected_chars", "Maximum total characters injected by recall", type="integer", minimum=100, maximum=50000, default=4000),
     _cfg_field("profile_token_budget", "Maximum session-start memory tokens injected", type="integer", minimum=500, maximum=50000, default=6000),
     _cfg_field("recall_timeout_seconds", "Total timeout for recall (seconds)", **_NUM, default=4.0),
-    _cfg_field("recall_request_timeout_seconds", "Per-request timeout for recall (seconds)", **_NUM, default=3.0),
+    _cfg_field("recall_request_timeout_seconds", "Per-request timeout for recall (seconds)", **_NUM, default=_DEFAULT_RECALL_REQUEST_TIMEOUT_SECONDS),
     _cfg_field("recall_full_read_limit", "Max full L2 content reads per recall", type="integer", minimum=0, maximum=100, default=2),
     _cfg_field("recall_prefer_abstract", "Use abstracts instead of full L2 reads", type="boolean", default=False),
     _cfg_field("recall_resources", "Include resources in recall", type="boolean", default=False),
@@ -1295,7 +1296,7 @@ class OpenVikingMemoryProvider(MemoryProvider):
         # _failed_refresh = (settings key, monotonic ts) of the last failure -> cooldown gate.
         self._session_state_lock = threading.RLock()
         (self._inflight_lock, self._deferred_commit_lock, self._committed_session_lock,
-         self._client_refresh_lock, self._runtime_start_lock, self._memory_write_lock,
+         self._client_refresh_lock, self._runtime_start_lock, self._native_memory_mirror_lock,
          self._writer_commit_lock) = (threading.Lock() for _ in range(7))
         # Writers keyed by the sid they POST under so a commit can drain all of them.
         # Guards the (_session_id, _turn_count) pair. sync_turn runs on the MemoryManager's background sync
@@ -1305,7 +1306,6 @@ class OpenVikingMemoryProvider(MemoryProvider):
         self._inflight_writers: Dict[str, Set[threading.Thread]] = {}
         self._deferred_commit_threads: Set[threading.Thread] = set()
         self._commit_scope: Optional[_CommitScope] = None
-        self._memory_write_threads: Set[threading.Thread] = set()
         self._profile_prefetched_sessions: Set[str] = set()
         self._conn_snapshot: Optional[tuple] = None
         self._failed_refresh: Optional[tuple] = None
@@ -1949,7 +1949,7 @@ class OpenVikingMemoryProvider(MemoryProvider):
         tail = cls._take_tokens("\n".join(lines[8:]), remaining - cls._token_units(head), from_end=True).lstrip()
         return f"{head}{marker}{tail}" if tail else _head_only()
 
-    def _user_space(self, client=None, *, timeout: Optional[float] = None) -> str:
+    def _user_space(self, client=None, *, timeout: Optional[float] = None, require_confirmed: bool = False) -> str:
         """Resolve the user space, caching only a confirmed connection identity.
 
         Use the client's snapshot even when a reload has replaced the active connection.
@@ -1964,6 +1964,11 @@ class OpenVikingMemoryProvider(MemoryProvider):
             if snapshot is not None:
                 self._user_space_cache = (snapshot, resolved)
             return resolved
+        if require_confirmed:
+            raise RuntimeError(
+                "OpenViking server did not confirm the current user identity; "
+                "leaving OpenViking unchanged"
+            )
         return str(getattr(active, "_user", "") or getattr(self, "_user", "") or "default").strip() or "default"
 
     @staticmethod
@@ -2690,7 +2695,14 @@ class OpenVikingMemoryProvider(MemoryProvider):
 
     # -- memory mirroring -----------------------------------------------------
 
-    def _build_memory_uri(self, subdir: str, *, client=None, timeout: Optional[float] = None) -> str:
+    def _build_memory_uri(
+        self,
+        subdir: str,
+        *,
+        client=None,
+        timeout: Optional[float] = None,
+        require_confirmed_user: bool = False,
+    ) -> str:
         """Explicit-uid user memory URI, under the configured peer when one is set.
 
         The peer is read from the captured client (not the provider) so a config
@@ -2702,11 +2714,27 @@ class OpenVikingMemoryProvider(MemoryProvider):
         active_client = client if client is not None else getattr(self, "_client", None)
         agent = str(getattr(active_client, "_agent", getattr(self, "_agent", "")) or "").strip()
         peer_prefix = f"peers/{agent}/" if agent else ""
-        return f"viking://user/{self._user_space(active_client, timeout=timeout)}/{peer_prefix}memories/{subdir}/mem_{uuid.uuid4().hex[:12]}.md"
+        identity_timeout = timeout
+        if require_confirmed_user and identity_timeout is None:
+            identity_timeout = _DEFAULT_RECALL_REQUEST_TIMEOUT_SECONDS
+        user_space = self._user_space(
+            active_client,
+            timeout=identity_timeout,
+            require_confirmed=require_confirmed_user,
+        )
+        return f"viking://user/{user_space}/{peer_prefix}memories/{subdir}/mem_{uuid.uuid4().hex[:12]}.md"
 
-    def on_memory_write(self, action: str, target: str, content: str, metadata: Optional[Dict[str, Any]] = None) -> None:
-        """Mirror successful built-in memory additions to OpenViking."""
-        if action != "add" or not content or not self._ensure_client():
+    def on_memory_write(
+        self,
+        action: str,
+        target: str,
+        content: str,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """Mirror successful built-in memory mutations to OpenViking."""
+        if action not in {"add", "replace", "remove"} or not self._ensure_client():
+            return
+        if action in {"add", "replace"} and not content:
             return
         subdir = _MEMORY_WRITE_TARGET_SUBDIR_MAP.get(target, "preferences")
         try:
@@ -2715,15 +2743,17 @@ class OpenVikingMemoryProvider(MemoryProvider):
             logger.debug("OpenViking memory mirror client creation failed: %s", e)
             return
 
-        def _write():
-            try:
-                uri = self._build_memory_uri(subdir, client=client, timeout=_RECALL_MIN_TIMEOUT_SECONDS)
-                client.post("/api/v1/content/write", {"uri": uri, "content": content, "mode": "create"})
-            except Exception as e:
-                logger.debug("OpenViking memory mirror failed: %s", e)
+        from .native_memory_mirror import enqueue_native_memory_write
 
-        self._spawn_tracked("openviking-memwrite", _write, self._memory_write_lock, lambda: self._memory_write_threads,
-                            skip_if=lambda: self._shutting_down)
+        enqueue_native_memory_write(
+            self,
+            action,
+            target,
+            content,
+            metadata=metadata,
+            subdir=subdir,
+            client=client,
+        )
 
     # -- tools ------------------------------------------------------------------
 
@@ -2746,10 +2776,12 @@ class OpenVikingMemoryProvider(MemoryProvider):
         # the autostart waiter (a daemon blocked on health probes would SIGABRT CPython at
         # Py_FinalizeEx); _shutting_down makes its wait loop bail so the join lands.
         self._shutting_down = True
+        from .native_memory_mirror import shutdown_native_memory_mirror
+
+        shutdown_native_memory_mirror(self, timeout=5.0)
         workers: List[threading.Thread] = []
         for lock, group in ((self._inflight_lock, lambda: [t for g in self._inflight_writers.values() for t in g]),
                             (self._deferred_commit_lock, lambda: list(self._deferred_commit_threads)),
-                            (self._memory_write_lock, lambda: list(self._memory_write_threads)),
                             (self._runtime_start_lock, lambda: [self._runtime_start_thread] if self._runtime_start_thread is not None else [])):
             with lock:
                 workers += group()
