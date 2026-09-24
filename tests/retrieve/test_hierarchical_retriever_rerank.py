@@ -265,6 +265,89 @@ def test_rerank_max_input_tokens_accepts_zero_or_at_least_128():
 
 
 @pytest.mark.asyncio
+async def test_rerank_used_reflects_real_scores_not_client_presence(monkeypatch):
+    """A failed rerank must not be reported as "rerank used".
+
+    The old signal was "a client exists and mode is THINKING", which stayed true when
+    every document failed: the metric then claimed rerank quality that never landed.
+    """
+    recorded = []
+
+    class _Recorder:
+        def record_query(self, *args, **kwargs):
+            recorded.append(kwargs)
+
+    monkeypatch.setattr(
+        "openviking.retrieve.hierarchical_retriever.get_stats_collector", lambda: _Recorder()
+    )
+
+    class FailingClient(FakeRerankClient):
+        def rerank_batch(self, query: str, documents: list[str]) -> list[float] | None:
+            self.calls.append((query, list(documents)))
+            return None  # provider-wide failure: the batch keeps vector scores
+
+    failing_client = FailingClient([])
+    monkeypatch.setattr(
+        "openviking.retrieve.hierarchical_retriever.RerankClient.from_config",
+        lambda config: failing_client,
+    )
+    failing_retriever = HierarchicalRetriever(
+        storage=DummyStorage(),
+        embedder=DummyEmbedder(),
+        rerank_config=_config(),
+    )
+
+    await failing_retriever.retrieve(_query(), ctx=_ctx(), limit=2, mode=RetrieverMode.THINKING)
+
+    assert failing_client.calls  # rerank was attempted, it just never scored
+    assert recorded[-1]["rerank_used"] is False
+
+    scoring_client = FakeRerankClient([0.95, 0.05, 0.11, 0.95])
+    monkeypatch.setattr(
+        "openviking.retrieve.hierarchical_retriever.RerankClient.from_config",
+        lambda config: scoring_client,
+    )
+    scoring_retriever = HierarchicalRetriever(
+        storage=DummyStorage(),
+        embedder=DummyEmbedder(),
+        rerank_config=_config(),
+    )
+
+    await scoring_retriever.retrieve(_query(), ctx=_ctx(), limit=2, mode=RetrieverMode.THINKING)
+
+    assert recorded[-1]["rerank_used"] is True
+
+
+@pytest.mark.asyncio
+async def test_quick_mode_is_never_reported_as_rerank_used(monkeypatch):
+    recorded = []
+
+    class _Recorder:
+        def record_query(self, *args, **kwargs):
+            recorded.append(kwargs)
+
+    monkeypatch.setattr(
+        "openviking.retrieve.hierarchical_retriever.get_stats_collector", lambda: _Recorder()
+    )
+    fake_client = FakeRerankClient([0.95, 0.05])
+    monkeypatch.setattr(
+        "openviking.retrieve.hierarchical_retriever.RerankClient.from_config",
+        lambda config: fake_client,
+    )
+
+    retriever = HierarchicalRetriever(
+        storage=DummyStorage(),
+        embedder=DummyEmbedder(),
+        rerank_config=_config(),
+    )
+
+    await retriever.retrieve(_query(), ctx=_ctx(), limit=2, mode=RetrieverMode.QUICK)
+
+    assert recorded[-1]["rerank_used"] is False
+    assert fake_client.calls == []
+
+
+@pytest.mark.asyncio
 async def test_retrieve_uses_rerank_scores_in_thinking_mode(monkeypatch):
     fake_client = FakeRerankClient([0.95, 0.05, 0.11, 0.95])
     monkeypatch.setattr(

@@ -430,7 +430,11 @@ After exploring, analyze the conversation and output ALL memory write/edit/delet
             return None
 
     async def search_files(
-        self, query: str, search_uris: List[str] = None, limit: int = 5
+        self,
+        query: str,
+        search_uris: Optional[List[str]] = None,
+        limit: int = 5,
+        consumer: str = "",
     ) -> List[str]:
         """Search via MemorySearchTool, returns list of URIs."""
         search_tool = get_tool("search")
@@ -442,6 +446,7 @@ After exploring, analyze the conversation and output ALL memory write/edit/delet
                 ctx=self.create_tool_context(search_uris or []),
                 query=query,
                 limit=limit,
+                consumer=consumer,
             )
             if isinstance(result, list):
                 return [m.get("uri", "") for m in result if m.get("uri")]
@@ -552,6 +557,7 @@ After exploring, analyze the conversation and output ALL memory write/edit/delet
             search_uris = await self.search_files(
                 query=search_query,
                 search_uris=dir_list,
+                consumer="prefetch",
             )
             result_value = search_uris
             if self._eager_prefetch:

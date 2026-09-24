@@ -11,6 +11,7 @@ from types import SimpleNamespace
 import pytest
 
 from openviking.models.embedder.base import DenseEmbedderBase, EmbedResult, embed_compat
+from openviking.models.rerank.base import RerankBase
 from openviking.models.vlm.base import VLMBase
 from openviking.observability.context import (
     bind_operation_observability_context,
@@ -191,6 +192,46 @@ def test_vlm_base_defaults_operation_tokens_to_vlm_stage():
         "output": 5,
         "total": 12,
     }
+
+
+def test_rerank_base_defaults_operation_tokens_to_rerank_stage():
+    class _DummyRerank(RerankBase):
+        def rerank_batch(self, query, documents):
+            return [1.0] * len(documents)
+
+    telemetry = MemoryOperationTelemetry(operation="search.search", enabled=True)
+    with bind_telemetry(telemetry):
+        _DummyRerank().update_token_usage(
+            model_name="doubao-seed-2.0-mini",
+            provider="llm_score",
+            prompt_tokens=17,
+            completion_tokens=3,
+        )
+
+    summary = telemetry.finish().summary
+    assert summary["tokens"]["stages"]["rerank"]["rerank"] == {"total": 20}
+
+
+def test_rerank_base_prefers_a_bound_consumer_stage():
+    """Internal consumers bind a label, so their rerank spend is attributable per consumer."""
+
+    class _DummyRerank(RerankBase):
+        def rerank_batch(self, query, documents):
+            return [1.0] * len(documents)
+
+    telemetry = MemoryOperationTelemetry(operation="session_commit_phase2", enabled=True)
+    with bind_telemetry(telemetry):
+        with bind_telemetry_stage("search_prefetch"):
+            _DummyRerank().update_token_usage(
+                model_name="doubao-seed-2.0-mini",
+                provider="llm_score",
+                prompt_tokens=11,
+                completion_tokens=1,
+            )
+
+    summary = telemetry.finish().summary
+    assert summary["tokens"]["stages"]["search_prefetch"]["rerank"] == {"total": 12}
+    assert "rerank" not in summary["tokens"]["stages"]
 
 
 def test_disabled_telemetry_still_has_request_id():

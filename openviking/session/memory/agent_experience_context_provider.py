@@ -178,6 +178,7 @@ All memory content must be written in {output_language}.
                 query=self.trajectory_summary[:500] or "experience",
                 search_uris=[experience_dir],
                 limit=SEARCH_TOP_K,
+                consumer="experience",
             )
 
             if not candidate_uris:

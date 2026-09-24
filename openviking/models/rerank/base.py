@@ -104,13 +104,17 @@ class RerankBase:
             completion_tokens=completion_tokens,
         )
         try:
-            from openviking.telemetry import get_current_telemetry
+            from openviking.telemetry import get_current_telemetry, get_current_telemetry_stage
 
+            # A bound stage wins over the generic "rerank" bucket: the internal consumers
+            # of rerank (memory extraction) bind their own label, so their rerank spend is
+            # attributable per consumer instead of landing in one undifferentiated pile.
+            # Without a binding this stays the historical "rerank" stage.
             get_current_telemetry().record_token_usage(
                 "rerank",
                 int(prompt_tokens),
                 int(completion_tokens),
-                stage="rerank",
+                stage=get_current_telemetry_stage() or "rerank",
             )
         except Exception as e:
             # Telemetry must never break rerank execution.

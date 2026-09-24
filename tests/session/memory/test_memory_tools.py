@@ -4,6 +4,8 @@
 Tests for memory tools.
 """
 
+from unittest.mock import patch
+
 import pytest
 
 from openviking.server.identity import RequestContext, Role, ToolContext
@@ -21,6 +23,75 @@ from openviking_cli.session.user_id import UserIdentifier
 
 class TestMemoryTools:
     """Tests for memory tools."""
+
+    @pytest.mark.asyncio
+    async def test_search_tool_labels_consumer_and_logs_query(self):
+        """Step-1 instrumentation: per-consumer attribution plus a recoverable query text."""
+        from openviking.session.memory import tools as memory_tools
+        from openviking.telemetry import get_current_telemetry_stage
+
+        class MockSearchResult:
+            def to_dict(self):
+                return {"memories": []}
+
+        class MockVikingFS:
+            def __init__(self):
+                self.calls = []
+                self.stage_seen = "unset"
+
+            async def search(self, query, target_uri="", limit=10, ctx=None):
+                self.calls.append((query, limit))
+                self.stage_seen = get_current_telemetry_stage()
+                return MockSearchResult()
+
+        mock_fs = MockVikingFS()
+        tool_ctx = ToolContext(
+            viking_fs=mock_fs,
+            request_ctx=RequestContext(user=UserIdentifier.the_default_user(), role=Role.USER),
+            default_search_uris=["viking://user/default/memories"],
+        )
+
+        with patch.object(memory_tools.logger, "info") as log_info:
+            await MemorySearchTool().execute(
+                tool_ctx, query="重置密码", limit=5, consumer="patch_merge"
+            )
+
+        assert mock_fs.calls == [("重置密码", 15)]  # the limit + 10 over-fetch is preserved
+        assert mock_fs.stage_seen == "search_patch_merge"
+        # args = (format, consumer, target_uri, limit, query)
+        assert log_info.call_args.args[1] == "patch_merge"
+        assert log_info.call_args.args[4] == "重置密码"
+
+    @pytest.mark.asyncio
+    async def test_search_tool_defaults_to_the_react_label(self):
+        """A ReAct tool call carries no consumer, so it must still be attributable."""
+        from openviking.session.memory import tools as memory_tools
+        from openviking.telemetry import get_current_telemetry_stage
+
+        class MockSearchResult:
+            def to_dict(self):
+                return {"memories": []}
+
+        class MockVikingFS:
+            def __init__(self):
+                self.stage_seen = "unset"
+
+            async def search(self, query, target_uri="", limit=10, ctx=None):
+                self.stage_seen = get_current_telemetry_stage()
+                return MockSearchResult()
+
+        mock_fs = MockVikingFS()
+        tool_ctx = ToolContext(
+            viking_fs=mock_fs,
+            request_ctx=RequestContext(user=UserIdentifier.the_default_user(), role=Role.USER),
+            default_search_uris=["viking://user/default/memories"],
+        )
+
+        with patch.object(memory_tools.logger, "info") as log_info:
+            await MemorySearchTool().execute(tool_ctx, query="experience")
+
+        assert mock_fs.stage_seen == "search_react"
+        assert log_info.call_args.args[1] == "react"
 
     def test_read_tool_properties(self):
         """Test MemoryReadTool properties."""

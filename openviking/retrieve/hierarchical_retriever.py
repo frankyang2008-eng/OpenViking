@@ -404,7 +404,10 @@ class HierarchicalRetriever:
                 level=level,
             )
             apply_hotness = True
-            rerank_used = self._rerank_client is not None and mode == RetrieverMode.THINKING
+            # Truthful signal: "rerank ran" must mean at least one document actually came
+            # back with a provider score. Only real scores enter the memo, so an all-failed
+            # or budget-skipped batch reports False instead of inflating the metric.
+            rerank_used = bool(rerank_memo.scores)
 
         # Step 6: Convert results
         matched = await self._convert_to_matched_contexts(

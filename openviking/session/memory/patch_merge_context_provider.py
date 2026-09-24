@@ -216,7 +216,9 @@ canonical replacement; if it is only a duplicate new proposal, omit it.
         query = _build_patch_search_query(self.patches)
         if not query:
             return []
-        return await self.search_files(query=query, search_uris=search_dirs, limit=limit)
+        return await self.search_files(
+            query=query, search_uris=search_dirs, limit=limit, consumer="patch_merge"
+        )
 
     def _render_search_directories(self, schema: MemoryTypeSchema) -> list[str]:
         if self._isolation_handler:

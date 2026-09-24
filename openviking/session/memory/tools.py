@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 from openviking.session.memory.utils import add_line_numbers, line_count, slice_content_lines
 from openviking.session.memory.utils.memory_file_utils import MemoryFileUtils
-from openviking.telemetry import tracer
+from openviking.telemetry import bind_telemetry_stage, tracer
 from openviking.utils.token_estimation import estimate_text_tokens
 from openviking_cli.exceptions import NotFoundError
 from openviking_cli.utils import get_logger
@@ -300,13 +300,25 @@ class MemorySearchTool(MemoryTool):
                 target_uri = ctx.default_search_uris
             limit = kwargs.get("limit", 10)
             request_ctx = ctx.request_ctx if ctx else None
-            # 多搜索 10 个，过滤抽象文件后再截断
-            search_result = await ctx.viking_fs.search(
-                query,
-                target_uri=target_uri,
-                limit=limit + 10,
-                ctx=request_ctx,
+            # Internal callers name themselves (prefetch / experience / patch_merge), so
+            # their rerank spend is attributable per consumer and the query text stays
+            # recoverable for offline replay. A ReAct tool call arrives without a label.
+            consumer = str(kwargs.get("consumer") or "react")
+            logger.info(
+                "[MemorySearchTool] consumer=%s target_uri=%s limit=%s query=%s",
+                consumer,
+                target_uri,
+                limit,
+                str(query)[:200],
             )
+            # 多搜索 10 个，过滤抽象文件后再截断
+            with bind_telemetry_stage(f"search_{consumer}"):
+                search_result = await ctx.viking_fs.search(
+                    query,
+                    target_uri=target_uri,
+                    limit=limit + 10,
+                    ctx=request_ctx,
+                )
             return optimize_search_result(search_result.to_dict(), limit=limit)
         except Exception as e:
             tracer.error(f"Failed to execute search: {e}")
