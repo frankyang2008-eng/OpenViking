@@ -14,11 +14,11 @@ Long-term semantic memory and context takeover for [omp](https://github.com/can1
 
 - **omp (oh-my-pi) installed** (pi fork; extension auto-discovered from `~/.omp/agent/extensions/`)
 - **Node.js 18+** (for the extension's TypeScript runtime)
-- **An OpenViking server** reachable — local or remote
+- **An OpenViking server** reachable — local or remote — and **kept running**: the tools live behind the MCP proxy, so a stopped server means they are all missing
 
 ### 1. Have an OpenViking server reachable
 
-Either run one locally or point at a remote one. The [quickstart guide](../../docs/en/getting-started/02-quickstart.md) walks through both options. Default port is `1933`; local mode runs without authentication.
+Either run one locally or point at a remote one. The [quickstart guide](../../docs/en/getting-started/02-quickstart.md) walks through both options. Default port is `1933`; local mode runs without authentication. The server must stay running — the extension's tools are served through it, and omp shows a warning when it cannot be reached.
 
 Verify it's up:
 
@@ -35,6 +35,12 @@ bash examples/memory-plugin-shared/install.sh --harness omp
 ```
 
 The installer copies the extension to `~/.omp/agent/extensions/openviking` (profile-scoped installs land in `~/.omp/profiles/<profile>/agent/extensions/openviking`). The extension loads on next `omp` invocation.
+
+It also registers the tool server: an `openviking` entry is written into the `mcp.json` beside that directory, pointing at `servers/mcp-proxy.mjs`. No credentials go in that file — the proxy reads `ovcli.conf` / `ov.conf` when omp starts it. To undo both halves:
+
+```bash
+bash examples/memory-plugin-shared/install.sh --harness omp --uninstall
+```
 
 ### 3. Configure (optional)
 
@@ -89,13 +95,13 @@ API keys are sent as `Authorization: Bearer ...`. By default the extension deriv
 
 Recall defaults to the broad mode: global memory, the current workspace, and other workspace memories can all be recalled, with other workspaces penalized and rendered later. Set `OPENVIKING_RECALL_PEER_SCOPE=actor` for the isolation mode, which only sees global memory plus the current workspace. In deployments where one bot serves multiple real people, such as zouk, vikingbot, or AstrBot, use the isolation mode with an explicit actor peer so one person's memories are not recalled into another person's session.
 
-### 4. Start Pi
+### 4. Start omp
 
 ```bash
-pi
+omp
 ```
 
-The extension shows an `[OpenViking]` status line on startup. Tools (`viking_search`, `viking_remember`, etc.) are registered automatically. Memories persist across sessions — no additional setup.
+The extension shows an `[OpenViking]` status line on startup. Memories persist across sessions — no additional setup. The tools themselves belong to the MCP server the installer registered, not to the extension: omp starts `servers/mcp-proxy.mjs` from `mcp.json`, and the system-prompt line this extension adds is what tells the model those `mcp__openviking_*` names exist.
 
 ## Configuration Reference
 
@@ -182,26 +188,28 @@ recent live tail.
 |--------------------------|------------|--------------------------------------------------------------------------|
 | `bypassPatterns`         | `[]`       | Glob patterns to skip extension processing                               |
 | `logLevel`               | `"error"`  | `"silent"`, `"error"`, or `"info"`                                      |
+| `mcpEnabled`             | `true`     | Add the system-prompt line naming the MCP tools. Off hides the pointer only — the server still starts if `mcp.json` lists it |
 
 ## Architecture
 
 ```
 ┌──────────────────────────────────────────────────────┐
-│                    Pi Coding Agent                    │
+│                    omp (oh-my-pi)                    │
 │                                                      │
 │  session_start  before_agent_start  context  turn_end│
 │  session_before_compact  session_shutdown            │
 └────────┬──────────────────┬───────────┬──────────────┘
          │                  │           │
-         │  ┌───────────────▼───────────▼────────┐
-         │  │   extension modules (.ts)           │
-         │  │   client / sync / recall / tools    │──────►  OpenViking
-         │  └─────────────────────────────────────┘        Server
-         │                                                (HTTP API)
-         │  ┌──────────────────────────────────────┐
-         └──►  7 registered LLM tools              │
-            │  viking_search / viking_read / …     │
-            └──────────────────────────────────────┘
+         │  ┌───────────────▼───────────▼──────┐
+         │  │   extension modules (.ts)        │──────►  OpenViking
+         │  │   client / sync / recall /       │        Server
+         │  │   takeover / config              │        (HTTP API)
+         │  └──────────────────────────────────┘
+         │  ┌──────────────────────────────────┐
+         └──►   mcp__openviking_* tools        │
+            │   started by omp from mcp.json   │
+            └──────────────────────────────────┘
+└──────────────────────────────────────────────────────┘
 ```
 
 The extension is a single directory of TypeScript files loaded by pi's `jiti` transpiler — no build step, no npm dependencies, no MCP server. All communication goes over HTTP to the OpenViking REST API.
@@ -211,7 +219,7 @@ The extension is a single directory of TypeScript files loaded by pi's `jiti` tr
 | Pi Event               | Extension Action                                                                 |
 |------------------------|----------------------------------------------------------------------------------|
 | `session_start`        | Health check → derive OV session → build profile context → restore takeover state |
-| `before_agent_start`   | Idempotent startup for `pi -c` + queue the current prompt for recall              |
+| `before_agent_start`   | Idempotent startup for `omp -c` + queue the current prompt for recall             |
 | `context`              | Run current-prompt recall after UI rendering, then inject takeover and recall context |
 | `turn_end`             | Extract branch entries → write or pending-queue OV messages → maybe advance boundary |
 | `session_before_compact`| Takeover mode returns OV overview as pi compaction summary; otherwise commits pending messages |
@@ -240,17 +248,34 @@ Tool capture preserves structured tool parts with bounded inputs and outputs. Th
 
 ## LLM Tools
 
-The extension registers 7 tools that pi's model can invoke on demand:
+The extension registers no tools of its own. The server's catalogue reaches omp over MCP — as `mcp__openviking_*` — because omp starts the proxy named in `mcp.json`:
 
-| Tool                     | Description                                                |
-|--------------------------|------------------------------------------------------------|
-| `viking_search`          | Semantic search across memories, resources, and skills     |
-| `viking_read`            | Read a `viking://` URI at abstract / overview / full level |
-| `viking_browse`          | List directory contents or stat a `viking://` URI          |
-| `viking_remember`        | Store a fact or preference into long-term memory           |
-| `viking_forget`          | Delete a memory by URI or search query                     |
-| `viking_add_resource`    | Ingest a URL into OpenViking for indexed retrieval         |
-| `viking_archive_expand`  | Expand an archived session back into raw conversation      |
+| Tool | Description |
+|------|-------------|
+| `mcp__openviking_find` / `_search` | Semantic retrieval; `search` carries session context, `find` does not |
+| `mcp__openviking_read` / `_write` / `_edit` | Content by `viking://` URI, with the server owning the schemas |
+| `mcp__openviking_list` / `_tree` | Browse a directory, or a whole subtree at once |
+| `mcp__openviking_glob` / `_grep` | Find files by pattern; search file contents |
+| `mcp__openviking_remember` / `_forget` | Long-term memory: store a fact, delete by URI |
+| `mcp__openviking_add_resource` / `_add_skill` | Ingest a URL or document; install a skill |
+| `mcp__openviking_list_watches` / `_cancel_watch` | Auto-refresh subscriptions |
+| `mcp__openviking_health` | Server reachability |
+
+They load on demand rather than into every prompt. `read xd://` in a session lists what is available, and omp's `tools.xdevDocs` default (`"builtins"`) is why this extension adds one prompt line naming them. To pin a hot one to the top level, name it in `tools.xdevInlineDevices` in omp's settings — `"mcp__openviking_search"` — the same switch that works for any MCP tool.
+
+`viking://` URIs passed to omp's builtin `read`/`write`/`edit`/`grep`/`glob` are redirected to the matching MCP tool, and a call that fails while OV is down explains the guard.
+
+The old `viking_*` names are gone. Where each one went:
+
+| Was | Now |
+|-----|-----|
+| `viking_search` | `mcp__openviking_search` — or `mcp__openviking_find` for a session-free lookup |
+| `viking_read` | `mcp__openviking_read` |
+| `viking_browse` | `mcp__openviking_list` / `mcp__openviking_tree` |
+| `viking_remember` | `mcp__openviking_remember` |
+| `viking_forget` | `mcp__openviking_forget` |
+| `viking_add_resource` | `mcp__openviking_add_resource` |
+| `viking_archive_expand` | `mcp__openviking_read` on the archive URI |
 
 The canonical `/viking` command (type `/viking` in pi's chat) displays connection status, session info, and accepts `commit` for manual synchronous commit.
 
@@ -292,15 +317,16 @@ omp-openviking-extension/
 ├── client.ts            # OpenViking HTTP client (fetch + response envelope)
 ├── sync.ts              # Turn capture, write queue, session lifecycle
 ├── recall.ts            # Synchronous recall with ranking + budget
-├── takeover.ts          # Thin pi binding around lib/takeover-core.mjs
-├── tools.ts             # 7 registered LLM tools + /viking command
-├── lib/takeover-core.mjs # Pure context-takeover state machine
-├── index.ts             # Extension entry point (event handlers)
+├── takeover.ts          # Thin omp binding around lib/takeover-core.mjs
+├── index.ts             # Extension entry point (events, /viking command, prompt blocks)
+├── lib/                 # Adapters + pure state machines (guard, capture, takeover, MCP state)
+├── servers/mcp-proxy.mjs # The MCP server omp starts (stdio → HTTP, vendored by sync.mjs)
+├── shared/              # Vendored copies of examples/memory-plugin-shared
 ├── TAKEOVER.md          # Context-takeover design
 └── README.md
 ```
 
-All TypeScript files are loaded directly by pi's built-in `jiti` transpiler — zero dependencies beyond Node.js.
+All TypeScript files are loaded directly by omp's built-in `jiti` transpiler — zero dependencies beyond Node.js, and the vendored `shared/` modules are plain ESM.
 
 ## Troubleshooting
 
@@ -308,7 +334,8 @@ All TypeScript files are loaded directly by pi's built-in `jiti` transpiler — 
 |-----------------------------------------|------------------------------------------------------|-------------------------------------------------------------|
 | Extension not loading                   | `enabled: false` in config.json                      | Set `"enabled": true`                                       |
 | No recall on first prompt               | OpenViking server not running or wrong URL           | `curl http://localhost:1933/health`                         |
-| Tools not showing after `pi -c` resume  | Known pi issue (tools not re-registered on resume)   | Workaround built in — tools register in `before_agent_start`|
+| MCP tools missing from `xd://`          | No enabled `openviking` entry in `<agent dir>/mcp.json` | Re-run the installer, or add the server from `omp` with `/mcp` |
+| System prompt never names the tools     | `mcpEnabled: false`, or the entry exists but is disabled | Check both — the extension only advertises what `mcp.json` declares |
 | Extension crashes on load               | Wrong OV server URL or network issue                 | Check `logLevel` and server accessibility                   |
 | No memories extracted                   | Wrong embedding/extraction model in OV config        | Check OV's `embedding` / `vlm` configuration                |
 | Takeover never advances                  | Pending addMessage replay, commit, or overview polling failed | Set `OV_DEBUG_LOG=/tmp/ov-pi.log` and retry `/viking commit` |

@@ -1,7 +1,7 @@
 # omp 插件原生能力对齐设计 spec
 
 - **日期**：2026-09-23
-- **状态**：设计已获用户确认（实施计划见 `omp-plugin-native-parity-plan.md`）
+- **状态**：设计已获用户确认（实施计划见 `omp-plugin-native-parity-plan.md`）；实现进度见 §9（Phase 1–5 已落地，Phase 6 真机验证待执行）
 - **分支**：`ov-dev-opt`
 - **范围**：`examples/omp-openviking-extension/` 的工具面 / 配置层 / 守卫 / 文档 + `examples/memory-plugin-shared/install.sh` 的 omp 安装与卸载
 - **不在范围**：`memory-plugin-shared/lib` 的算法、pi 侧扩展、服务端 MCP 接口、omp 主程序
@@ -234,7 +234,7 @@ if (isBypassed(config, { cwd: process.cwd() })) { bypassed = true; started = tru
 | `examples/omp-openviking-extension/servers/mcp-proxy.mjs` | stdio→HTTP 代理入口（~26 行） |
 | `examples/omp-openviking-extension/tests/config-migration.test.mjs` | 旧 config.json 键仍生效、别名、`plugin.omp` 段、inert 警告 |
 | `examples/omp-openviking-extension/tests/uri-guard.test.mjs` | 更新既有：write/edit 拦截、bash notice |
-| `examples/memory-plugin-shared/install-mcp-json.test.mjs` | mcp.json 合并/保留他人条目/卸载只删自己的条目 |
+| `examples/memory-plugin-shared/install-omp-jsonc.test.mjs` | mcp.json 合并/保留他人条目/卸载只删自己的条目（命名对齐同目录 `install-opencode-jsonc.test.mjs`） |
 
 **修改**
 
@@ -296,6 +296,30 @@ if (isBypassed(config, { cwd: process.cwd() })) { bypassed = true; started = tru
 | 回滚 | revert + `uninstall_omp` 后：mcp.json 无残留 openviking 条目、扩展目录消失、omp 不再尝试 spawn 已删代理 |
 | doctor | `plugin.omp` 段不再被报成未知键（`HARNESS_KEYS` 改动生效） |
 | 多源 | 含项目级 `mcp.json` 的目录里启动，确认 server 解析结果与预期一致（未核实项定案） |
+
+---
+
+## 9. 实现状态（2026-09-24 更新）
+
+| 阶段 | 状态 | 提交 |
+|------|------|------|
+| Phase 1 配置层迁移 | ✅ 已完成 | `c783eba05` `47a2e8494` `f4740f5b2` |
+| Phase 2 能力对齐（批量提交 + bypass） | ✅ 已完成 | `1aa374a22` |
+| Phase 3 工具面切 MCP（含 `tools.ts` 删除） | ✅ 已完成 | `60c353fd3` |
+| Phase 4 安装 / 卸载 | ✅ 已完成 | `f7c6100e0` + 收尾提交（原子写、卸载前备份 config.json） |
+| Phase 5 文档 | ✅ 已完成 | 收尾提交 |
+| Phase 6 端到端验证 | ⏳ 待真机 | — |
+
+**与计划不同的四处**（均已落到代码/文档，供评审）：
+
+1. **`mcp.json` 条目的 `command` 写字面量 `node`**，而非计划 §Phase 4 第 1 条要求的「探测到的绝对路径优先」。理由：omp 本体是 Bun 编译的二进制，会话中不保证 `node` 就是安装时那一个；而 nvm/brew 升版本会让绝对路径失效（用户现有 `codebase-memory-mcp` 用绝对路径，同仓 opencode 写入器用字面量 `node`，两种做法生态里都有）。要改回计划原方案，`install.sh` 一行即可。
+2. **写入改为临时文件 + rename 的原子写**（计划要求，已实现；opencode 路径同样受益）。
+3. **卸载前把 `config.json` 备份到 `<omp agent dir>/config.json.bak.<时间戳>`**（计划要求，已实现。`install_omp` 原有的 `keep_config` 只保证升级不丢，卸载仍会连目录一起删）。
+4. **测试文件名 `install-omp-jsonc.test.mjs`**（计划写作 `install-mcp-json.test.mjs`）：与同目录 `install-opencode-jsonc.test.mjs` 的既有命名约定一致，覆盖同一个 `jsonc-edit.mjs` 的 omp 分支。
+
+**计划外但同类的 DESIGN.md 修正**：架构树里的 pi 路径与已删文件、`typebox` / `@mariozechner/pi-ai` 依赖（`tools.ts` 删除后已无人引用，属本次改动产生的孤儿）、事件流里的 `pi -c` → `omp -c`。计划要求的「omp 与 pi 差异」章节已新增。
+
+**§7 验收矩阵的实测结果**：工具面（mcp.json 合并 / 他人条目不变 / 卸载只删自己那条）、配置层、守卫、bypass、回归、doctor、卸载 —— 由 `install-omp-jsonc.test.mjs`（12 例）、installer 套件（21 例）、扩展套件（75 例）覆盖并通过。**尚未验证**（Phase 6）：真机 omp 会话里 `read xd://` 列出 16 个工具、`node <dest>/servers/mcp-proxy.mjs` 真机握手、含项目级 `mcp.json` 的目录。
 
 ---
 

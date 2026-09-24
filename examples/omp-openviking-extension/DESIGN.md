@@ -21,22 +21,40 @@ Design comparison:
 | Commit trigger | Session-end only | Token threshold mid-session | Token threshold mid-session + session-end + pre-compact | ✅ Threshold + session-end |
 | Memory stripping | None | Strip injected blocks before sync | Strip `<relevant-memories>` + `<system-reminder>` + `<openviking-context>` + `[Subagent Context]` + null bytes | ✅ Strip all 5 + null bytes |
 | History compression | None | OV archives replace transcript | Pi compaction (pre-compact commit preserves content in OV) | ❌ Pi has its own compaction |
-| Tools | 5 | 8 | 9 (via MCP) | 7 (no `add_skill` — pi has its own skill system) |
+| Tools | 5 | 8 | 9 (via MCP) | 16 (via `mcp__openviking_*`, `add_skill` included) |
 | Profile injection | None | None | ✅ profile.md + preferences + entities + skill catalog at session start | ✅ Same |
 
 ## Architecture
 
 ```
-~/.pi/agent/extensions/openviking/
-├── index.ts      # Entry point — registers events, tools, commands
-├── client.ts     # HTTP client for OV REST API (zero npm deps)
-├── index_builder.ts # Build memory index (viking:// tree + archive abstracts)
+<omp agent dir>/extensions/openviking/
+├── index.ts      # Entry point — events, prompt blocks, /viking command
+├── client.ts     # HTTP client for the OV REST API (zero npm deps)
 ├── recall.ts     # Synchronous search, reranking, <relevant-memories> formatting
 ├── sync.ts       # Turn archival, memory stripping, commit management
-└── tools.ts      # 7 tool schemas + handlers
+├── config.ts     # Config load, delegated to lib/omp-config.mjs
+├── takeover.ts   # Context takeover, over lib/takeover-core.mjs
+├── lib/          # Adapters to the shared modules (guard, capture, MCP state)
+├── servers/      # mcp-proxy.mjs — the MCP server omp starts (vendored by sync.mjs)
+└── shared/       # Vendored copies of examples/memory-plugin-shared
 ```
 
-6 files. ~1000-1200 lines total.
+6 TypeScript files (~1150 lines) plus the vendored JavaScript that the hooks and
+the MCP proxy share. `mcp.json` sits one level up, beside `extensions/`.
+
+## How this differs from the pi extension
+
+Same design, different host. `examples/pi-coding-agent-extension/` is the sibling;
+these are the differences that matter when reading either one.
+
+| | pi extension | this one |
+|---|---|---|
+| Tools | 7 declared in `tools.ts` | 16 from the server, over MCP (`mcp__openviking_*`); the extension declares none |
+| Tool presentation | registered, so the model sees them immediately | omp's `tools.xdevDocs` defaults to `builtins`, which keeps MCP tools on demand — one prompt line names them |
+| Config | its own loader | the shared schema, with a `plugin.omp` section in `ovcli.conf` while legacy `config.json` keys keep working (`lib/omp-config.mjs`) |
+| System prompt | `systemPrompt` is a string | typed `string[]`, so the blocks are joined before appending |
+| Mutex marker | `globalThis.__OPENVIKING_PI_EXTENSION__` keeps two copies from fighting | none: omp has no second extension to compete with |
+| Runtime deps | pi's packages at runtime | `@oh-my-pi/pi-coding-agent` as types only; otherwise Node builtins and the vendored `shared/` modules |
 
 ## Config
 
@@ -152,81 +170,9 @@ class OVClient {
 }
 ```
 
-### index_builder.ts (~80 lines)
-
-**The table of contents.** Builds a browsable memory index that tells the model *what OV knows*, so it can make informed decisions about when to search deeper. Inspired by OpenClaw's preflight `assemble()` which provides `latest_archive_overview` and `pre_archive_abstracts` to the model.
-
-Without this index, the model is flying blind — it can only retrieve what it thinks to ask for, with no topical overview to guide its queries. The index is the map; recall is the flashlight.
-
-#### What goes into the index
-
-The index has three parts, built from OV's filesystem and session APIs:
-
-1. **Directory listing**: `client.ls("viking://")` → visible resources, the current user's namespace, and optional account-shared skills. Shows *what categories of knowledge exist*.
-2. **Abstract summaries**: For each leaf memory in `viking://user/memories/`, fetch L0 abstracts. These are ~100 tokens each and give the model a one-line summary of each stored memory.
-3. **Archive overview**: If the current session has a previous archive, its L1 overview (~2k tokens) is included as `[Session History Summary]`.
-
-#### When the index is built
-
-- **Session start** (`session_start`): build once, cache in memory.
-- **After commit** (threshold or shutdown): rebuild if new memories were extracted. The commit callback triggers a rebuild.
-
-The index is NOT rebuilt on every prompt — that would be wasteful. It's a relatively stable snapshot that refreshes only when the knowledge base actually changes (after commits).
-
-#### Index format
-
-The index is injected into the system prompt (via `before_agent_start`'s `systemPrompt` return). Capped at `indexBudget` tokens (~2000 default).
-
-```
-## OpenViking Knowledge Index
-[Showing what's in your long-term memory]
-
-### viking://user/memories/ (12 memories)
-- Prefers local/self-hosted solutions over cloud services
-- Project X uses SQLite, not PostgreSQL, pool size 5
-- Chrome DevTools MCP gets stuck on closed tabs; pkill to fix
-- pip "Successfully installed" can lie — verify with import
-- (8 more — use viking_search to find specific memories)
-
-### viking://resources/ (3 resources)
-- OpenViking reference doc (viking://resources/openviking-reference)
-- Project X architecture diagram (viking://resources/projx-arch)
-- (1 more — use viking_browse to explore)
-
-### viking://user/sessions/{session_id}/history/ (2 archives)
-- Archive 2026-05-25: 15-turn session about pi extension design
-- (1 more — use viking_archive_expand for detail)
-
-Tools: viking_search | viking_read | viking_browse | viking_remember | viking_forget | viking_add_resource | viking_archive_expand
-```
-
-#### Why not include full memory content
-
-The index is intentionally a *table of contents*, not the full encyclopedia. Reasons:
-- Token budget: full content of all memories would blow past system prompt limits.
-- Relevance: most memories are irrelevant to the current task — that's what recall is for.
-- Freshness: the index refreshes after commits, but recall is always current-turn.
-
-The model sees the index and knows "OV knows about X, Y, Z." When a task touches those topics, it uses `viking_search` for depth or relies on automatic `<relevant-memories>` injection.
-
-```typescript
-class IndexBuilder {
-  private client: OVClient;
-  private cachedIndex: string | null;
-
-  constructor(client: OVClient);
-
-  // Build index from scratch — called at session_start and after commits
-  async buildIndex(): Promise<string>;
-
-  // Get cached index (returns empty string if not built or OV is down)
-  getIndex(): string;
-}
-```
-
 ### recall.ts (~150 lines)
 
-Synchronous recall that runs on every user prompt, injecting relevant OV context into the user message before the LLM sees it. This is the *flashlight* — targeted retrieval for the current query. The *index* (from `index_builder.ts`) is the *map* that helps the model know when to use it.
+Synchronous recall that runs on every user prompt, injecting relevant OV context into the user message before the LLM sees it. This is the *flashlight* — targeted retrieval for the current query. The *map* (profile, archive overview, tool hint) is what helps the model know when to use it.
 
 #### How it works
 
@@ -266,7 +212,7 @@ Synchronous recall that runs on every user prompt, injecting relevant OV context
 9. **Token-budgeted formatting with graceful degradation** (from Claude Code plugin):
    - Process items in ranked order
    - Items within the total `recallBudget` (default 2000 tokens) get full content lines
-   - Items beyond the budget are **degraded to URI + score hints** rather than dropped — the model can call `viking_read` to expand them
+   - Items beyond the budget are **degraded to URI + score hints** rather than dropped — the model can call `mcp__openviking_read` to expand them
    - The first item is always included even if it exceeds the remaining budget
 10. Format as `<relevant-memories>` block
 
@@ -315,11 +261,11 @@ class RecallManager {
 [System note: The following is recalled memory from OpenViking, NOT new user input. Treat as informational background data.]
 - [memory 0.87] User prefers local/self-hosted solutions over cloud services
 - [memory 0.82] Project uses SQLite for local dev, pool size 5
-- [skill 0.73] Use viking_read to expand: viking://user/skills/deployment-checklist.md
+- [skill 0.73] Use mcp__openviking_read to expand: viking://user/skills/deployment-checklist.md
 </relevant-memories>
 ```
 
-The third line shows a degraded hint — the item was beyond the content budget but still relevant. The model can expand it with `viking_read` if needed.
+The third line shows a degraded hint — the item was beyond the content budget but still relevant. The model can expand it with `mcp__openviking_read` if needed.
 
 ### sync.ts (~250 lines)
 
@@ -516,109 +462,59 @@ writeQueueFlushInterval: number;   // Flush interval in ms (default: 5000)
 writeQueueFlushThreshold: number;  // Flush after N queued turns (default: 5)
 ```
 
-### tools.ts (~200 lines)
+### The tool surface: MCP, not `tools.ts`
 
-7 tools for agent-initiated OV operations. All tools use the shared `OVClient` instance.
+The extension declares no tools at all. `install.sh` writes an `openviking` entry
+into `<omp agent dir>/mcp.json`, omp starts `servers/mcp-proxy.mjs` from that
+entry, and the proxy bridges stdio to the OpenViking server's streamable-HTTP MCP
+endpoint. The model sees the server's 16 tools under omp's `mcp__openviking_*`
+names.
 
-#### `viking_search`
-```typescript
-{
-  name: "viking_search",
-  description: "Semantic search over the OpenViking knowledge base. Returns ranked results with viking:// URIs and abstracts. Use when you need to recall past decisions, user preferences, or project-specific knowledge not in current context.",
-  promptSnippet: "Search OpenViking knowledge base for past decisions, preferences, and project knowledge",
-  promptGuidelines: [
-    "Use viking_search when you need information from previous sessions that may not be in MEMORY.md.",
-    "Use viking_search before making decisions that might conflict with established patterns or past decisions.",
-  ],
-  parameters: Type.Object({
-    query: Type.String({ description: "Search query" }),
-    scope: Type.Optional(Type.String({ description: "Viking URI prefix to scope search (e.g., 'viking://resources/')" })),
-    limit: Type.Optional(Type.Number({ description: "Max results (default: 10)" })),
-  }),
-}
-```
+The 7 hand-written `viking_*` tools (`tools.ts`, deleted) existed because pi had
+no MCP client. omp has one, so keeping them would have meant maintaining a
+second, drifting copy of the server's schemas — and hand-porting every
+server-side tool the 7 did not cover.
 
-#### `viking_read`
-```typescript
-{
-  name: "viking_read",
-  description: "Read content at a viking:// URI. Three detail levels: 'abstract' (~100 tokens), 'overview' (~2k tokens), 'full' (complete). Start with abstract, escalate to overview/full when needed.",
-  promptSnippet: "Read OpenViking content at a viking:// URI with tiered detail levels",
-  parameters: Type.Object({
-    uri: Type.String({ description: "viking:// URI to read" }),
-    level: StringEnum(["abstract", "overview", "full"] as const),
-  }),
-}
-```
+Credentials never enter `mcp.json`. The proxy resolves them through
+`lib/omp-config.mjs` — the same loader every hook already uses, reading
+`ovcli.conf` / `ov.conf` — so a rotated token is picked up without a reinstall.
+`install.sh` writes no `timeout` either: omp's 30s default stands, which is more
+generous than the 15s this repo's other hosts hardcode, and a value the operator
+set survives a reinstall.
 
-#### `viking_browse`
-```typescript
-{
-  name: "viking_browse",
-  description: "Browse the OpenViking knowledge store like a filesystem. List directory contents, get metadata, or view the hierarchy tree.",
-  promptSnippet: "Browse the viking:// directory tree in OpenViking",
-  parameters: Type.Object({
-    action: StringEnum(["list", "stat"] as const),
-    uri: Type.Optional(Type.String({ description: "viking:// URI (default: 'viking://')" })),
-  }),
-}
-```
+#### Tool mapping
 
-#### `viking_remember`
-```typescript
-{
-  name: "viking_remember",
-  description: "Store a fact or memory in OpenViking. Stored as a session message and extracted into long-term memory on commit. Use for important information the agent should remember: preferences, decisions, gotchas, lessons learned.",
-  promptSnippet: "Store a fact in OpenViking for cross-session persistence",
-  promptGuidelines: [
-    "Use viking_remember for facts that should survive across sessions but don't belong in MEMORY.md.",
-    "Good for: user preferences, architectural decisions, gotchas, environment details.",
-  ],
-  parameters: Type.Object({
-    content: Type.String({ description: "The fact or observation to store" }),
-    category: Type.Optional(Type.String({ description: "Category hint: 'preference', 'entity', 'event', 'case', 'pattern'" })),
-  }),
-}
-```
+| Deleted (`viking_*`) | MCP tool(s) now |
+|----------------------|-----------------|
+| `viking_search` | `mcp__openviking_search` (semantic, session-aware) — or `mcp__openviking_find` when session context would only add noise |
+| `viking_read` | `mcp__openviking_read` |
+| `viking_browse` | `mcp__openviking_list`, `mcp__openviking_tree` |
+| `viking_remember` | `mcp__openviking_remember` |
+| `viking_forget` | `mcp__openviking_forget` |
+| `viking_add_resource` | `mcp__openviking_add_resource` |
+| `viking_archive_expand` | `mcp__openviking_read` on the archive URI, with `mcp__openviking_search` to locate it |
+| — (new) | `write`, `edit`, `glob`, `grep`, `health`, `list_watches`, `cancel_watch`, `add_skill` |
 
-#### `viking_forget`
-```typescript
-{
-  name: "viking_forget",
-  description: "Delete a memory by URI or search for a specific memory and remove it. Use to correct outdated or wrong information in the knowledge base.",
-  promptSnippet: "Delete a memory from OpenViking by URI or query",
-  parameters: Type.Object({
-    uri: Type.Optional(Type.String({ description: "Exact viking:// URI to delete" })),
-    query: Type.Optional(Type.String({ description: "Search query — deletes the strongest match if score > 0.8" })),
-  }),
-}
-```
+`add_skill` overturns a conclusion recorded further down this document: the
+comparison table used to say omp had no `add_skill` because pi ships its own
+skill system. Through MCP it arrives anyway, so the shared guard's "skill URI →
+use `add_skill`" branch applies here too.
 
-#### `viking_add_resource`
-```typescript
-{
-  name: "viking_add_resource",
-  description: "Ingest a URL, file path, or document into the OpenViking knowledge base. OV auto-processes it into L0/L1/L2 tiers and indexes it for semantic search. Use for bootstrapping knowledge or adding reference documentation.",
-  promptSnippet: "Ingest a URL or document into OpenViking for indexed retrieval",
-  parameters: Type.Object({
-    url: Type.String({ description: "URL or file path to ingest" }),
-    reason: Type.Optional(Type.String({ description: "Why this resource is relevant (improves indexing)" })),
-  }),
-}
-```
+#### What the extension still owns
 
-#### `viking_archive_expand`
-```typescript
-{
-  name: "viking_archive_expand",
-  description: "Expand an archived session back into raw messages. Use when the archive summary is too coarse and you need the detailed conversation history. Returns the full message transcript for that archive.",
-  promptSnippet: "Expand an archived session to see raw conversation messages",
-  parameters: Type.Object({
-    archive_id: Type.Optional(Type.String({ description: "Archive ID to expand (from session context)" })),
-    session_id: Type.Optional(Type.String({ description: "OV session ID to expand" })),
-  }),
-}
-```
+- **The advertisement** (`index.ts`). omp's prompt lists builtin tools only
+  (`tools.xdevDocs` defaults to `builtins`), so MCP tools stay on demand — and a
+  session that never runs `read xd://` would never learn they exist. One
+  system-prompt line names them. It is gated twice: on omp's own record of the
+  `openviking` entry being present and enabled (`readMcpServerState`, which reads
+  the file `install.sh` wrote rather than re-deriving omp's config precedence),
+  and on the extension's `mcpEnabled` switch.
+- **The guard** (`lib/uri-guard-adapter.mjs`). omp's builtin `read`/`write`/
+  `edit`/`grep`/`glob` cannot open `viking://` URIs, so a call aimed at one is
+  redirected to the matching MCP tool, and a `viking://` result gets a notice on
+  the `tool_result` event.
+- **The session's identity on the server side** — see
+  `lib/mcp-server-state.mjs`.
 
 ### index.ts (~200 lines)
 
@@ -628,7 +524,7 @@ Main entry point. Wires everything together.
 
 | Event | Handler | What it does |
 |-------|---------|-------------|
-| `session_start` | Init + Resume + Profile | Health check OV, check bypass, create/reuse session, **inject user profile** (profile.md + preferences/ + entities/ listing, capped at `profileBudget`), on resume: fetch archive overview, build memory index, register tools |
+| `session_start` | Init + Resume + Profile | Health check OV, check bypass, create/reuse session, **inject user profile** (profile.md + preferences/ + entities/ listing, capped at `profileBudget`), on resume: fetch archive overview, build memory index |
 | `before_agent_start` | Recall queue + System prompt | Queue current prompt without I/O, inject memory index + tool ad into system prompt |
 | `context` | Recall search + injection | Search after user-message rendering, then prepend `<relevant-memories>` (reuse cached block on later LLM iterations) |
 | `turn_end` | Sync | Strip all injected blocks, **capture filter (shouldCapture)**, **preserve tool USE inputs + tool summary line**, drop tool RESULTS, **enqueue to write queue** (auto-flushes at threshold/interval), track pending tokens, check commit threshold |
@@ -640,7 +536,7 @@ Main entry point. Wires everything together.
 
 Two-level guard:
 
-1. **Health check**: At `session_start`, ping OV health. If unreachable: set `connected = false`, log once, all subsequent operations become no-ops. No retrying, no spamming. Tools return "OpenViking server is not reachable."
+1. **Health check**: At `session_start`, ping OV health. If unreachable: set `connected = false`, log once, all subsequent operations become no-ops. No retrying, no spamming. MCP tool calls then fail on their own; the extension says so once at `session_start` ("the mcp__openviking_* tools will fail until it is back") instead of retrying.
 
 2. **Bypass check**: Before any OV operation, check `config.bypassPatterns` against `process.cwd()`. If the cwd matches any pattern (e.g., `/tmp/**`, `**/scratch/**`), skip all OV operations for this session. This prevents throwaway experiments from polluting long-term memory (from Claude Code plugin's `OPENVIKING_BYPASS_SESSION_PATTERNS`).
 
@@ -650,12 +546,11 @@ When `session_start` fires with `reason: "resume"`, the session may have previou
 
 #### System prompt injection
 
-Via `before_agent_start`'s `systemPrompt` return field. Composes up to four things:
+Via `before_agent_start`'s `systemPrompt` return field. Composes up to three things:
 
-1. **Profile block** (from session_start cache) — user identity + preferences + entities. Capped at `profileBudget`. Only present if OV has a user profile.
-2. **Archive overview** (from session_start resume OR pre-compact rehydration) — "what happened in previous sessions" or "what happened before compaction". Capped at `resumeContextBudget` tokens.
-3. **Memory index** (from `index_builder.ts`) — a browsable table of contents showing what OV knows. Refreshed at session start and after commits.
-4. **Tool advertisement** — the standard tool usage instructions.
+1. **Profile block** (from session_start cache) — user identity + preferences + entities + the session's `<available-skills>` catalogue. Capped at `profileBudget`. Only present if OV has a user profile.
+2. **Archive overview** (from session_start resume OR pre-compact rehydration) — "what happened in previous sessions" or "what happened before compaction". Capped at `resumeContextBudget` tokens, injected only when takeover is off (with takeover on, that owns the context).
+3. **Tool advertisement** — one line naming the `mcp__openviking_*` tools, since omp keeps MCP tools on demand.
 
 ```
 ## OpenViking Context
@@ -684,7 +579,7 @@ Archive 2026-05-27: 15-turn session about pi extension design...
 ### viking://resources/ (3 resources)
 - ...
 
-Tools: viking_search | viking_read | viking_browse | viking_remember | viking_forget | viking_add_resource | viking_archive_expand
+Tools: mcp__openviking_find | mcp__openviking_search | mcp__openviking_read | mcp__openviking_write | mcp__openviking_edit | mcp__openviking_list | mcp__openviking_tree | mcp__openviking_remember | mcp__openviking_add_resource | mcp__openviking_add_skill | mcp__openviking_list_watches | mcp__openviking_cancel_watch | mcp__openviking_grep | mcp__openviking_glob | mcp__openviking_forget | mcp__openviking_health
 ```
 
 This is a key difference from Hermes (tool ad only, model is blind) and closer to OpenClaw's preflight `assemble()` (model sees archive overview + abstract index before deciding to search).
@@ -700,7 +595,7 @@ Simple, correct, handles all edge cases (external edits, multiple writes, etc.).
 
 #### Manual commit command
 
-A `/viking commit` command (or a `viking_commit` tool) triggers a synchronous `commit(wait=true)`. This is the equivalent of OpenClaw's `compact()` — the user or agent can force a memory extraction mid-session without waiting for the token threshold. Useful when the user says "remember this" and wants immediate assurance that the memory was archived.
+The `/viking commit` command triggers a synchronous `commit(wait=true)`. (A `commit` *tool* would now have to come from the server — this extension declares no tools of its own.) This is the equivalent of OpenClaw's `compact()` — the user or agent can force a memory extraction mid-session without waiting for the token threshold. Useful when the user says "remember this" and wants immediate assurance that the memory was archived.
 
 ## Event Flow (Detailed)
 
@@ -725,8 +620,7 @@ A `/viking commit` command (or a `viking_commit` tool) triggers a synchronous `c
 7. If event.reason == "resume":
    a. Fetch latest archive overview from OV (L1)
    b. Inject as [Session History Summary] alongside memory index
-8. index_builder.buildIndex() → build memory index (viking:// tree + abstracts)
-9. Register 7 tools
+8. Compose the system-prompt blocks: profile, archive overview (resume), tool hint
 ```
 
 ### Per Prompt (User sends message)
@@ -747,7 +641,7 @@ A `/viking commit` command (or a `viking_commit` tool) triggers a synchronous `c
    c. recall.injectRecall(event.messages)  ← prepend cached <relevant-memories> to user message
    d. Return { messages: modified }
 
-4. [Turns execute — LLM may call viking_search, etc.]
+4. [Turns execute — LLM may call mcp__openviking_search, etc.]
 
 5. agent_end fires
    a. recall.invalidate()  ← clear cached block
@@ -791,7 +685,7 @@ A `/viking commit` command (or a `viking_commit` tool) triggers a synchronous `c
 3. writeQueue.flush()  ← flush remaining queued turns
 4. If mirrorMemoryWrites: read .memory/MEMORY.md → send to OV as session message
 5. sync.commit(wait=true)  ← blocking, with timeout
-6. index_builder.buildIndex()  ← refresh index after commit (new memories extracted)
+6. Refresh the cached archive overview — the next session_start rebuilds the profile block
 7. Cleanup
 ```
 
@@ -832,32 +726,30 @@ A `/viking commit` command (or a `viking_commit` tool) triggers a synchronous `c
 
 ## Why a Memory Index?
 
-The spec has two complementary context mechanisms:
+Two complementary context mechanisms, as built:
 
-1. **Memory index** (from `index_builder.ts`) — a *map*. "Here's what OV knows about." Injected into the system prompt. Rebuilt at session start and after commits. Always visible to the model. ~2000 tokens.
+1. **Profile + archive overview + tool hint** (composed in `index.ts`) — a *map*. "Here's what OV knows about." Injected into the system prompt at session start. Always visible to the model.
 
 2. **Recall** (from `recall.ts`) — a *flashlight*. "Here's what's relevant to the current query." Injected into the user message per-turn. Always current. ~2000 tokens.
 
 Without the index, the model has no idea what categories of knowledge exist in OV. It can only retrieve what it thinks to ask for — the Hermes problem. With the index, the model sees "OV knows about my preferences, project X architecture, and debugging gotchas" and can proactively decide to search deeper when a task touches those topics.
 
-This mirrors OpenClaw's preflight `assemble()` which provides `latest_archive_overview` (archive summary) and `pre_archive_abstracts` (memory abstracts) to the model. The index is the pi equivalent.
+This mirrors OpenClaw's preflight `assemble()` which provides `latest_archive_overview` (archive summary) and `pre_archive_abstracts` (memory abstracts) to the model. The blocks above are the omp equivalent.
 
 ## Dependencies
 
 **Zero npm dependencies.** Uses:
-- Node.js built-in `fetch` (Node 18+, pi requires 18+)
-- `@mariozechner/pi-coding-agent` (types, `isToolCallEventType`, `StringEnum`, `truncateHead`)
-- `typebox` (tool parameter schemas)
-- `@mariozechner/pi-ai` (`StringEnum` for Google-compatible enums)
+- Node.js built-in `fetch` (Node 18+; omp requires 18+)
+- `@oh-my-pi/pi-coding-agent`, types only (`ExtensionAPI`) — omp's fork of pi
+- the vendored `shared/` modules, plain ESM with no dependencies of their own
 
 ## Implementation Order
 
 1. **client.ts** — HTTP wrapper, testable independently against running OV
 2. **sync.ts** — depends on client
-3. **index_builder.ts** — depends on client
-4. **recall.ts** — depends on client
-5. **tools.ts** — depends on client
-6. **index.ts** — wires everything, registers tools and events
+3. **recall.ts** — depends on client
+4. **servers/mcp-proxy.mjs** — no extension code to write: `install.sh` points omp's `mcp.json` at the vendored proxy, and the tool catalogue arrives from the server
+5. **index.ts** — wires everything and registers events
 
 ## Testing Strategy
 
