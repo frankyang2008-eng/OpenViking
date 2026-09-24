@@ -19,6 +19,11 @@ lib/
 !examples/opencode-plugin/lib/**
 !examples/pi-coding-agent-extension/lib/
 !examples/pi-coding-agent-extension/lib/**
+# The omp fork's `lib/` is its own code, not pi's copy: the installer tar's the
+# whole directory, so a clone without it installs an extension that cannot
+# import its own adapters.
+!examples/omp-openviking-extension/lib/
+!examples/omp-openviking-extension/lib/**
 lib64/
 parts/
 sdist/
