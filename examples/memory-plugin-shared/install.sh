@@ -2972,8 +2972,16 @@ uninstall_omp() {
   local omp_agent_dir ext
   omp_agent_dir="$(resolve_omp_agent_dir)"
   ext="$omp_agent_dir/extensions/openviking"
-  # config.json is the user's own settings and lives inside the extension
-  # directory; the copy an install kept beside it is the one that survives.
+  # config.json is the user's own settings and lives *inside* the extension
+  # directory, so removing it would take their edits with it. Keep a copy one
+  # level up first — the same bargain install_omp makes when it carries the file
+  # across an update.
+  if [ -f "$ext/config.json" ]; then
+    local backup
+    backup="$omp_agent_dir/config.json.bak.$(date +%Y%m%d-%H%M%S)"
+    cp "$ext/config.json" "$backup"
+    info "$(t 'Your config.json is kept as:' '你的 config.json 已备份到：') $backup"
+  fi
   omp_remove_mcp_entry "$omp_agent_dir/mcp.json" "$ext"
   rm -rf "$ext"
   info "$(t 'Removed the omp OpenViking extension and MCP registration.' '已移除 omp OpenViking 扩展与 MCP 注册。')"

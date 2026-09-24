@@ -405,13 +405,26 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1
     const [file, extensionDir] = argv;
     let raw = "";
     try { raw = fs.readFileSync(file, "utf8"); } catch { process.exit(0); }
-    fs.writeFileSync(file, removeOmpMcpEntry(raw, { extensionDir: extensionDir || "" }));
+    writeConfigFile(file, removeOmpMcpEntry(raw, { extensionDir: extensionDir || "" }));
   } else {
     const [file, pluginSpec, mcpProxy, kind] = [first, ...argv];
     let raw = "";
     try { raw = fs.readFileSync(file, "utf8"); } catch {}
-    fs.writeFileSync(file, kind === "omp"
+    writeConfigFile(file, kind === "omp"
       ? updateOmpMcpConfig(raw, { mcpProxy: mcpProxy || "" })
       : updateOpencodeConfig(raw, { pluginSpec: pluginSpec || "", mcpProxy: mcpProxy || "" }));
   }
+}
+
+/**
+ * Written through a temp file, then renamed over the target.
+ *
+ * A crash mid-write would otherwise leave a truncated config behind, and this
+ * file holds the MCP servers of every other tool the user registered — the
+ * `cp` backup the installer takes first is recovery, not a substitute.
+ */
+function writeConfigFile(file, contents) {
+  const tmp = `${file}.tmp`;
+  fs.writeFileSync(tmp, contents);
+  fs.renameSync(tmp, file);
 }
