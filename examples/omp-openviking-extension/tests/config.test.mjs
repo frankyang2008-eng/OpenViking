@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { pathToFileURL } from "node:url";
 import { loadConfig, loadConfigFromModuleUrl } from "../config.ts";
+import { collectInertKnobs, loadOmpConfig } from "../lib/omp-config.mjs";
 
 async function withConfigFile(body, fn, env = {}) {
   const dir = await mkdtemp(join(tmpdir(), "ov-pi-config-用户-"));
@@ -113,12 +114,62 @@ test("loadConfig clamps invalid takeover values", async () => {
       overviewPollMax: 0,
     },
   }, (cfg) => {
-    assert.equal(cfg.takeoverEnabled, true);
+    // `"no"` is a false word now. The hand-written loader kept takeover on for
+    // every spelling except the literal `false`, so a config saying `"no"`
+    // turned it on — the shared coercion reads the words.
+    assert.equal(cfg.takeoverEnabled, false);
     assert.equal(cfg.takeoverTokenThreshold, 1);
     assert.equal(cfg.takeoverKeepRecentTurns, 0);
     assert.equal(cfg.takeoverOverviewBudget, 100);
     assert.equal(cfg.takeoverOverviewPollMs, 0);
     assert.equal(cfg.takeoverOverviewPollMax, 1);
+  });
+});
+
+test("loadConfig falls back for a takeover switch that is not a boolean", async () => {
+  await withConfigFile({ takeover: { enabled: "maybe" } }, (cfg) => {
+    assert.equal(cfg.takeoverEnabled, true);
+  });
+});
+
+test("loadConfig reads the alias spellings the schema already owns", async () => {
+  // `recallBudget`, `profileBudget` and `syncTurns` are registered aliases in
+  // `shared/config-schema.mjs`, so they keep working without a shim here.
+  await withConfigFile({ recallBudget: 3000, profileBudget: 20000, syncTurns: false }, (cfg) => {
+    assert.equal(cfg.recallTokenBudget, 3000);
+    assert.equal(cfg.profileTokenBudget, 20000);
+    assert.equal(cfg.syncTurns, false);
+  });
+});
+
+test("loadOmpConfig merges ov.conf's omp block over config.json", async () => {
+  // `plugin-config.mjs` reads `legacy || ovConfSection(...)`, so passing the
+  // extension's own `config.json` as the legacy layer used to drop `ov.conf`'s
+  // `omp` block entirely. Both have to land, `ov.conf` the higher of the two.
+  const dir = await mkdtemp(join(tmpdir(), "ov-omp-config-json-"));
+  const ovDir = await mkdtemp(join(tmpdir(), "ov-omp-ov-conf-"));
+  const ovConf = join(ovDir, "ov.conf");
+  try {
+    await writeFile(join(dir, "config.json"), JSON.stringify({ recallLimit: 7, recallLedger: false }), "utf8");
+    // The section is named after the detected harness, and node is not `omp`:
+    // the same code runs under both, so `detectHarness()` reads the executable.
+    await writeFile(ovConf, JSON.stringify({ pi: { recallLimit: 25 } }), "utf8");
+    const cfg = loadOmpConfig(dir, {
+      env: { ...process.env, OPENVIKING_CONFIG_FILE: ovConf, OPENVIKING_CREDENTIAL_SOURCE: "" },
+      cwd: dir,
+    });
+    assert.equal(cfg.recallLimit, 25);
+    assert.equal(cfg.recallLedger, false);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+    await rm(ovDir, { recursive: true, force: true });
+  }
+});
+
+test("collectInertKnobs names the knobs nothing here reads", async () => {
+  await withConfigFile({ recallPreferAbstract: false, recallLimit: 5 }, (cfg) => {
+    const inert = collectInertKnobs(cfg);
+    assert.deepEqual(inert, ["recallPreferAbstract"]);
   });
 });
 
