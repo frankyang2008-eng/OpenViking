@@ -76,6 +76,25 @@ class RerankBudget:
             self._spent += seconds
 
 
+class RerankMemo:
+    """Per-request rerank state: finished scores and in-flight scoring.
+
+    Scores are keyed by (query, document) exactly as the provider sees them. The same
+    pair is scored in several phases: measured, the leaf and directory passes overlapped
+    on 100% of their documents and rounds re-scored 63% of theirs, so ~48% of a
+    request's document calls were repeats whose score was already known.
+
+    In-flight keys matter as much as finished ones: concurrent batches of one round can
+    both miss the same document before either writes a score, which measured as ~16% of
+    document calls still duplicated. A batch publishes a future per document it is about
+    to score, so a concurrent batch joins that call instead of paying for a second one.
+    """
+
+    def __init__(self) -> None:
+        self.scores: Dict[Tuple[str, str], float] = {}
+        self.inflight: Dict[Tuple[str, str], asyncio.Future] = {}
+
+
 class RetrieverMode(str):
     THINKING = "thinking"
     QUICK = "quick"
@@ -169,12 +188,7 @@ class HierarchicalRetriever:
         telemetry = get_current_telemetry()
         effective_threshold = self._resolve_threshold(score_threshold)
         rerank_budget = RerankBudget(self.rerank_total_budget)
-        # Per-request rerank memo, keyed by (query, document) exactly as the provider
-        # sees them. The same pair is scored in several phases: measured, the leaf and
-        # directory passes overlapped on 100% of their documents and rounds re-scored
-        # 63% of theirs, so ~48% of a request's document calls were repeats whose
-        # score was already known.
-        rerank_memo: Dict[Tuple[str, str], float] = {}
+        rerank_memo = RerankMemo()
         image_query = bool(getattr(query, "image_query", False))
         if mode is None:
             mode = RetrieverMode.QUICK if not self._rerank_client else RetrieverMode.THINKING
@@ -447,7 +461,7 @@ class HierarchicalRetriever:
         documents: List[str],
         fallback_scores: List[float],
         budget: Optional[RerankBudget],
-        memo: Optional[Dict[Tuple[str, str], float]] = None,
+        memo: Optional[RerankMemo] = None,
     ) -> List[float]:
         """Score one sequential batch and charge its wall-clock time to the budget.
 
@@ -486,7 +500,7 @@ class HierarchicalRetriever:
         documents: List[str],
         fallback_scores: List[float],
         budget: Optional[RerankBudget] = None,
-        memo: Optional[Dict[Tuple[str, str], float]] = None,
+        memo: Optional[RerankMemo] = None,
     ) -> List[float]:
         """Return rerank scores or fall back to vector scores."""
         if not self._rerank_client or not documents:
@@ -509,69 +523,141 @@ class HierarchicalRetriever:
                 for index, document in rerank_documents
             ]
 
-        # Reuse scores already computed for this (query, document) earlier in the
-        # request; only the misses reach the provider. Concurrent round batches can
-        # both miss the same document before either writes the memo, which measured
-        # as ~16% of document calls still duplicated (down from 48%); single-flight
-        # per key would close that, at the cost of a futures map here.
+        # Sort every document into one of three fates: already scored (memo), being
+        # scored right now by a concurrent batch of this round (join its future), or
+        # this batch's own work. Identical texts inside one batch collapse into a single
+        # entry, so a repeated abstract is paid for once and scattered back to every
+        # index it occupies.
         normalized_scores = list(fallback_scores)
-        pending: List[Tuple[int, str]] = []
+        owned: Dict[str, List[int]] = {}
+        joined: List[Tuple[int, str, asyncio.Future]] = []
         for index, document in rerank_documents:
-            cached = memo.get((rerank_query, document)) if memo is not None else None
-            if cached is None:
-                pending.append((index, document))
-            else:
-                normalized_scores[index] = cached
-        if not pending:
+            if memo is not None:
+                key = (rerank_query, document)
+                cached = memo.scores.get(key)
+                if cached is not None:
+                    normalized_scores[index] = cached
+                    continue
+                inflight = memo.inflight.get(key)
+                if inflight is not None:
+                    joined.append((index, document, inflight))
+                    continue
+            owned.setdefault(document, []).append(index)
+
+        if not owned and not joined:
             # Zero-cost memo hits survive budget exhaustion: the skip below only
             # covers work that would reach the provider.
             return normalized_scores
 
-        if budget is not None and budget.exhausted:
+        if owned and budget is not None and budget.exhausted:
             logger.warning(
                 "[HierarchicalRetriever] Rerank budget of %.1fs exhausted (spent %.1fs); "
                 "skipping %s document(s) and keeping vector scores",
                 budget.total_seconds,
                 budget.spent_seconds,
-                len(pending),
+                sum(len(indices) for indices in owned.values()),
             )
             get_current_telemetry().count("rerank.skipped", 1)
-            return normalized_scores
+            owned = {}
 
-        try:
-            scores = await asyncio.wait_for(
-                self._run_rerank_batch(rerank_query, [document for _, document in pending]),
-                timeout=self.rerank_batch_timeout or None,
-            )
-        except asyncio.TimeoutError:
-            # The executor thread keeps running to completion; the dedicated pool
-            # bounds that orphan instead of leaking it into the default pool.
-            logger.warning(
-                "[HierarchicalRetriever] Rerank batch exceeded %.1fs, fallback to vector scores",
-                self.rerank_batch_timeout,
-            )
-            get_current_telemetry().count("rerank.timeouts", 1)
-            return normalized_scores
-        except Exception as e:
-            logger.warning(
-                "[HierarchicalRetriever] Rerank failed, fallback to vector scores: %s", e
-            )
-            return normalized_scores
-
-        if not scores or len(scores) != len(pending):
-            logger.warning(
-                "[HierarchicalRetriever] Invalid rerank result, fallback to vector scores"
-            )
-            return normalized_scores
-
-        for score, (index, document) in zip(scores, pending, strict=True):
-            value = self._finite_score(score, fallback_scores[index])
-            normalized_scores[index] = value
-            # Cache real provider scores only: caching a fallback would freeze one
-            # transient failure (a 429, say) into every later phase of the request.
-            if memo is not None and self._is_finite_score(score):
-                memo[(rerank_query, document)] = value
+        if owned:
+            await self._score_owned(rerank_query, owned, fallback_scores, normalized_scores, memo)
+        if joined:
+            # A joined document is already paid for by another batch, so it is still
+            # worth adopting after this batch's own budget ran out.
+            await self._join_inflight(joined, fallback_scores, normalized_scores)
         return normalized_scores
+
+    async def _score_owned(
+        self,
+        rerank_query: str,
+        owned: Dict[str, List[int]],
+        fallback_scores: List[float],
+        normalized_scores: List[float],
+        memo: Optional[RerankMemo],
+    ) -> None:
+        """Score this batch's documents and publish the result to the memo and joiners."""
+        pending: Dict[Tuple[str, str], asyncio.Future] = {}
+        if memo is not None:
+            loop = asyncio.get_running_loop()
+            for document in owned:
+                key = (rerank_query, document)
+                future = loop.create_future()
+                pending[key] = future
+                memo.inflight[key] = future
+        try:
+            try:
+                scores = await asyncio.wait_for(
+                    self._run_rerank_batch(rerank_query, list(owned)),
+                    timeout=self.rerank_batch_timeout or None,
+                )
+            except asyncio.TimeoutError:
+                # The executor thread keeps running to completion; the dedicated pool
+                # bounds that orphan instead of leaking it into the default pool.
+                logger.warning(
+                    "[HierarchicalRetriever] Rerank batch exceeded %.1fs, fallback to vector scores",
+                    self.rerank_batch_timeout,
+                )
+                get_current_telemetry().count("rerank.timeouts", 1)
+                return
+            except Exception as e:
+                logger.warning(
+                    "[HierarchicalRetriever] Rerank failed, fallback to vector scores: %s", e
+                )
+                return
+
+            if not scores or len(scores) != len(owned):
+                logger.warning(
+                    "[HierarchicalRetriever] Invalid rerank result, fallback to vector scores"
+                )
+                return
+
+            for score, (document, indices) in zip(scores, owned.items(), strict=True):
+                for index in indices:
+                    normalized_scores[index] = self._finite_score(score, fallback_scores[index])
+                finite = self._is_finite_score(score)
+                # Cache real provider scores only: caching a fallback would freeze one
+                # transient failure (a 429, say) into every later phase of the request.
+                if memo is not None and finite:
+                    memo.scores[(rerank_query, document)] = float(score)
+                future = pending.get((rerank_query, document))
+                if future is not None and not future.done():
+                    future.set_result(float(score) if finite else math.nan)
+        finally:
+            # Settle on every exit path: a joiner must never wait on a key whose owner
+            # already finished, and an unresolved future would strand it until its own
+            # batch cut. Unsettled means "no score", so the joiner keeps its vector score
+            # instead of inheriting a fake one.
+            if memo is not None:
+                for key, future in pending.items():
+                    memo.inflight.pop(key, None)
+                    if not future.done():
+                        future.set_result(math.nan)
+
+    async def _join_inflight(
+        self,
+        joined: List[Tuple[int, str, asyncio.Future]],
+        fallback_scores: List[float],
+        normalized_scores: List[float],
+    ) -> None:
+        """Adopt scores a concurrent batch of this round is already paying for.
+
+        Waits without cancelling the shared future (``asyncio.wait``, not ``wait_for``):
+        the future belongs to the owning batch, so cancelling this joiner's wait would
+        strand every other joiner waiting on the same key.
+        """
+        done, _ = await asyncio.wait(
+            {future for _, _, future in joined}, timeout=self.rerank_batch_timeout or None
+        )
+        for index, _document, future in joined:
+            if future not in done or future.cancelled():
+                continue
+            if future.exception() is not None:
+                continue
+            value = future.result()
+            # A joined failure (NaN) must not override the vector score either.
+            if self._is_finite_score(value):
+                normalized_scores[index] = self._finite_score(value, fallback_scores[index])
 
     async def _recursive_search(
         self,
@@ -590,7 +676,7 @@ class HierarchicalRetriever:
         initial_candidates: Optional[List[Dict[str, Any]]] = None,
         level: Optional[List[int]] = None,
         rerank_budget: Optional[RerankBudget] = None,
-        rerank_memo: Optional[Dict[Tuple[str, str], float]] = None,
+        rerank_memo: Optional[RerankMemo] = None,
     ) -> List[Dict[str, Any]]:
         """
         Recursive search with directory priority return and score propagation.

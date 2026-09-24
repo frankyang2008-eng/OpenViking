@@ -17,6 +17,7 @@ from openviking.core.context import ContextLevel
 from openviking.retrieve.hierarchical_retriever import (
     HierarchicalRetriever,
     RerankBudget,
+    RerankMemo,
     RetrieverMode,
 )
 from openviking.server.identity import RequestContext, Role
@@ -327,7 +328,7 @@ async def test_rerank_memo_reuses_scores_for_repeated_documents(monkeypatch):
         embedder=DummyEmbedder(),
         rerank_config=_config(),
     )
-    memo: dict = {}
+    memo = RerankMemo()
 
     first = await retriever._rerank_scores("hello", ["doc A", "doc B"], [0.2, 0.3], None, memo)
     # A later phase re-scores doc A; measured, the leaf and directory passes overlap.
@@ -358,7 +359,7 @@ async def test_rerank_memo_does_not_cache_a_fallback(monkeypatch):
         embedder=DummyEmbedder(),
         rerank_config=_config(),
     )
-    memo: dict = {}
+    memo = RerankMemo()
 
     first = await retriever._rerank_scores("hello", ["doc A"], [0.2], None, memo)
     second = await retriever._rerank_scores("hello", ["doc A"], [0.2], None, memo)
@@ -382,13 +383,117 @@ async def test_failed_document_keeps_its_vector_score(monkeypatch):
         embedder=DummyEmbedder(),
         rerank_config=_config(),
     )
-    memo: dict = {}
+    memo = RerankMemo()
 
     scores = await retriever._rerank_scores("hello", ["doc A", "doc B"], [0.2, 0.35], None, memo)
 
     assert scores == [0.9, 0.35]  # doc B keeps its vector score instead of sinking to 0.0
     # Only the real provider score is cached; the failure must stay retryable.
-    assert list(memo) == [("hello", "doc A")]
+    assert list(memo.scores) == [("hello", "doc A")]
+
+
+@pytest.mark.asyncio
+async def test_rerank_scores_dedupes_identical_documents_in_one_batch(monkeypatch):
+    """A repeated abstract inside one batch reaches the provider once, not once per index."""
+    fake_client = FakeRerankClient([0.95, 0.05])
+    monkeypatch.setattr(
+        "openviking.retrieve.hierarchical_retriever.RerankClient.from_config",
+        lambda config: fake_client,
+    )
+
+    retriever = HierarchicalRetriever(
+        storage=DummyStorage(),
+        embedder=DummyEmbedder(),
+        rerank_config=_config(),
+    )
+
+    scores = await retriever._rerank_scores(
+        "hello", ["doc A", "doc B", "doc A"], [0.2, 0.3, 0.25], None, RerankMemo()
+    )
+
+    assert fake_client.calls == [("hello", ["doc A", "doc B"])]
+    assert scores == [0.95, 0.05, 0.95]  # the duplicate keeps its twin's score
+
+
+@pytest.mark.asyncio
+async def test_concurrent_batches_share_one_provider_call(monkeypatch):
+    """Two batches of one round that miss the same document pay for it once."""
+
+    class BlockingClient(FakeRerankClient):
+        def __init__(self, scores, gate):
+            super().__init__(scores)
+            self._gate = gate
+
+        def rerank_batch(self, query: str, documents: list[str]):
+            result = super().rerank_batch(query, documents)
+            self._gate.wait(timeout=5)
+            return result
+
+    gate = threading.Event()
+    fake_client = BlockingClient([0.9], gate)
+    monkeypatch.setattr(
+        "openviking.retrieve.hierarchical_retriever.RerankClient.from_config",
+        lambda config: fake_client,
+    )
+
+    retriever = HierarchicalRetriever(
+        storage=DummyStorage(),
+        embedder=DummyEmbedder(),
+        rerank_config=_config(),
+    )
+    memo = RerankMemo()
+
+    owner = asyncio.create_task(retriever._rerank_scores("hello", ["doc A"], [0.2], None, memo))
+    await asyncio.sleep(0.05)  # let the owner publish its in-flight key
+    joiner = asyncio.create_task(retriever._rerank_scores("hello", ["doc A"], [0.2], None, memo))
+    await asyncio.sleep(0.05)
+    gate.set()
+
+    assert await owner == [0.9]
+    assert await joiner == [0.9]
+    assert fake_client.calls == [("hello", ["doc A"])]
+    assert memo.inflight == {}
+
+
+@pytest.mark.asyncio
+async def test_joined_document_keeps_vector_score_when_owner_batch_fails(monkeypatch):
+    """A joiner must not inherit the owner's failure as a score, nor wait forever."""
+
+    class BlockingFailingClient(FakeRerankClient):
+        def __init__(self, gate):
+            super().__init__([])
+            self._gate = gate
+
+        def rerank_batch(self, query: str, documents: list[str]):
+            self.calls.append((query, list(documents)))
+            self._gate.wait(timeout=5)
+            return None  # provider-wide failure: the owner falls back to vector scores
+
+    gate = threading.Event()
+    fake_client = BlockingFailingClient(gate)
+    monkeypatch.setattr(
+        "openviking.retrieve.hierarchical_retriever.RerankClient.from_config",
+        lambda config: fake_client,
+    )
+
+    retriever = HierarchicalRetriever(
+        storage=DummyStorage(),
+        embedder=DummyEmbedder(),
+        rerank_config=_config(),
+    )
+    memo = RerankMemo()
+
+    owner = asyncio.create_task(retriever._rerank_scores("hello", ["doc A"], [0.2], None, memo))
+    await asyncio.sleep(0.05)
+    joiner = asyncio.create_task(retriever._rerank_scores("hello", ["doc A"], [0.35], None, memo))
+    await asyncio.sleep(0.05)
+    gate.set()
+
+    assert await owner == [0.2]  # owner keeps its own vector score
+    assert await joiner == [0.35]  # joiner keeps its own, not the owner's
+    assert fake_client.calls == [("hello", ["doc A"])]
+    assert memo.inflight == {}  # every registration is settled on the failure path
+    assert memo.scores == {}  # a failure is never cached
 
 
 @pytest.mark.asyncio
@@ -628,7 +733,7 @@ async def test_budget_exhausted_still_returns_memo_hits():
         rerank_client=client,
     )
     budget = RerankBudget(0.01)
-    memo: dict = {}
+    memo = RerankMemo()
 
     first = await retriever._rerank_scores_timed("q", ["a"], [0.1], budget, memo)
     assert client.calls == 1
@@ -849,7 +954,7 @@ async def test_truncated_memo_key_is_stable():
         rerank_client=client,
     )
     long_doc = "配置说明。" * 200
-    memo: dict = {}
+    memo = RerankMemo()
     first = await retriever._rerank_scores("q", [long_doc], [0.1], None, memo)
     second = await retriever._rerank_scores("q", [long_doc], [0.1], None, memo)
 
