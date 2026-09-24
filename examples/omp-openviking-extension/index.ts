@@ -22,8 +22,8 @@ import { buildProfileBlock } from "./shared/profile-inject.mjs";
 import { createLogger } from "./shared/debug-log.mjs";
 import { isBypassed } from "./shared/session-model.mjs";
 import { collectInertKnobs } from "./lib/omp-config.mjs";
-import { guardVikingUriToolCall } from "./lib/uri-guard-adapter.mjs";
-import { registerTools } from "./tools.js";
+import { agentDirForModuleUrl, readMcpServerState } from "./lib/mcp-server-state.mjs";
+import { guardVikingUriToolCall, noticeVikingUriToolResult } from "./lib/uri-guard-adapter.mjs";
 import { createTakeoverManager } from "./takeover.js";
 
 export default async function (pi: ExtensionAPI) {
@@ -61,7 +61,7 @@ export default async function (pi: ExtensionAPI) {
   let bypassed = false;
   let profileBlock = "";
   let archiveOverview = "";
-  let toolsRegistered = false;
+  let mcpToolsHint = "";
   let compacted = false;
   let started = false;
   let inertKnobsNotified = false;
@@ -100,9 +100,13 @@ export default async function (pi: ExtensionAPI) {
       // Health check
       connected = await client.health();
       if (!connected) {
-        if (config.logLevel === "info") {
-          ctx.ui.notify("OpenViking: server not reachable", "warning");
-        }
+        // Not gated on logLevel: with the tool catalogue living behind the MCP
+        // proxy, a down server means all 16 tools are missing, and the design
+        // (§4.4) requires that to be said out loud rather than silently absent.
+        ctx.ui.notify(
+          "OpenViking: server not reachable — the mcp__openviking_* tools will fail until it is back",
+          "warning",
+        );
         return;
       }
 
@@ -132,11 +136,17 @@ export default async function (pi: ExtensionAPI) {
         archiveOverview = await fetchArchiveOverview(client, sync.sessionId, config);
       }
 
-      // Register tools (also needed for pi -c continuations).
-      if (!toolsRegistered) {
-        registerTools(pi, client, sync);
-        toolsRegistered = true;
-      }
+      // The server's own catalogue reaches the model through omp's MCP client,
+      // so there is nothing to register here — but nothing in omp's prompt lists
+      // MCP tools (`tools.xdevDocs` defaults to "builtins", which keeps them
+      // on-demand), so a session that never runs `read xd://` never learns they
+      // exist. One line says where they are. It is only true when the entry is
+      // actually in mcp.json, when the user has not disabled the server, and
+      // when the extension's own `mcpEnabled` switch is on.
+      const mcp = readMcpServerState(agentDirForModuleUrl(import.meta.url));
+      mcpToolsHint = config.mcpEnabled !== false && mcp.enabled
+        ? "OpenViking tools are available as MCP tools named `mcp__openviking_*` (find, search, read, list, tree, remember, write, edit, add_resource, add_skill, list_watches, cancel_watch, grep, glob, forget, health). They load on demand — `read xd://` lists them. Use them for `viking://` URIs instead of local file tools."
+        : "";
       updateStatus(ctx, connected, 0, sync.sessionId, config, takeover.state);
 
       started = true;
@@ -180,7 +190,7 @@ export default async function (pi: ExtensionAPI) {
     if (!config.takeoverEnabled && archiveOverview && (compacted || archiveOverview.trim())) {
       parts.push(archiveOverview);
     }
-    parts.push("OpenViking tools: viking_search, viking_read, viking_browse, viking_remember, viking_forget, viking_add_resource, viking_archive_expand.");
+    if (mcpToolsHint) parts.push(mcpToolsHint);
 
     const additions = parts.join("\n\n");
     if (!additions) return;
@@ -248,6 +258,13 @@ export default async function (pi: ExtensionAPI) {
     const decision = guardVikingUriToolCall(event);
     if (!decision) return;
     return decision;
+  });
+
+  // --- tool_result ---
+  pi.on("tool_result", async (event) => {
+    const notice = noticeVikingUriToolResult(event);
+    if (!notice) return;
+    return notice;
   });
 
   // --- turn_end ---
