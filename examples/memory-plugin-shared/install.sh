@@ -169,7 +169,8 @@ Options:
   --statusline       Register the Claude Code statusline without asking.
   --no-statusline    Skip the statusline prompt.
   --uninstall        Remove Cursor/TRAE/TRAE CN/ZCode integration files and config,
-                     plus any legacy TraeCode CLI hook config.
+                     plus any legacy TraeCode CLI hook config, the omp extension
+                     and its MCP registration.
                      For Codex-format plugins, use the client's plugin uninstall command.
   --yes, -y          Use defaults for prompts when possible.
 EOF
@@ -2129,6 +2130,9 @@ uninstall_agent_integrations() {
   if contains_harness codebuddy; then
     uninstall_codebuddy
   fi
+  if contains_harness omp; then
+    uninstall_omp
+  fi
   if contains_harness trae-cli; then
     local trae_home="${TRAE_HOME:-$HOME/.trae}"
     local trae_cli_home="${TRAECLI_HOME:-$trae_home/cli}"
@@ -2688,6 +2692,26 @@ EOF
       node --check "$HOME/.pi/agent/extensions/openviking/shared/mcp-proxy-config.mjs" || ok=0
     fi
   fi
+  if contains_harness omp; then
+    local omp_agent_dir omp_ext
+    omp_agent_dir="$(resolve_omp_agent_dir)"
+    omp_ext="$omp_agent_dir/extensions/openviking"
+    if [ -f "$omp_ext/servers/mcp-proxy.mjs" ]; then
+      info "omp: $PLUGIN_NAME $(t 'extension files present' '扩展文件已存在')"
+      # Import, not --check: the proxy resolves its whole dependency graph at
+      # load, and a graph that only parses still fails at session start.
+      (cd "$omp_ext" && "$NODE_BIN" --input-type=module -e 'await import("./servers/mcp-proxy.mjs")') || ok=0
+    else
+      warn "omp: $PLUGIN_NAME $(t 'extension files not found' '未找到扩展文件')"
+      ok=0
+    fi
+    if grep -q '"openviking"' "$omp_agent_dir/mcp.json" 2>/dev/null; then
+      info "omp: $(t 'MCP server registered' 'MCP server 已注册')"
+    else
+      warn "omp: $(t 'MCP server not found in config' '配置中未找到 MCP server')"
+      ok=0
+    fi
+  fi
   if contains_harness dsh && command -v dsh >/dev/null 2>&1; then
     local dsh_profile="${DSH_PROFILE:-$DSH_PROFILE_DEFAULT}"
     if dsh plugin --profile "$dsh_profile" ls 2>/dev/null | grep -q "$DSH_PACKAGE"; then
@@ -2907,6 +2931,52 @@ install_omp() {
   mkdir -p "$(dirname "$dest")"
   mv "$tmp" "$dest"
   info "$(t 'omp extension installed:' 'omp 扩展已安装：') $dest"
+
+  # The tool catalogue reaches omp through its own MCP client, so the entry has
+  # to be in the file omp reads before a single tool exists. Credentials do not
+  # travel with it: the proxy below resolves them from ovcli.conf at startup.
+  if [ -f "$dest/servers/mcp-proxy.mjs" ]; then
+    if omp_write_mcp_config "$omp_agent_dir/mcp.json" "$dest/servers/mcp-proxy.mjs"; then
+      info "$(t 'omp MCP server registered:' '已注册 omp MCP server：') openviking"
+      info "$(t 'The OpenViking server must stay running: the mcp__openviking_* tools are served through it.' 'OpenViking server 需保持运行：mcp__openviking_* 工具都经由它提供。')"
+    else
+      warn "$(t 'Could not write the omp MCP config; add the server from omp with /mcp.' '无法写入 omp MCP 配置；请在 omp 中用 /mcp 手动添加该 server。')"
+    fi
+  else
+    warn "$(t 'The installed extension has no MCP proxy; the OpenViking tools will be unavailable.' '安装的扩展缺少 MCP proxy，OpenViking 工具将不可用。')"
+  fi
+}
+
+omp_write_mcp_config() { # omp_write_mcp_config <mcp.json> <proxy script>
+  local cfg="$1" proxy="$2" lib
+  lib="$(require_install_lib_dir)" || return 1
+  mkdir -p "$(dirname "$cfg")"
+  [ -f "$cfg" ] || printf '{\n}\n' > "$cfg"
+  cp "$cfg" "$cfg.bak.$(date +%Y%m%d-%H%M%S)"
+  "$NODE_BIN" "$lib/jsonc-edit.mjs" "$cfg" "" "$proxy" omp
+}
+
+omp_remove_mcp_entry() { # omp_remove_mcp_entry <mcp.json> <extension dir>
+  local cfg="$1" ext="$2" lib
+  [ -f "$cfg" ] || return 0
+  # Same bargain as the other hosts: an uninstall that cannot find the runtime
+  # still removes the extension, and says which file it could not clean up.
+  lib="$(install_lib_dir)" || {
+    warn "$(t 'Installer runtime not found; remove the OpenViking MCP entry by hand from:' '未找到安装器运行时，请手动移除以下文件中的 OpenViking MCP 条目：') $cfg"
+    return 0
+  }
+  "$NODE_BIN" "$lib/jsonc-edit.mjs" remove-omp "$cfg" "$ext"
+}
+
+uninstall_omp() {
+  local omp_agent_dir ext
+  omp_agent_dir="$(resolve_omp_agent_dir)"
+  ext="$omp_agent_dir/extensions/openviking"
+  # config.json is the user's own settings and lives inside the extension
+  # directory; the copy an install kept beside it is the one that survives.
+  omp_remove_mcp_entry "$omp_agent_dir/mcp.json" "$ext"
+  rm -rf "$ext"
+  info "$(t 'Removed the omp OpenViking extension and MCP registration.' '已移除 omp OpenViking 扩展与 MCP 注册。')"
 }
 
 install_qoder() {

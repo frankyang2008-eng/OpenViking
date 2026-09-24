@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Comment-preserving edits to OpenCode's config file.
+ * Comment-preserving edits to a host's JSON/JSONC config file.
  *
  * OpenCode reads `opencode.jsonc`, and people keep notes in it. Reparsing and
  * reserializing the file would silently eat every comment and every hand-made
@@ -344,12 +344,74 @@ export function updateOpencodeConfig(raw, { pluginSpec = "", mcpProxy = "" } = {
 
 export { stripJsonc };
 
+/**
+ * The omp `mcp.json` text with the OpenViking server pointing at `mcpProxy`.
+ *
+ * omp's schema is not OpenCode's: servers live in a top-level `mcpServers` map
+ * and the entry is a stdio server with a bare `command` string. Its default
+ * timeout is not ours either — omp applies 30s to an entry that names none, so
+ * none is written here, and an explicit `timeout` survives. A server the user
+ * disabled stays disabled, and keys this installer does not own (`env`, `cwd`)
+ * are carried over rather than dropped.
+ */
+export function updateOmpMcpConfig(raw, { mcpProxy = "" } = {}) {
+  let data = {};
+  try { data = raw.trim() ? JSON.parse(stripJsonc(raw)) : {}; } catch { data = {}; }
+  let nextRaw = raw.trim() ? raw : "{\n}\n";
+  if (mcpProxy) {
+    const servers = data.mcpServers && typeof data.mcpServers === "object" && !Array.isArray(data.mcpServers) ? data.mcpServers : {};
+    const entry = servers.openviking;
+    const previous = entry && typeof entry === "object" && !Array.isArray(entry) ? entry : {};
+    if (previous.enabled !== false) {
+      servers.openviking = {
+        ...previous,
+        type: "stdio",
+        command: "node",
+        args: [mcpProxy],
+        enabled: true,
+      };
+      nextRaw = setNestedObjectProperty(nextRaw, "mcpServers", "openviking", servers.openviking, servers);
+    }
+  }
+  if (!nextRaw.endsWith("\n")) nextRaw += "\n";
+  return nextRaw;
+}
+
+/**
+ * The omp `mcp.json` text with our server entry removed, or the input unchanged.
+ *
+ * A parse and reserialize rather than a splice: this file is JSON this
+ * installer wrote, and a delete that leaves a dangling comma behind is worse
+ * than one that loses a comment. The entry is only ours when its own text names
+ * the extension directory being uninstalled, so a user who pointed the name at
+ * a server of their own keeps it.
+ */
+export function removeOmpMcpEntry(raw, { extensionDir = "" } = {}) {
+  let data;
+  try { data = JSON.parse(stripJsonc(raw)); } catch { return raw; }
+  const servers = data && data.mcpServers;
+  const entry = servers && servers.openviking;
+  if (!entry || !extensionDir || !JSON.stringify(entry).includes(extensionDir)) return raw;
+  delete servers.openviking;
+  if (Object.keys(servers).length === 0) delete data.mcpServers;
+  return `${JSON.stringify(data, null, 2)}\n`;
+}
+
 if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
-  const file = process.argv[2];
-  let raw = "";
-  try { raw = fs.readFileSync(file, "utf8"); } catch {}
-  fs.writeFileSync(file, updateOpencodeConfig(raw, {
-    pluginSpec: process.argv[3] || "",
-    mcpProxy: process.argv[4] || "",
-  }));
+  // Subcommand first, as host-json-config.mjs does; a bare path keeps the
+  // original OpenCode write call working.
+  const [first, ...argv] = process.argv.slice(2);
+  if (first === "remove-omp") {
+    const [file, extensionDir] = argv;
+    let raw = "";
+    try { raw = fs.readFileSync(file, "utf8"); } catch { process.exit(0); }
+    fs.writeFileSync(file, removeOmpMcpEntry(raw, { extensionDir: extensionDir || "" }));
+  } else {
+    const [file, pluginSpec, mcpProxy, kind] = [first, ...argv];
+    let raw = "";
+    try { raw = fs.readFileSync(file, "utf8"); } catch {}
+    fs.writeFileSync(file, kind === "omp"
+      ? updateOmpMcpConfig(raw, { mcpProxy: mcpProxy || "" })
+      : updateOpencodeConfig(raw, { pluginSpec: pluginSpec || "", mcpProxy: mcpProxy || "" }));
+  }
 }
