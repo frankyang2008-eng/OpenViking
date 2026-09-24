@@ -159,7 +159,7 @@ function str(value) {
 }
 
 /** The ov.conf block named after this harness, the lowest layer of every chain. */
-function ovConfSection(ovFile, key) {
+export function ovConfSection(ovFile, key) {
   const section = key ? ovFile?.[key] : null;
   return section && typeof section === "object" && !Array.isArray(section) ? section : {};
 }
