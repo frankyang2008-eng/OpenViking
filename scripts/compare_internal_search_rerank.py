@@ -87,6 +87,43 @@ async def run_side(viking_fs, query: str, targets: List[str], limit: int, rerank
     }
 
 
+def _as_float(value: Any) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _as_int(value: Any) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0
+
+
+def read_candidate_counters(handle) -> Dict[str, float]:
+    """Bucket sizes the retriever recorded while building the rerank batches."""
+    counters = getattr(handle, "_counters", {}) or {}
+    return {
+        key: _as_float(value)
+        for key, value in counters.items()
+        if key.startswith("rerank.candidates") or key.startswith("vector.")
+    }
+
+
+def report_candidate_mix(counters: Dict[str, float]) -> Dict[str, Any]:
+    total = counters.get("rerank.candidates", 0.0)
+    summaries = counters.get("rerank.candidates.directory_summary", 0.0)
+    share = round(summaries / total, 4) if total else None
+    return {
+        "candidates": _as_int(total),
+        "directory_summaries": _as_int(summaries),
+        "directory_summary_share": share,
+        "vector_searches": _as_int(counters.get("vector.searches", 0.0)),
+        "vector_scored": _as_int(counters.get("vector.scored", 0.0)),
+    }
+
+
 def jaccard(a: List[str], b: List[str]) -> float:
     sa, sb = set(a), set(b)
     return len(sa & sb) / len(sa | sb) if (sa | sb) else 1.0
@@ -103,10 +140,16 @@ async def main() -> int:
     ap.add_argument("--user", default="trae_dever")
     ap.add_argument("--json", default="plans/rerank-mini-verification/step2-replay.json")
     ap.add_argument("--dump-raw", action="store_true")
+    ap.add_argument(
+        "--off-only",
+        action="store_true",
+        help="skip the paid rerank side; report candidate composition and the rerank-off result",
+    )
     args = ap.parse_args()
 
     from openviking.server.identity import RequestContext, Role
     from openviking.service.core import OpenVikingService
+    from openviking.telemetry import OperationTelemetry, bind_telemetry
     from openviking_cli.session.user_id import UserIdentifier
 
     try:
@@ -124,38 +167,56 @@ async def main() -> int:
     )
     try:
         sides = []
-        for rerank in (True, False):
-            side = await run_side(service.viking_fs, query, targets, args.limit, rerank, ctx)
+        handle = OperationTelemetry(operation="step2-replay", enabled=True)
+        rerank_flags = (False,) if args.off_only else (True, False)
+        for rerank in rerank_flags:
+            with bind_telemetry(handle):
+                side = await run_side(service.viking_fs, query, targets, args.limit, rerank, ctx)
             sides.append(side)
             print(f"[rerank={rerank}] candidate={len(side['items'])}", flush=True)
-        on, off = sides[0], sides[1]
 
-        on_top = optimize_top(on["raw"], args.top)
-        off_top = optimize_top(off["raw"], args.top)
-        on_all = [i["uri"] for i in on["items"]]
-        off_all = [i["uri"] for i in off["items"]]
-        on_uris = [i["uri"] for i in on_top]
-        off_uris = [i["uri"] for i in off_top]
-        common = [u for u in on_uris if u in off_uris]
+        candidate_mix = report_candidate_mix(read_candidate_counters(handle))
+        print("candidate mix:", json.dumps(candidate_mix, ensure_ascii=False))
 
-        report = {
-            "query_chars": len(query),
-            "targets": targets,
-            "limit": args.limit,
-            "top": args.top,
-            "jaccard_at_top": round(jaccard(on_uris, off_uris), 4),
-            "jaccard_at_limit": round(jaccard(on_all, off_all), 4),
-            "top1_same": bool(on_uris and off_uris and on_uris[0] == off_uris[0]),
-            "common_at_top": common,
-            "on_only_at_top": [u for u in on_uris if u not in off_uris],
-            "off_only_at_top": [u for u in off_uris if u not in on_uris],
-            "ranks": {u: {"on": on_uris.index(u) + 1, "off": off_uris.index(u) + 1} for u in common},
-            "on_top": on_top,
-            "off_top": off_top,
-            "on_scores_at_limit": {i["uri"]: i["score"] for i in on["items"]},
-            "off_scores_at_limit": {i["uri"]: i["score"] for i in off["items"]},
-        }
-        print(json.dumps({k: v for k, v in report.items() if k not in ("on_scores_at_limit", "off_scores_at_limit")}, ensure_ascii=False, indent=2))
+        if args.off_only:
+            off_top = optimize_top(sides[0]["raw"], args.top)
+            report = {
+                "query_chars": len(query),
+                "targets": targets,
+                "limit": args.limit,
+                "top": args.top,
+                "candidate_mix": candidate_mix,
+                "off_top": off_top,
+            }
+        else:
+            on, off = sides[0], sides[1]
+            on_top = optimize_top(on["raw"], args.top)
+            off_top = optimize_top(off["raw"], args.top)
+            on_all = [i["uri"] for i in on["items"]]
+            off_all = [i["uri"] for i in off["items"]]
+            on_uris = [i["uri"] for i in on_top]
+            off_uris = [i["uri"] for i in off_top]
+            common = [u for u in on_uris if u in off_uris]
+
+            report = {
+                "query_chars": len(query),
+                "targets": targets,
+                "limit": args.limit,
+                "top": args.top,
+                "candidate_mix": candidate_mix,
+                "jaccard_at_top": round(jaccard(on_uris, off_uris), 4),
+                "jaccard_at_limit": round(jaccard(on_all, off_all), 4),
+                "top1_same": bool(on_uris and off_uris and on_uris[0] == off_uris[0]),
+                "common_at_top": common,
+                "on_only_at_top": [u for u in on_uris if u not in off_uris],
+                "off_only_at_top": [u for u in off_uris if u not in on_uris],
+                "ranks": {u: {"on": on_uris.index(u) + 1, "off": off_uris.index(u) + 1} for u in common},
+                "on_top": on_top,
+                "off_top": off_top,
+                "on_scores_at_limit": {i["uri"]: i["score"] for i in on["items"]},
+                "off_scores_at_limit": {i["uri"]: i["score"] for i in off["items"]},
+            }
+            print(json.dumps({k: v for k, v in report.items() if k not in ("on_scores_at_limit", "off_scores_at_limit")}, ensure_ascii=False, indent=2))
         if args.dump_raw:
             for side in sides:
                 print(f"--- raw keys (rerank={side['rerank']}) ---")

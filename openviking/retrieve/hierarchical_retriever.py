@@ -109,6 +109,33 @@ class HierarchicalRetriever:
     MAX_PARALLEL_CHILD_SEARCHES = 4  # Limit per-request fan-out against remote vector stores
     LEVEL_URI_SUFFIX = {0: ".abstract.md", 1: ".overview.md"}
 
+    def _count_rerank_candidates(self, telemetry: Any, results: List[Dict[str, Any]]) -> None:
+        """Bucket the documents a rerank batch would score.
+
+        Directory summaries (L0/L1) are scored like any memory file, but the memory
+        search tool drops them from what it returns. Their share of the scored
+        volume is what decides whether scoring them pays for itself, and it has to
+        be measurable on a rerank-off run too — the candidate set is the same one.
+
+        Rows carry the directory URI and a level; the ``.abstract.md`` /
+        ``.overview.md`` suffix only exists on the user-facing URI that
+        ``_append_level_suffix`` reconstructs later, so level is the honest signal.
+        """
+        if not getattr(telemetry, "enabled", False):
+            return
+        summary_levels = tuple(self.LEVEL_URI_SUFFIX)
+        summary_suffixes = tuple(self.LEVEL_URI_SUFFIX.values())
+        telemetry.count("rerank.candidates", len(results))
+        telemetry.count(
+            "rerank.candidates.directory_summary",
+            sum(
+                1
+                for r in results
+                if r.get("level") in summary_levels
+                or str(r.get("uri") or "").endswith(summary_suffixes)
+            ),
+        )
+
     def __init__(
         self,
         storage: VikingDBManager,
@@ -299,6 +326,7 @@ class HierarchicalRetriever:
             telemetry.count("vector.scored", len(global_results))
             telemetry.count("vector.scanned", len(global_results))
 
+            self._count_rerank_candidates(telemetry, global_results)
             leaf_results: List[Dict[str, Any]] = []
             if await self.vector_store._acl_enabled(ctx) and (level is None or 2 in level):
                 leaf_results = await vector_proxy.search_in_tenant(
@@ -313,6 +341,7 @@ class HierarchicalRetriever:
                 telemetry.count("vector.searches", 1)
                 telemetry.count("vector.scored", len(leaf_results))
                 telemetry.count("vector.scanned", len(leaf_results))
+                self._count_rerank_candidates(telemetry, leaf_results)
                 if self._rerank_client and rerank and mode == RetrieverMode.THINKING and leaf_results:
                     with telemetry.measure("search.rerank"):
                         leaf_scores = await self._rerank_scores_timed(
@@ -771,6 +800,7 @@ class HierarchicalRetriever:
                 telemetry.count("vector.scanned", len(results))
                 round_fallbacks.append([self._finite_score(r.get("_score", 0.0)) for r in results])
                 round_documents.append([str(r.get("abstract") or "") for r in results])
+                self._count_rerank_candidates(telemetry, results)
 
             # Rerank every directory of this round in parallel: the child searches
             # above are gathered, so awaiting the batches one at a time would

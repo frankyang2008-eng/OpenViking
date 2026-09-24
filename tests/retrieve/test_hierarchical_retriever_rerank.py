@@ -1530,3 +1530,32 @@ async def test_rerank_false_skips_the_provider_but_keeps_the_recursive_strategy(
         "viking://resources/file-a",
     ]
     assert [r.get("rerank_used") for r in recorded] == [True, False]
+
+
+def test_candidate_counter_separates_directory_summaries_by_level():
+    """The L0/L1 share of the scored volume is what decides whether scoring it pays.
+
+    Rows carry a level and the directory URI; the ``.abstract.md`` /
+    ``.overview.md`` suffix only appears on the user-facing URI, so a suffix-only
+    count reads zero on real candidates.
+    """
+    from openviking.telemetry import OperationTelemetry
+
+    retriever = HierarchicalRetriever(storage=DummyStorage(), embedder=DummyEmbedder())
+    handle = OperationTelemetry(operation="test", enabled=True)
+    retriever._count_rerank_candidates(
+        handle,
+        [
+            {"uri": "viking://resources/dir-a", "level": 0},
+            {"uri": "viking://resources/dir-b", "level": 1},
+            {"uri": "viking://resources/file", "level": 2},
+            {"uri": "viking://resources/dir-c/.abstract.md", "level": None},
+        ],
+    )
+
+    assert handle._counters["rerank.candidates"] == 4
+    assert handle._counters["rerank.candidates.directory_summary"] == 3
+
+    disabled = OperationTelemetry(operation="test", enabled=False)
+    retriever._count_rerank_candidates(disabled, [{"uri": "x", "level": 0}])
+    assert not disabled._counters
