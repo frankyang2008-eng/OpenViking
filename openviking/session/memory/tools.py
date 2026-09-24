@@ -212,6 +212,8 @@ class MemoryReadTool(MemoryTool):
         ctx: Optional["ToolContext"],
         **kwargs: Any,
     ) -> Any:
+        if ctx is None:  # the signature allows it; every path below dereferences ctx
+            return {"error": "missing tool context"}
         uri = kwargs.get("uri", "")
         offset = kwargs.get("offset", 0)
         limit = kwargs.get("limit", -1)
@@ -292,6 +294,8 @@ class MemorySearchTool(MemoryTool):
         ctx: Optional["ToolContext"],
         **kwargs: Any,
     ) -> Any:
+        if ctx is None:  # the signature allows it; every path below dereferences ctx
+            return {"error": "missing tool context"}
         try:
             query = kwargs.get("query", "")
             # Get target_uri from ctx.default_search_uris
@@ -364,6 +368,8 @@ class MemoryLsTool(MemoryTool):
         ctx: Optional["ToolContext"],
         **kwargs: Any,
     ) -> Any:
+        if ctx is None:  # the signature allows it; every path below dereferences ctx
+            return {"error": "missing tool context"}
         try:
             uri = kwargs.get("uri", "")
             entries = await ctx.viking_fs.ls(

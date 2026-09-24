@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import difflib
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Sequence
 
 from openviking.server.identity import RequestContext
 from openviking.session.memory.dataclass import MemoryFile, MemoryTypeSchema
@@ -398,7 +398,7 @@ def _truncate_query_text(text: Any, max_chars: int) -> str:
     return normalized[: max_chars - 3].rstrip() + "..."
 
 
-def _infer_user_space_from_uris(uris: list[str | None]) -> str | None:
+def _infer_user_space_from_uris(uris: Sequence[str | None]) -> str | None:
     for uri in uris:
         if not uri:
             continue
