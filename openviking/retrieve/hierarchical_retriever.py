@@ -173,6 +173,7 @@ class HierarchicalRetriever:
         score_gte: bool = False,
         scope_dsl: Optional[FilterExpr | Dict[str, Any]] = None,
         level: Optional[List[int]] = None,
+        rerank: bool = True,
     ) -> QueryResult:
         """
         Execute hierarchical retrieval.
@@ -312,7 +313,7 @@ class HierarchicalRetriever:
                 telemetry.count("vector.searches", 1)
                 telemetry.count("vector.scored", len(leaf_results))
                 telemetry.count("vector.scanned", len(leaf_results))
-                if self._rerank_client and mode == RetrieverMode.THINKING and leaf_results:
+                if self._rerank_client and rerank and mode == RetrieverMode.THINKING and leaf_results:
                     with telemetry.measure("search.rerank"):
                         leaf_scores = await self._rerank_scores_timed(
                             query.query,
@@ -348,7 +349,7 @@ class HierarchicalRetriever:
 
             # Step 3: Pick recursive entry points from directory hits and explicit roots.
             directory_scores = [self._finite_score(r.get("_score", 0.0)) for r in global_results]
-            if self._rerank_client and mode == RetrieverMode.THINKING:
+            if self._rerank_client and rerank and mode == RetrieverMode.THINKING:
                 with telemetry.measure("search.rerank"):
                     directory_scores = await self._rerank_scores_timed(
                         query.query,
@@ -401,6 +402,7 @@ class HierarchicalRetriever:
                 initial_candidates=initial_candidates,
                 rerank_budget=rerank_budget,
                 rerank_memo=rerank_memo,
+                rerank=rerank,
                 level=level,
             )
             apply_hotness = True
@@ -680,6 +682,7 @@ class HierarchicalRetriever:
         level: Optional[List[int]] = None,
         rerank_budget: Optional[RerankBudget] = None,
         rerank_memo: Optional[RerankMemo] = None,
+        rerank: bool = True,
     ) -> List[Dict[str, Any]]:
         """
         Recursive search with directory priority return and score propagation.
@@ -772,7 +775,7 @@ class HierarchicalRetriever:
             # Rerank every directory of this round in parallel: the child searches
             # above are gathered, so awaiting the batches one at a time would
             # serialize the round behind its slowest directory.
-            if self._rerank_client and mode == RetrieverMode.THINKING:
+            if self._rerank_client and rerank and mode == RetrieverMode.THINKING:
                 with telemetry.measure("search.rerank"):
                     round_rerank = [
                         self._rerank_scores(query, documents, fallback, rerank_budget, rerank_memo)

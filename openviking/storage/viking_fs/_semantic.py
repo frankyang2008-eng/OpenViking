@@ -3,7 +3,7 @@
 """Semantic retrieval mixin for VikingFS."""
 
 import asyncio
-from typing import Any, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 from openviking.core.context import ContextLevel
 from openviking.core.retrieval_targets import resolve_retrieval_targets
@@ -28,6 +28,28 @@ from openviking_cli.exceptions import NotFoundError
 
 
 class _SemanticMixin:
+    if TYPE_CHECKING:
+        # Provided by the concrete host class (VikingFS, which composes this mixin with
+        # the other viking_fs mixins). Declared here so the mixin type-checks on its own;
+        # the concrete definitions stay authoritative.
+        _agfs_path_exists: Any
+        _async_agfs: Any
+        _ctx_or_default: Any
+        _decode_bytes: Any
+        _ensure_access: Any
+        _ensure_parent_dirs: Any
+        _ensure_retrieval_scope: Any
+        _get_embedder: Any
+        _get_vector_store: Any
+        _handle_agfs_read: Any
+        _path_to_uri: Any
+        _read_path_visible: Any
+        _read_paths: Any
+        _uri_to_path: Any
+        context_type: Any
+        rerank_config: Any
+        retrieval_config: Any
+        write_file: Any
     """Abstract/overview/find/search semantic retrieval layer."""
 
     # ========== VikingFS Specific Capabilities ==========
@@ -384,6 +406,7 @@ class _SemanticMixin:
         ctx: Optional[RequestContext] = None,
         level: Optional[List[int]] = None,
         image_url: Optional[str] = None,
+        rerank: bool = True,
     ):
         """Complex search with session context.
 
@@ -497,6 +520,7 @@ class _SemanticMixin:
                 score_threshold=score_threshold,
                 scope_dsl=filter,
                 level=level,
+                rerank=rerank,
             )
 
         query_results = await asyncio.gather(*[_execute(tq) for tq in typed_queries])

@@ -323,7 +323,17 @@ class MemorySearchTool(MemoryTool):
                     limit=limit + 10,
                     ctx=request_ctx,
                 )
-            return optimize_search_result(search_result.to_dict(), limit=limit)
+            result = optimize_search_result(search_result.to_dict(), limit=limit)
+            # What the caller actually gets, so a later offline comparison has a
+            # baseline for the top-n this consumer would have read with rerank on.
+            returned = result if isinstance(result, list) else result.get("memories", [])
+            logger.info(
+                "[MemorySearchTool] consumer=%s returned=%s uris=%s",
+                consumer,
+                len(returned),
+                [item.get("uri", "") for item in returned if isinstance(item, dict)],
+            )
+            return result
         except Exception as e:
             tracer.error(f"Failed to execute search: {e}")
             return {"error": str(e)}

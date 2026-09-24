@@ -1476,3 +1476,57 @@ async def test_convert_to_matched_contexts_defaults_tags_and_body_previews():
         markdown,
         "",
     ]
+
+
+@pytest.mark.asyncio
+async def test_rerank_false_skips_the_provider_but_keeps_the_recursive_strategy(monkeypatch):
+    """Step-2 capability flag: skipping the LLM scores must not degrade to QUICK.
+
+    ``rerank=False`` is what an internal consumer (prefetch) would pass to stop paying
+    for 190 LLM document scores per commit. Expressing it by withholding the client
+    would silently switch the strategy at ``mode = QUICK if not client else THINKING``,
+    dropping the hierarchical recursion too — this test pins the difference.
+    """
+    recorded = []
+
+    class _Recorder:
+        def record_query(self, *args, **kwargs):
+            recorded.append(kwargs)
+
+    monkeypatch.setattr(
+        "openviking.retrieve.hierarchical_retriever.get_stats_collector", lambda: _Recorder()
+    )
+    fake_client = FakeRerankClient([0.95, 0.05, 0.11, 0.95])
+    monkeypatch.setattr(
+        "openviking.retrieve.hierarchical_retriever.RerankClient.from_config",
+        lambda config: fake_client,
+    )
+    storage = DummyStorage()
+    retriever = HierarchicalRetriever(
+        storage=storage,
+        embedder=DummyEmbedder(),
+        rerank_config=_config(),
+    )
+
+    on = await retriever.retrieve(_query(), ctx=_ctx(), limit=2, mode=RetrieverMode.THINKING)
+    scored_calls = len(fake_client.calls)
+    on_children = len(storage.child_search_calls)
+    off = await retriever.retrieve(
+        _query(), ctx=_ctx(), limit=2, mode=RetrieverMode.THINKING, rerank=False
+    )
+
+    assert scored_calls > 0  # roots, then children
+    assert len(fake_client.calls) == scored_calls  # the off run added none
+    # The off run recursed exactly as much as the reranked one: no QUICK degradation.
+    assert on_children > 0
+    assert len(storage.child_search_calls) == on_children * 2
+    # Direction pass kept: both runs reach the child level and rank by vector score.
+    assert [c.uri for c in on.matched_contexts] == [
+        "viking://resources/file-b",
+        "viking://resources/file-a",
+    ]
+    assert [c.uri for c in off.matched_contexts] == [
+        "viking://resources/file-b",
+        "viking://resources/file-a",
+    ]
+    assert [r.get("rerank_used") for r in recorded] == [True, False]

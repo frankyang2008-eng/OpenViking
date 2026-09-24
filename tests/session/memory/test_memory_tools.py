@@ -4,6 +4,7 @@
 Tests for memory tools.
 """
 
+from typing import Any, cast
 from unittest.mock import patch
 
 import pytest
@@ -46,8 +47,8 @@ class TestMemoryTools:
 
         mock_fs = MockVikingFS()
         tool_ctx = ToolContext(
-            viking_fs=mock_fs,
-            request_ctx=RequestContext(user=UserIdentifier.the_default_user(), role=Role.USER),
+            viking_fs=cast(Any, mock_fs),
+            request_ctx=RequestContext(user=UserIdentifier.the_default_user(), role=Role(Role.USER)),
             default_search_uris=["viking://user/default/memories"],
         )
 
@@ -58,9 +59,12 @@ class TestMemoryTools:
 
         assert mock_fs.calls == [("重置密码", 15)]  # the limit + 10 over-fetch is preserved
         assert mock_fs.stage_seen == "search_patch_merge"
-        # args = (format, consumer, target_uri, limit, query)
-        assert log_info.call_args.args[1] == "patch_merge"
-        assert log_info.call_args.args[4] == "重置密码"
+        # first line: (format, consumer, target_uri, limit, query)
+        query_log = log_info.call_args_list[0]
+        assert query_log.args[1] == "patch_merge"
+        assert query_log.args[4] == "重置密码"
+        # second line: (format, consumer, returned, uris) — the offline-replay baseline
+        assert log_info.call_args_list[1].args[1:] == ("patch_merge", 0, [])
 
     @pytest.mark.asyncio
     async def test_search_tool_defaults_to_the_react_label(self):
@@ -82,8 +86,8 @@ class TestMemoryTools:
 
         mock_fs = MockVikingFS()
         tool_ctx = ToolContext(
-            viking_fs=mock_fs,
-            request_ctx=RequestContext(user=UserIdentifier.the_default_user(), role=Role.USER),
+            viking_fs=cast(Any, mock_fs),
+            request_ctx=RequestContext(user=UserIdentifier.the_default_user(), role=Role(Role.USER)),
             default_search_uris=["viking://user/default/memories"],
         )
 
@@ -91,7 +95,7 @@ class TestMemoryTools:
             await MemorySearchTool().execute(tool_ctx, query="experience")
 
         assert mock_fs.stage_seen == "search_react"
-        assert log_info.call_args.args[1] == "react"
+        assert log_info.call_args_list[0].args[1] == "react"
 
     def test_read_tool_properties(self):
         """Test MemoryReadTool properties."""
@@ -121,8 +125,8 @@ class TestMemoryTools:
                 )
 
         tool_ctx = ToolContext(
-            viking_fs=MockVikingFS(),
-            request_ctx=RequestContext(user=UserIdentifier.the_default_user(), role=Role.USER),
+            viking_fs=cast(Any, MockVikingFS()),
+            request_ctx=RequestContext(user=UserIdentifier.the_default_user(), role=Role(Role.USER)),
             default_search_uris=[],
             read_file_contents={},
             page_id_map=MockPageIdMap(),
@@ -162,8 +166,8 @@ class TestMemoryTools:
         monkeypatch.setattr(MemoryFile, "plain_content", tracking_plain_content)
 
         tool_ctx = ToolContext(
-            viking_fs=MockVikingFS(),
-            request_ctx=RequestContext(user=UserIdentifier.the_default_user(), role=Role.USER),
+            viking_fs=cast(Any, MockVikingFS()),
+            request_ctx=RequestContext(user=UserIdentifier.the_default_user(), role=Role(Role.USER)),
             default_search_uris=[],
             read_file_contents={},
             page_id_map=MockPageIdMap(),
@@ -211,8 +215,8 @@ class TestMemoryTools:
                 )
 
         tool_ctx = ToolContext(
-            viking_fs=MockVikingFS(),
-            request_ctx=RequestContext(user=UserIdentifier.the_default_user(), role=Role.USER),
+            viking_fs=cast(Any, MockVikingFS()),
+            request_ctx=RequestContext(user=UserIdentifier.the_default_user(), role=Role(Role.USER)),
             default_search_uris=[],
             read_file_contents={},
             page_id_map=MockPageIdMap(),
@@ -239,8 +243,8 @@ class TestMemoryTools:
                 return 'line1\nline2\n\n<!-- MEMORY_FIELDS\n{"memory_type": "experiences"}\n-->'
 
         tool_ctx = ToolContext(
-            viking_fs=MockVikingFS(),
-            request_ctx=RequestContext(user=UserIdentifier.the_default_user(), role=Role.USER),
+            viking_fs=cast(Any, MockVikingFS()),
+            request_ctx=RequestContext(user=UserIdentifier.the_default_user(), role=Role(Role.USER)),
             default_search_uris=[],
             read_file_contents={},
             page_id_map=MockPageIdMap(),
@@ -300,12 +304,12 @@ class TestMemoryTools:
                 account_id="test-account",
                 user_id="test-user",
             ),
-            role=Role.USER,
+            role=Role(Role.USER),
         )
         viking_fs = MockVikingFS()
         # Create tool_ctx with viking_fs included
         tool_ctx = ToolContext(
-            viking_fs=viking_fs,
+            viking_fs=cast(Any, viking_fs),
             request_ctx=request_ctx,
             default_search_uris=["viking://user/test-account/test-user/memories"],
             read_file_contents={},
