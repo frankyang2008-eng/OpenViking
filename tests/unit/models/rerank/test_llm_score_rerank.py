@@ -12,7 +12,12 @@ import pytest
 from pydantic import ValidationError
 
 from openviking.models.rerank import LlmScoreRerankClient, RerankClient
-from openviking.models.rerank.llm_score_rerank import _parse_score
+from openviking.models.rerank.llm_score_rerank import (
+    _PROMPT_FEWSHOT,
+    _PROMPT_SYSTEM,
+    _build_messages,
+    _parse_score,
+)
 from openviking_cli.utils.config.rerank_config import RerankConfig
 
 
@@ -165,7 +170,7 @@ class TestLlmScoreRerankClient:
         assert body["max_tokens"] == 8
         assert "thinking" not in body  # disabled by default
         # few-shot turns present: system + 2 pairs + final user = 6 messages
-        assert len(body["messages"]) == 6
+        assert len(body["messages"]) == 4  # system + one few-shot pair + the scoring prompt
 
     @patch("openviking.models.rerank.llm_score_rerank.httpx.Client")
     def test_thinking_disabled_sends_flag(self, mock_client_class):
@@ -1031,3 +1036,28 @@ class TestLifecycleRace:
         worker.join(timeout=10)
 
         assert results == [[0.85, 0.85]]  # in-flight batch survived the close
+
+
+class TestPromptShape:
+    """A5 (2026-09-24) picked the slimmed prompt; these guard against a silent revert.
+
+    Measured then: prefix 229 -> 169 real tokens per call, nDCG@10 0.9435 -> 0.9654.
+    Dropping the negative anchor instead collapsed the scale (nDCG 0.8667), so the
+    surviving anchor is load-bearing, not decoration.
+    """
+
+    def test_prefix_keeps_exactly_one_negative_anchor(self):
+        assert len(_PROMPT_FEWSHOT) == 1
+        assert "AGPL-3.0" in _PROMPT_FEWSHOT[0][0]
+
+    def test_system_prompt_drops_the_redundant_label_and_keeps_the_guard(self):
+        assert "评分标准" not in _PROMPT_SYSTEM
+        # The format guard stays: an unparseable score costs a call and loses the
+        # document to its vector score, so this line is not free to trim.
+        assert "只输出整数" in _PROMPT_SYSTEM
+        assert "70-89" in _PROMPT_SYSTEM  # all five bands stay verbatim
+
+    def test_messages_end_with_the_scoring_instruction(self):
+        messages = _build_messages("query", "document")
+        assert [m["role"] for m in messages] == ["system", "user", "assistant", "user"]
+        assert "Query: query" in messages[-1]["content"]

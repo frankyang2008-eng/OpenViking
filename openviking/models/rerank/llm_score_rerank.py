@@ -133,17 +133,17 @@ def _parse_score(content: str) -> Optional[int]:
     return score if 0 <= score <= 100 else None
 
 
+# Slimmed rubric with a single negative anchor. Measured 2026-09-24 (A5 prompt arms,
+# 13 queries x 20 docs): fixed prefix 229 -> 169 real tokens per call with nDCG@10
+# 0.9435 -> 0.9654 (post-threshold 0.7501 -> 0.8115), so the cut costs no quality.
+# Dropping the negative anchor instead (keeping only the positive one) collapsed the
+# scale -- 90.7% of documents fell below the 0.05 threshold and nDCG dropped to
+# 0.8667 -- so the anchor that survives must stay the negative one.
 _PROMPT_SYSTEM = """你是检索相关性评分器。给定查询和候选内容，输出 0-100 的整数相关性分。
-评分标准：
-90-100 直接回答查询；70-89 高度相关；40-69 部分相关；10-39 弱相关；0-9 不相关。
-只输出整数分数，不要输出任何其他文字。"""
+90-100 直接回答；70-89 高度相关；40-69 部分相关；10-39 弱相关；0-9 不相关。
+只输出整数，不要输出其他文字。"""
 
 _PROMPT_FEWSHOT = [
-    (
-        "Query: OpenViking 如何配置 embedding\n"
-        "Document: 在 ov.conf 的 embedding 段配置 provider、model 和 api_base，支持本地 ollama 与云端服务。",
-        "95",
-    ),
     (
         "Query: 如何重置登录密码\nDocument: OpenViking 采用 AGPL-3.0 许可证，由火山引擎开源。",
         "3",
