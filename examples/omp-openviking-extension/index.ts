@@ -20,6 +20,7 @@ import { RecallLedger } from "./shared/recall-ledger.mjs";
 import { SyncManager } from "./sync.js";
 import { buildProfileBlock } from "./shared/profile-inject.mjs";
 import { createLogger } from "./shared/debug-log.mjs";
+import { isBypassed } from "./shared/session-model.mjs";
 import { collectInertKnobs } from "./lib/omp-config.mjs";
 import { guardVikingUriToolCall } from "./lib/uri-guard-adapter.mjs";
 import { registerTools } from "./tools.js";
@@ -86,14 +87,14 @@ export default async function (pi: ExtensionAPI) {
         }
       }
 
-      // Bypass check
-      const cwd = process.cwd();
-      for (const pattern of config.bypassPatterns) {
-        if (matchBypass(cwd, pattern)) {
-          bypassed = true;
-          started = true;
-          return;
-        }
+      // Bypass check. `bypassSession` is the switch and `bypassSessionPatterns`
+      // the globs; the shared matcher owns both, so this extension no longer
+      // reads its own list first. Patterns are globs (`path/**`), not bare
+      // directory prefixes.
+      if (isBypassed(config, { cwd: process.cwd() })) {
+        bypassed = true;
+        started = true;
+        return;
       }
 
       // Health check
@@ -348,17 +349,6 @@ export default async function (pi: ExtensionAPI) {
 // ================================================================
 // Helper Functions
 // ================================================================
-
-/** Simple bypass pattern matching (prefix and glob). */
-function matchBypass(cwd: string, pattern: string): boolean {
-  if (pattern.startsWith("*")) {
-    return cwd.endsWith(pattern.slice(1));
-  }
-  if (pattern.endsWith("*")) {
-    return cwd.startsWith(pattern.slice(0, -1));
-  }
-  return cwd === pattern || cwd.startsWith(pattern + "/");
-}
 
 /** Build the <openviking-context> profile block. */
 async function buildSessionProfileBlock(

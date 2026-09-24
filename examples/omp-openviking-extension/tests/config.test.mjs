@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { pathToFileURL } from "node:url";
 import { loadConfig, loadConfigFromModuleUrl } from "../config.ts";
 import { collectInertKnobs, loadOmpConfig } from "../lib/omp-config.mjs";
+import { isBypassed } from "../shared/session-model.mjs";
 
 async function withConfigFile(body, fn, env = {}) {
   const dir = await mkdtemp(join(tmpdir(), "ov-pi-config-用户-"));
@@ -192,6 +193,31 @@ test("loadConfig keeps OV_DEBUG_LOG working under the shared knob", async () => 
   await withConfigFile({}, (cfg) => {
     assert.equal(cfg.debugLogPath, "/tmp/ov-omp-knob.log");
   }, { OV_DEBUG_LOG: "/tmp/ov-omp-legacy.log", OPENVIKING_DEBUG_LOG: "/tmp/ov-omp-knob.log" });
+});
+
+test("loadConfig wires the bypass switch and the shared glob matcher", async () => {
+  await withConfigFile({ bypassPatterns: ["/tmp/scratch*"] }, (cfg) => {
+    assert.deepEqual(cfg.bypassSessionPatterns, ["/tmp/scratch*"]);
+    assert.equal(isBypassed(cfg, { cwd: "/tmp/scratch-1" }), true);
+    assert.equal(isBypassed(cfg, { cwd: "/tmp/keep" }), false);
+  });
+
+  await withConfigFile({ bypassSession: true }, (cfg) => {
+    assert.equal(isBypassed(cfg, { cwd: "/anywhere" }), true, "the switch wins regardless of cwd");
+  });
+});
+
+test("a bare bypass path is a glob, so a subdirectory needs one", async () => {
+  // The hand-written matcher treated a bare path as a prefix; the shared one is
+  // an anchored glob, so `/tmp/work` no longer covers `/tmp/work/sub`.
+  await withConfigFile({ bypassPatterns: ["/tmp/work"] }, (cfg) => {
+    assert.equal(isBypassed(cfg, { cwd: "/tmp/work" }), true);
+    assert.equal(isBypassed(cfg, { cwd: "/tmp/work/sub" }), false);
+    assert.equal(
+      isBypassed({ ...cfg, bypassSessionPatterns: ["/tmp/work/**"] }, { cwd: "/tmp/work/sub" }),
+      true,
+    );
+  });
 });
 
 test("loadConfig derives workspace peer by default", async () => {

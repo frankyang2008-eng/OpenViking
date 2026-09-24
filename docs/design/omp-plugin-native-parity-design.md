@@ -210,9 +210,9 @@ if (isBypassed(config, { cwd: process.cwd() })) { bypassed = true; started = tru
 
 | # | 能力 | pi 的实现 | omp 现状 | 处理 |
 |---|------|----------|---------|------|
-| A1 | **会话批量提交** | `sync.ts` 用 `shared/batch-send.mjs` 的 `BATCH_LIMIT` + `sendSessionMessages`，提交与重放都按批 | `sync.ts` 逐条 `for (const payload of extracted.payloads)` 发 | 接 `batch-send.mjs`，两条路径都改批量 |
+| A1 | **批量提交 / 批量重放** | `syncBranch` 进 `sendPayloads`（`shared/batch-send.mjs`），`flushForTakeover` 进有界的 `drainSessionBacklog`（同 `BATCH_LIMIT`）；只有启动时的 `replayPending()` 仍是一请求一条 | `syncBranch` 逐条 `for (const payload of extracted.payloads)` 发；`flushForTakeover` 调共享 `replayPending()`，一条一个请求 | 两条批量路径都接：`syncBranch` → `sendPayloads`，`flushForTakeover` → `drainSessionBacklog`；启动路径的 `replayPending()` 保持共享实现不动 |
 | A2 | **结构化 debug 日志** | `shared/debug-log.mjs` 的 `createLogger("pi", {debug, debugLogPath})`，knob `debug`/`debugLogPath` + `OV_DEBUG_LOG` 旧名 | 内联 6 行 `debugLog` 闭包，无日志文件 | 换成 `createLogger("omp", …)` |
-| A3 | **bypass 双 knob** | `bypassSession`(bool) + `bypassSessionPatterns`(array)，`isBypassed()` 在 `start()` 生效 | 只有 `bypassPatterns` 且未接线 | 双 knob + `isBypassed` 接线（见 §4.4） |
+| A3 | **bypass 双 knob** | `bypassSession`(bool) + `bypassSessionPatterns`(array)，`isBypassed()` 在 `start()` 生效 | 只有 `bypassPatterns`；手写的 `matchBypass()` 是「裸路径 = 前缀」语义 | 改用 `isBypassed()` 并删掉 `matchBypass()`；**语义变化**：模式是锚定 glob，`/tmp/work` 不再覆盖 `/tmp/work/sub`，要写 `/tmp/work/**`（见 §6） |
 | A4 | **有效 peer 解析** | `deriveEffectivePeer: true` → `peerId = config.effectivePeer.peerId` | `resolveEffectivePeerId()` 自行解析 | 改用 schema 的有效 peer（旧 memory 在 `actor` scope 下仍可达） |
 
 **明确不做**（不属对齐目标）：
@@ -266,6 +266,7 @@ if (isBypassed(config, { cwd: process.cwd() })) { bypassed = true; started = tru
 | 风险 | 缓解 |
 |------|------|
 | 工具名从 `viking_*` 变成 `mcp__openviking_*`，用户既有 prompt/skill 引用失效 | README 加旧→新映射表；守卫文案直接给新名字 |
+| bypass 模式语义变化：裸路径不再当前缀 | 手写 `matchBypass()` 把 `/tmp/work` 当目录前缀，共享 matcher 是锚定 glob；`/tmp/work` 现只匹配自身。README 写明用 `/tmp/work/**`，旧 `config.json` 里写裸目录的用户需加 `**` |
 | MCP 工具默认按需，模型可能不主动 `read xd://` 发现 | session-start 提示行（仅在健康检查通过且条目存在时注入）；README 给 `tools.xdevInlineDevices` 钉法 |
 | 安装器写用户全局 `mcp.json` | 只增改 `mcpServers.openviking`、原子写、路径即标记、提供 `uninstall_omp` 精确回滚 |
 | `node` 不在 omp 运行环境的 PATH 上 | 安装时探测并写绝对路径（若已有 `NODE_BIN` 变量则复用） |

@@ -66,13 +66,14 @@
 
 **改动**
 
-1. `sync.ts`：接 `shared/batch-send.mjs`（`BATCH_LIMIT` + `sendSessionMessages`），提交与 `replayPending` 两条路径都按批发。
-2. `index.ts`：`start()` 开头加 `isBypassed(config, {cwd})` 分支（`bypassed = true; started = true; return;`）；`bypassSession` + `bypassSessionPatterns` 双 knob 生效。
+1. `sync.ts`：接 `shared/batch-send.mjs`（`BATCH_LIMIT` + `sendSessionMessages`）——`syncBranch` 走 `sendPayloads`，`flushForTakeover` 走有界的 `drainSessionBacklog`；启动时的 `replayPending()` 保持共享实现（一请求一条）不动。同文件把自写的 `debugLog` 闭包换成 `createLogger("omp", …)`。
+2. `index.ts`：`start()` 里把 bypass 的 for 循环换成 `isBypassed(config, {cwd})`，删掉手写的 `matchBypass()`（语义从「裸路径 = 前缀」变成锚定 glob，见设计 §6）。
 3. 跑 sync（`shared/batch-send.mjs` 应被拉进来）。
 
 **验收**
 
-- 新增测试：提交 25 条消息时按 `BATCH_LIMIT` 分批（fake fetch 断言请求次数）；`bypassSessionPatterns` 命中时 `start()` 不健康检查、不建 session。
+- 新增测试：一轮多消息只发 **1** 个请求（旧实现一条一个请求）；超过 `BATCH_LIMIT` 时按批拆（断言首批 = `BATCH_LIMIT` 且各批之和 = `added`）；`bypassSession` 与 glob 模式命中/不命中；裸路径不再覆盖子目录（记录语义变化）。
+- 受影响的旧测试：两个 commit 日志测试改为传 `debugLogPath`（logger 读解析后的配置，不再直读 `OV_DEBUG_LOG`）；`restoreWatermark` 测试改为断言批量请求体（不再数 `addMessagePayload`）。
 - 手动：在 `bypassSessionPatterns` 里写当前仓库路径，起 omp → 无 OpenViking 会话创建。
 
 **回滚**：单 commit revert。

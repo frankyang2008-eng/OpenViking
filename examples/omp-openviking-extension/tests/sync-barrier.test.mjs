@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { SyncManager } from "../sync.ts";
 import { enqueue, listPending } from "../shared/pending-queue.mjs";
+import { BATCH_LIMIT } from "../shared/batch-send.mjs";
 
 function config(overrides = {}) {
   return {
@@ -62,11 +63,68 @@ test("syncBranch returns added token accounting and delivered status", async () 
   });
 });
 
-test("commit writes success trace_id to the pi debug log", async () => {
+test("syncBranch sends a whole turn in one batch request", async () => {
+  await withPendingDir(async () => {
+    const calls = [];
+    const c = client({
+      fetchJSON: async (path, init) => {
+        calls.push({ path, body: JSON.parse(init.body) });
+        return { ok: true, result: {} };
+      },
+    });
+    const sync = new SyncManager(c, config({ takeoverEnabled: false }));
+    await sync.ensureSession("pi-batch-session");
+
+    const branch = ["alpha", "beta", "gamma"].map((marker) => ({
+      type: "message",
+      message: { role: "user", content: `Remember this implementation decision ${marker} for the next run.` },
+    }));
+    const result = await sync.syncBranch(branch);
+
+    // One request for the turn, not one per message: the old loop called
+    // `addMessagePayload` once per payload.
+    assert.ok(result.added >= 2, "the branch has to yield more than one payload to prove batching");
+    assert.equal(calls.length, 1);
+    assert.match(calls[0].path, /\/messages\/batch$/);
+    assert.equal(calls[0].body.messages.length, result.added);
+  });
+});
+
+test("syncBranch splits a turn larger than BATCH_LIMIT", async () => {
+  await withPendingDir(async () => {
+    const batches = [];
+    const c = client({
+      fetchJSON: async (_path, init) => {
+        batches.push(JSON.parse(init.body).messages.length);
+        return { ok: true, result: {} };
+      },
+    });
+    const sync = new SyncManager(c, config({ takeoverEnabled: false }));
+    await sync.ensureSession("pi-batch-overflow");
+
+    const branch = Array.from({ length: BATCH_LIMIT + 1 }, (_, i) => ({
+      type: "message",
+      message: { role: "user", content: `Remember implementation decision number ${i} for the next run.` },
+    }));
+    const result = await sync.syncBranch(branch);
+
+    assert.ok(result.added > BATCH_LIMIT, `expected more than ${BATCH_LIMIT} payloads, got ${result.added}`);
+    assert.equal(batches[0], BATCH_LIMIT, "the first request fills the batch limit");
+    assert.equal(
+      batches.reduce((sum, n) => sum + n, 0),
+      result.added,
+      "every accepted payload rode in one of the batch requests",
+    );
+  });
+});
+
+test("commit writes success trace_id to the omp debug log", async () => {
   await withPendingDir(async (dir) => {
     const previous = process.env.OV_DEBUG_LOG;
-    const debugLogPath = join(dir, "pi-debug.log");
-    process.env.OV_DEBUG_LOG = debugLogPath;
+    const debugLogPath = join(dir, "omp-debug.log");
+    // The logger reads the resolved `debugLogPath`; mapping OV_DEBUG_LOG onto
+    // it is the config layer's job, and config.test.mjs covers that mapping.
+    delete process.env.OV_DEBUG_LOG;
     try {
       const c = client({
         commitSessionResponse: async () => ({
@@ -78,12 +136,16 @@ test("commit writes success trace_id to the pi debug log", async () => {
           traceId: "trace-pi-commit",
         }),
       });
-      const sync = new SyncManager(c, config());
+      const sync = new SyncManager(c, config({ debugLogPath }));
       await sync.ensureSession("pi-trace-session");
 
       const result = await sync.commit();
       assert.equal(result.trace_id, "trace-pi-commit");
-      assert.match(await readFile(debugLogPath, "utf8"), /trace_id=trace-pi-commit/);
+      const line = JSON.parse((await readFile(debugLogPath, "utf8")).trim());
+      assert.equal(line.hook, "omp");
+      assert.equal(line.stage, "commit");
+      assert.equal(line.data.ok, true);
+      assert.equal(line.data.trace_id, "trace-pi-commit");
     } finally {
       if (previous === undefined) delete process.env.OV_DEBUG_LOG;
       else process.env.OV_DEBUG_LOG = previous;
@@ -91,11 +153,11 @@ test("commit writes success trace_id to the pi debug log", async () => {
   });
 });
 
-test("commit writes failure trace_id to the pi debug log", async () => {
+test("commit writes failure trace_id to the omp debug log", async () => {
   await withPendingDir(async (dir) => {
     const previous = process.env.OV_DEBUG_LOG;
-    const debugLogPath = join(dir, "pi-debug-error.log");
-    process.env.OV_DEBUG_LOG = debugLogPath;
+    const debugLogPath = join(dir, "omp-debug-error.log");
+    delete process.env.OV_DEBUG_LOG;
     try {
       const c = client({
         commitSessionResponse: async () => ({
@@ -105,13 +167,15 @@ test("commit writes failure trace_id to the pi debug log", async () => {
           error: { message: "commit failed" },
         }),
       });
-      const sync = new SyncManager(c, config());
+      const sync = new SyncManager(c, config({ debugLogPath }));
       await sync.ensureSession("pi-trace-error");
 
       assert.equal(await sync.commit({ queueOnFailure: false }), null);
-      const raw = await readFile(debugLogPath, "utf8");
-      assert.match(raw, /trace_id=trace-pi-error/);
-      assert.match(raw, /error=commit failed/);
+      const line = JSON.parse((await readFile(debugLogPath, "utf8")).trim());
+      assert.equal(line.stage, "commit");
+      assert.equal(line.data.ok, false);
+      assert.equal(line.data.trace_id, "trace-pi-error");
+      assert.equal(line.data.error, "commit failed");
     } finally {
       if (previous === undefined) delete process.env.OV_DEBUG_LOG;
       else process.env.OV_DEBUG_LOG = previous;
@@ -123,7 +187,6 @@ test("queued addMessage makes takeover flush barrier false until replay succeeds
   await withPendingDir(async () => {
     let replayOk = false;
     const c = client({
-      addMessagePayload: async () => false,
       fetchJSON: async () => ({ ok: replayOk, status: replayOk ? 200 : 500, result: {} }),
     });
     const sync = new SyncManager(c, config());
@@ -147,7 +210,6 @@ test("queued addMessage makes takeover flush barrier false until replay succeeds
 test("current-session addMessage 500 remains queued and keeps barrier closed", async () => {
   await withPendingDir(async () => {
     const c = client({
-      addMessagePayload: async () => false,
       fetchJSON: async () => ({ ok: false, status: 500 }),
     });
     const sync = new SyncManager(c, config());
@@ -180,11 +242,13 @@ test("other-session addMessage and commit queue entries do not block takeover ba
 
 test("restoreWatermark prevents pi -c from re-syncing already captured entries", async () => {
   await withPendingDir(async () => {
-    const calls = [];
+    const sent = [];
     const c = client({
-      addMessagePayload: async (_sid, payload) => {
-        calls.push(payload);
-        return true;
+      // The batch path posts to `/messages/batch`; `addMessagePayload` is no
+      // longer on the sync path, so the fake counts what actually goes out.
+      fetchJSON: async (_path, init) => {
+        sent.push(...JSON.parse(init.body).messages);
+        return { ok: true, result: {} };
       },
     });
     const sync = new SyncManager(c, config());
@@ -197,7 +261,7 @@ test("restoreWatermark prevents pi -c from re-syncing already captured entries",
     ]);
 
     assert.equal(result.added, 1);
-    assert.equal(calls.length, 1);
-    assert.match(calls[0].parts[0].text, /Fresh entry/);
+    assert.equal(sent.length, 1);
+    assert.match(sent[0].parts[0].text, /Fresh entry/);
   });
 });
