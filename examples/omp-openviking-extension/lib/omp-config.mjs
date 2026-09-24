@@ -35,10 +35,14 @@ export function detectHarness() {
  *
  * The schema declares 78 and this list is the subset with a consumer, which is
  * not a detail: a knob a user sets that nothing reads looks exactly like a knob
- * that worked. `recallPreferAbstract`, `captureTimeoutMs` and the `*TimeoutMs`
- * family are declared in the extension's own interface and read nowhere, so
- * they stay out of this set on purpose — `collectInertKnobs` is what tells the
- * operator, and leaving them in would be the silent switch again.
+ * that worked. `captureTimeoutMs` and the other `*TimeoutMs` dials declared in
+ * the extension's own interface are read nowhere, so they stay out of this set
+ * on purpose — `collectInertKnobs` is what tells the operator, and leaving them
+ * in would be the silent switch again. The recall knobs the shared
+ * `recall-core.mjs` consumes (`recallPreferAbstract`, `recallMaxTokens`,
+ * `recallDedupTurns`, `recallContextTimeoutMs`), `captureFilters` and
+ * `sessionStartMaxBytes` belong here: they are read through the shared modules
+ * the same way the listed ones are.
  */
 export const OMP_CONSUMED_KNOBS = new Set([
   // connection
@@ -53,9 +57,14 @@ export const OMP_CONSUMED_KNOBS = new Set([
   "recallPeerScope",
   "recallQueryExpansion",
   "recallLedger",
+  "recallPreferAbstract",
+  "recallMaxTokens",
+  "recallDedupTurns",
+  "recallContextTimeoutMs",
   "workspacePeer",
   // session
   "profileTokenBudget",
+  "sessionStartMaxBytes",
   "resumeContextBudget",
   "skillCatalog",
   "skillCatalogTokenBudget",
@@ -74,6 +83,7 @@ export const OMP_CONSUMED_KNOBS = new Set([
   "captureMaxLength",
   "captureToolMaxChars",
   "captureAssistantTurns",
+  "captureFilters",
   // bypass, debug
   "bypassSession",
   "bypassSessionPatterns",

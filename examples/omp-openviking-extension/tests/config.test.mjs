@@ -167,10 +167,31 @@ test("loadOmpConfig merges ov.conf's omp block over config.json", async () => {
 });
 
 test("collectInertKnobs names the knobs nothing here reads", async () => {
-  await withConfigFile({ recallPreferAbstract: false, recallLimit: 5 }, (cfg) => {
+  await withConfigFile({ recallLimit: 5, captureTimeoutMs: 8000 }, (cfg) => {
     const inert = collectInertKnobs(cfg);
-    assert.deepEqual(inert, ["recallPreferAbstract"]);
+    // `captureTimeoutMs` is declared in the extension's own interface and read
+    // nowhere; `recallLimit` has a consumer, so it must not be reported.
+    assert.deepEqual(inert, ["captureTimeoutMs"]);
   });
+
+  await withConfigFile({ recallPreferAbstract: false }, (cfg) => {
+    // Read by the shared recall-core (the L0-preference branch in
+    // resolveItemContent), so reporting it inert would warn on every startup
+    // of a default install whose shipped config.json sets it.
+    assert.deepEqual(collectInertKnobs(cfg), []);
+  });
+});
+
+test("loadConfig keeps OV_DEBUG_LOG working under the shared knob", async () => {
+  // `OPENVIKING_DEBUG_LOG` is the shared spelling and lands in the schema;
+  // `OV_DEBUG_LOG` is omp's older name, kept working so existing setups log.
+  await withConfigFile({}, (cfg) => {
+    assert.equal(cfg.debugLogPath, "/tmp/ov-omp-legacy.log");
+  }, { OV_DEBUG_LOG: "/tmp/ov-omp-legacy.log", OPENVIKING_DEBUG_LOG: undefined });
+
+  await withConfigFile({}, (cfg) => {
+    assert.equal(cfg.debugLogPath, "/tmp/ov-omp-knob.log");
+  }, { OV_DEBUG_LOG: "/tmp/ov-omp-legacy.log", OPENVIKING_DEBUG_LOG: "/tmp/ov-omp-knob.log" });
 });
 
 test("loadConfig derives workspace peer by default", async () => {

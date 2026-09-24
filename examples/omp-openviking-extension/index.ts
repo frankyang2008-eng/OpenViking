@@ -13,14 +13,14 @@
  * (most mature, production-hardened), Hermes (anti-pattern: stale prefetch).
  */
 import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
-import { appendFileSync, mkdirSync } from "node:fs";
-import { dirname } from "node:path";
 import { loadConfigFromModuleUrl, type OVConfig } from "./config.js";
 import { OVClient } from "./client.js";
 import { RecallManager } from "./recall.js";
 import { RecallLedger } from "./shared/recall-ledger.mjs";
 import { SyncManager } from "./sync.js";
 import { buildProfileBlock } from "./shared/profile-inject.mjs";
+import { createLogger } from "./shared/debug-log.mjs";
+import { collectInertKnobs } from "./lib/omp-config.mjs";
 import { guardVikingUriToolCall } from "./lib/uri-guard-adapter.mjs";
 import { registerTools } from "./tools.js";
 import { createTakeoverManager } from "./takeover.js";
@@ -43,17 +43,17 @@ export default async function (pi: ExtensionAPI) {
     // caches (#4137); it is per pi session and opened once the id is known.
     config.recallLedger ? new RecallLedger() : null,
   );
-  const debugLog = (message: string) => {
-    const file = process.env.OV_DEBUG_LOG;
-    if (!file) return;
-    try {
-      mkdirSync(dirname(file), { recursive: true });
-      appendFileSync(file, `${new Date().toISOString()} ${message}\n`);
-    } catch {
-      // Best effort; logging must never affect pi.
-    }
-  };
-  const takeover = createTakeoverManager({ pi, client, sync, config, log: debugLog });
+  const logger = createLogger("omp", {
+    debug: Boolean(config.debugLogPath),
+    debugLogPath: config.debugLogPath,
+  });
+  const takeover = createTakeoverManager({
+    pi,
+    client,
+    sync,
+    config,
+    log: (message: string) => logger.log("takeover", message),
+  });
 
   // Session state
   let connected = false;
@@ -63,6 +63,7 @@ export default async function (pi: ExtensionAPI) {
   let toolsRegistered = false;
   let compacted = false;
   let started = false;
+  let inertKnobsNotified = false;
   let startPromise: Promise<void> | null = null;
 
   // ================================================================
@@ -74,6 +75,17 @@ export default async function (pi: ExtensionAPI) {
     if (startPromise) return startPromise;
 
     startPromise = (async () => {
+      // A knob the shared schema declares but nothing here reads looks exactly
+      // like one that worked: an operator setting `recallPreferAbstract` on a
+      // harness whose plugin reads it gets a warning here instead of silence.
+      if (!inertKnobsNotified) {
+        inertKnobsNotified = true;
+        const inert = collectInertKnobs(config);
+        if (inert.length && config.logLevel !== "silent") {
+          ctx.ui.notify(`OpenViking: settings with no omp consumer: ${inert.join(", ")}`, "warning");
+        }
+      }
+
       // Bypass check
       const cwd = process.cwd();
       for (const pattern of config.bypassPatterns) {
@@ -138,7 +150,7 @@ export default async function (pi: ExtensionAPI) {
   };
 
   // --- session_start ---
-  pi.on("session_start", async (event, ctx) => {
+  pi.on("session_start", async (_event, ctx) => {
     // Fire-and-forget (ported from upstream #4506): the OV chain (health
     // check, session ensure, profile build) costs ~2s against a remote
     // server; blocking session_start on it delays every omp startup.
@@ -146,7 +158,7 @@ export default async function (pi: ExtensionAPI) {
     // the same in-flight chain before the first provider request — the
     // first turn still gets profile + recall.
     void start(ctx).catch((error) => {
-      debugLog(`session_start: ${error instanceof Error ? error.message : String(error)}`);
+      logger.logError("session_start", error);
     });
   });
 
@@ -238,12 +250,12 @@ export default async function (pi: ExtensionAPI) {
   });
 
   // --- turn_end ---
-  pi.on("turn_end", async (event, ctx) => {
+  pi.on("turn_end", async (_event, ctx) => {
     if (!connected || bypassed || !config.syncTurns) return;
 
     const branch = ctx.sessionManager.getBranch();
     const result = await sync.syncBranch(branch);
-    debugLog(`turn_end: synced ${result.added} entries, ~${result.tokens} tokens`);
+    logger.log("turn_end", { added: result.added, tokens: result.tokens });
     await takeover.onTurnSynced(result.tokens);
     updateStatus(ctx, connected, result.added, sync.sessionId, config, takeover.state);
   });
@@ -273,7 +285,7 @@ export default async function (pi: ExtensionAPI) {
   });
 
   // --- session_shutdown ---
-  pi.on("session_shutdown", async (_event, ctx) => {
+  pi.on("session_shutdown", async (_event, _ctx) => {
     if (!connected || bypassed) return;
 
     await sync.shutdown();
@@ -354,7 +366,7 @@ async function buildSessionProfileBlock(
 ): Promise<string> {
   try {
     const profile = await buildProfileBlock(
-      (path: string, init?: any, options?: any) => client.fetchJSON(path, init, 10000),
+      (path: string, init?: any, _options?: any) => client.fetchJSON(path, init, 10000),
       config.profileTokenBudget,
       config.peerId,
       config,
