@@ -52,6 +52,24 @@ test("comments survive the edit, wherever they sit", () => {
   assert.equal(parse(next).mcp.openviking.command[1], PROXY);
 });
 
+// A comment on the same line as the last member is the hardest one: the new
+// member and its comma are spliced in right after that member, so the comment
+// has to ride along instead of being swallowed by the splice — a comma that
+// lands inside `// note` dies with the comment when it is stripped.
+test("a comment trailing the last member survives, with the comma before it", () => {
+  const next = updateOpencodeConfig([
+    "{",
+    '  "mcp": {',
+    '    "servers": ["other"] // my note',
+    "  }",
+    "}",
+    "",
+  ].join("\n"), { pluginSpec: "", mcpProxy: PROXY });
+
+  assert.match(next, /\["other"\], \/\/ my note/);
+  assert.equal(parse(next).mcp.openviking.command[1], PROXY);
+});
+
 test("a trailing comma is not doubled", () => {
   const next = updateOpencodeConfig([
     "{",

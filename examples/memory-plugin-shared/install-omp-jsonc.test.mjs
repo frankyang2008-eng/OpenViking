@@ -11,9 +11,9 @@
 
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, lstat, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
@@ -63,6 +63,20 @@ test("servers the user added are untouched, comments and all", () => {
   const parsed = parse(next);
   assert.deepEqual(parsed.mcpServers["codebase-memory-mcp"], { type: "stdio", command: "npx", args: ["-y", "cbm"] });
   assert.deepEqual(parsed.disabledServers, ["something-else"]);
+  assert.equal(parsed.mcpServers.openviking.args[0], PROXY);
+});
+
+test("a comment trailing the last user server survives our insert", () => {
+  const raw = `{
+  "mcpServers": {
+    "cbm": { "type": "stdio", "command": "npx" } // user note
+  }
+}
+`;
+  const next = updateOmpMcpConfig(raw, { mcpProxy: PROXY });
+  assert.match(next, /"cbm": \{[^}]*\}, \/\/ user note/);
+  const parsed = parse(next);
+  assert.equal(parsed.mcpServers.cbm.command, "npx");
   assert.equal(parsed.mcpServers.openviking.args[0], PROXY);
 });
 
@@ -129,6 +143,28 @@ test("the remove path install.sh calls edits the file in place", async () => {
   await withConfig(`${JSON.stringify({ mcpServers: { openviking: { command: "node", args: [PROXY] } } }, null, 2)}\n`, async (file) => {
     execFileSync(process.execPath, [CLI, "remove-omp", file, EXT_DIR], { stdio: "pipe" });
     assert.deepEqual(JSON.parse(await readFile(file, "utf8")), {});
+  });
+});
+
+// The atomic write ships a new inode, so the mode has to travel with it: a
+// 0600 mcp.json would otherwise reappear as 0644 after every install.
+test("a restricted file keeps its mode through the atomic write", async () => {
+  await withConfig('{\n  "mcpServers": {}\n}\n', async (file) => {
+    await chmod(file, 0o600);
+    execFileSync(process.execPath, [CLI, file, "", PROXY, "omp"], { stdio: "pipe" });
+    assert.equal((await lstat(file)).mode & 0o777, 0o600);
+    assert.equal(parse(await readFile(file, "utf8")).mcpServers.openviking.args[0], PROXY);
+  });
+});
+
+test("a symlinked config is written through, not replaced by a plain file", async () => {
+  await withConfig(null, async (link) => {
+    const target = join(dirname(link), "real-mcp.json");
+    await writeFile(target, '{\n  "mcpServers": {}\n}\n');
+    await symlink(target, link);
+    execFileSync(process.execPath, [CLI, link, "", PROXY, "omp"], { stdio: "pipe" });
+    assert.equal((await lstat(link)).isSymbolicLink(), true, "the link itself must survive");
+    assert.equal(parse(await readFile(target, "utf8")).mcpServers.openviking.args[0], PROXY);
   });
 });
 

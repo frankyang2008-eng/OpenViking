@@ -239,7 +239,43 @@ function hasTopLevelProperty(s, objectRange) {
 
 function objectEndsWithComma(s, objectRange) {
   const body = s.slice(objectRange.start + 1, objectRange.end);
-  return body.trimEnd().endsWith(",");
+  const end = endOfLastToken(body);
+  return end > 0 && body[end - 1] === ",";
+}
+
+/** The index just past the last character that is neither whitespace nor part
+ *  of a comment. `String.prototype.trimEnd` only strips whitespace, so an
+ *  anchor computed from it lands inside a trailing `// note` and any comma
+ *  inserted there dies with the comment when it is stripped. */
+function endOfLastToken(body) {
+  let inString = false;
+  let quote = "";
+  let inLineComment = false;
+  let inBlockComment = false;
+  let last = -1;
+  for (let i = 0; i < body.length; i++) {
+    const ch = body[i];
+    if (inLineComment) {
+      if (ch === "\n") inLineComment = false;
+    } else if (inBlockComment) {
+      if (ch === "*" && body[i + 1] === "/") { inBlockComment = false; i++; }
+    } else if (inString) {
+      if (ch === "\\") i++;
+      else if (ch === quote) inString = false;
+      last = i;
+    } else if (ch === '"' || ch === "'") {
+      inString = true;
+      quote = ch;
+      last = i;
+    } else if (ch === "/" && body[i + 1] === "/") {
+      inLineComment = true;
+    } else if (ch === "/" && body[i + 1] === "*") {
+      inBlockComment = true;
+    } else if (!/\s/.test(ch)) {
+      last = i;
+    }
+  }
+  return last + 1;
 }
 
 function rangeHasValue(s, range) {
@@ -268,17 +304,18 @@ function setPropertyInObject(s, objectRange, name, value) {
   const closeIndent = findLineIndent(s, objectRange.end);
   const needsComma = hasTopLevelProperty(s, objectRange) && !objectEndsWithComma(s, objectRange);
   const prefix = needsComma ? "," : "";
-  const insertion = `${prefix}\n${indent}${formatProperty(name, value, indent)}\n${closeIndent}`;
-  return `${s.slice(0, objectRange.end)}${insertion}${s.slice(objectRange.end)}`;
-}
-
-function setTopLevelProperty(s, name, value) {
-  let objectRange = findTopLevelObject(s);
-  if (!objectRange) {
-    s = "{\n}\n";
-    objectRange = findTopLevelObject(s);
-  }
-  return setPropertyInObject(s, objectRange, name, value);
+  // Anchored after the last member rather than at the closing brace, so the comma
+  // lands at the end of that member's line instead of on a line of its own. The
+  // splice replaces everything from the anchor to the brace, so a comment that
+  // trails the member has to be re-emitted: it rides along between the comma
+  // and the new member, and pure whitespace is left to the `insertion`.
+  const body = s.slice(objectRange.start + 1, objectRange.end);
+  const anchor = endOfLastToken(body);
+  const trailingComment = body.slice(anchor).trimEnd();
+  const separator = trailingComment ? `${trailingComment}\n` : "\n";
+  const insertion = `${prefix}${separator}${indent}${formatProperty(name, value, indent)}\n${closeIndent}`;
+  const insertAt = objectRange.start + 1 + anchor;
+  return `${s.slice(0, insertAt)}${insertion}${s.slice(objectRange.end)}`;
 }
 
 function setNestedObjectProperty(s, parentName, childName, childValue, fallbackParentValue) {
@@ -307,10 +344,16 @@ function appendStringToTopLevelArray(s, name, value) {
   const propIndent = findLineIndent(s, prop.keyStart) || detectPropertyIndent(s, objectRange);
   const itemIndent = `${propIndent}  `;
   const closeIndent = findLineIndent(s, arrayRange.end) || propIndent;
-  const needsComma = rangeHasValue(s, arrayRange) && !s.slice(arrayRange.start + 1, arrayRange.end).trimEnd().endsWith(",");
+  const needsComma = rangeHasValue(s, arrayRange) && !objectEndsWithComma(s, arrayRange);
   const prefix = needsComma ? "," : "";
-  const insertion = `${prefix}\n${itemIndent}${JSON.stringify(value)}\n${closeIndent}`;
-  return `${s.slice(0, arrayRange.end)}${insertion}${s.slice(arrayRange.end)}`;
+  // Same anchor and trailing-comment bargain as `setPropertyInObject`.
+  const body = s.slice(arrayRange.start + 1, arrayRange.end);
+  const anchor = endOfLastToken(body);
+  const trailingComment = body.slice(anchor).trimEnd();
+  const separator = trailingComment ? `${trailingComment}\n` : "\n";
+  const insertion = `${prefix}${separator}${itemIndent}${JSON.stringify(value)}\n${closeIndent}`;
+  const insertAt = arrayRange.start + 1 + anchor;
+  return `${s.slice(0, insertAt)}${insertion}${s.slice(arrayRange.end)}`;
 }
 
 /** The config text with the plugin registered and the MCP fallback pointed at `mcpProxy`. */
@@ -421,10 +464,23 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1
  *
  * A crash mid-write would otherwise leave a truncated config behind, and this
  * file holds the MCP servers of every other tool the user registered — the
- * `cp` backup the installer takes first is recovery, not a substitute.
+ * `cp` backup the installer takes first is recovery, not a substitute. The
+ * temp file is created with the target's own mode (a rename ships the inode,
+ * so a 0600 config would otherwise reappear as 0644), and a symlinked config
+ * is written through in place: renaming over it would replace the link with
+ * a plain file and fork the user's dotfiles.
  */
 function writeConfigFile(file, contents) {
+  let mode = 0;
+  try {
+    const stat = fs.lstatSync(file);
+    if (stat.isSymbolicLink()) {
+      fs.writeFileSync(file, contents);
+      return;
+    }
+    mode = stat.mode & 0o7777;
+  } catch {}
   const tmp = `${file}.tmp`;
-  fs.writeFileSync(tmp, contents);
+  fs.writeFileSync(tmp, contents, mode ? { mode } : undefined);
   fs.renameSync(tmp, file);
 }
