@@ -224,7 +224,8 @@ class MemoryReadTool(MemoryTool):
             )
             # Parse MEMORY_FIELDS from comment and return dict directly
             mf = MemoryFileUtils.read(content, uri=uri)
-            ctx.read_file_contents[uri] = mf
+            if ctx.read_file_contents is not None:
+                ctx.read_file_contents[uri] = mf
             # Remove links/backlinks from LLM-visible output (not needed for extraction)
             llm_result = mf.to_metadata()
             llm_result.pop("links", None)
@@ -299,7 +300,7 @@ class MemorySearchTool(MemoryTool):
         try:
             query = kwargs.get("query", "")
             # Get target_uri from ctx.default_search_uris
-            target_uri = ""
+            target_uri: Union[str, List[str]] = ""
             if ctx.default_search_uris:
                 target_uri = ctx.default_search_uris
             limit = kwargs.get("limit", 10)
@@ -315,13 +316,18 @@ class MemorySearchTool(MemoryTool):
                 limit,
                 str(query)[:200],
             )
-            # 多搜索 10 个，过滤抽象文件后再截断
+            # L2 files only: L0/L1 summaries previously flooded the candidate pool and
+            # starved the usable top-n (step-2 replay: usable=2/5 with rerank on), and
+            # the +10 over-fetch existed only to compensate for them. level filters
+            # collection, not navigation — the retriever still recurses through L0/L1
+            # directories to find these files.
             with bind_telemetry_stage(f"search_{consumer}"):
                 search_result = await ctx.viking_fs.search(
                     query,
                     target_uri=target_uri,
-                    limit=limit + 10,
+                    limit=limit,
                     ctx=request_ctx,
+                    level=[2],
                 )
             result = optimize_search_result(search_result.to_dict(), limit=limit)
             # What the caller actually gets, so a later offline comparison has a

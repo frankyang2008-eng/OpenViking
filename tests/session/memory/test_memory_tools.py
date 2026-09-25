@@ -38,10 +38,12 @@ class TestMemoryTools:
         class MockVikingFS:
             def __init__(self):
                 self.calls = []
-                self.stage_seen = "unset"
+                self.stage_seen: str | None = "unset"
 
-            async def search(self, query, target_uri="", limit=10, ctx=None):
-                self.calls.append((query, limit))
+            async def search(self, query, target_uri="", limit=10, ctx=None, level=None):
+                self.calls.append(
+                    {"query": query, "target_uri": target_uri, "limit": limit, "level": level}
+                )
                 self.stage_seen = get_current_telemetry_stage()
                 return MockSearchResult()
 
@@ -57,7 +59,14 @@ class TestMemoryTools:
                 tool_ctx, query="重置密码", limit=5, consumer="patch_merge"
             )
 
-        assert mock_fs.calls == [("重置密码", 15)]  # the limit + 10 over-fetch is preserved
+        assert mock_fs.calls == [
+            {
+                "query": "重置密码",
+                "target_uri": ["viking://user/default/memories"],
+                "limit": 5,
+                "level": [2],
+            }
+        ]  # L2-only collection at the exact limit; the +10 summary-compensation over-fetch is gone
         assert mock_fs.stage_seen == "search_patch_merge"
         # first line: (format, consumer, target_uri, limit, query)
         query_log = log_info.call_args_list[0]
@@ -78,9 +87,9 @@ class TestMemoryTools:
 
         class MockVikingFS:
             def __init__(self):
-                self.stage_seen = "unset"
+                self.stage_seen: str | None = "unset"
 
-            async def search(self, query, target_uri="", limit=10, ctx=None):
+            async def search(self, query, target_uri="", limit=10, ctx=None, level=None):
                 self.stage_seen = get_current_telemetry_stage()
                 return MockSearchResult()
 
@@ -187,6 +196,7 @@ class TestMemoryTools:
 
         notice = memory_maintenance_notice("abcde", review_after_tokens=1)
 
+        assert notice is not None  # over-threshold branch must return guidance metadata
         assert notice["maintenance_required"] is True
         assert set(notice) == {"maintenance_required", "guidance"}
         guidance = notice["guidance"]
@@ -292,11 +302,13 @@ class TestMemoryTools:
                 self.received_ctx = None
                 self.received_target_uri = None
                 self.received_limit = None
+                self.received_level = None
 
-            async def search(self, query, target_uri="", limit=10, ctx=None, **kwargs):
+            async def search(self, query, target_uri="", limit=10, ctx=None, level=None):
                 self.received_ctx = ctx
                 self.received_target_uri = target_uri
                 self.received_limit = limit
+                self.received_level = level
                 return MockSearchResult()
 
         request_ctx = RequestContext(
@@ -326,7 +338,8 @@ class TestMemoryTools:
         ]
         assert viking_fs.received_ctx is request_ctx
         assert viking_fs.received_target_uri == tool_ctx.default_search_uris
-        assert viking_fs.received_limit == 12
+        assert viking_fs.received_limit == 2
+        assert viking_fs.received_level == [2]
 
     def test_ls_tool_properties(self):
         """Test MemoryLsTool properties."""

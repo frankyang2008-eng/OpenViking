@@ -1559,3 +1559,71 @@ def test_candidate_counter_separates_directory_summaries_by_level():
     disabled = OperationTelemetry(operation="test", enabled=False)
     retriever._count_rerank_candidates(disabled, [{"uri": "x", "level": 0}])
     assert not disabled._counters
+
+
+@pytest.mark.asyncio
+async def test_enabled_false_withholds_client_but_keeps_threshold_residue():
+    """enabled=false is a client-construction switch, not a scoring-only switch.
+
+    Adversarial-review contract (kimi vs glm round-2, 2026-09-24): a disabled-but-
+    configured block still supplies its threshold to the vector path, so cosine
+    scores in (0, 0.05] get filtered where a never-configured run passes them; and
+    withholding the client degrades retrieval to flat QUICK. A scoring-only switch
+    is the rerank=False capability parameter instead.
+    """
+    config = RerankConfig(ak="ak", sk="sk", threshold=0.05, enabled=False)
+    assert config.is_available() is False
+
+    retriever = HierarchicalRetriever(
+        storage=DummyStorage(), embedder=DummyEmbedder(), rerank_config=config
+    )
+    assert retriever._rerank_client is None
+    assert retriever.threshold == 0.05  # residue: config threshold survives the switch
+
+    bare = HierarchicalRetriever(storage=DummyStorage(), embedder=DummyEmbedder())
+    assert bare._rerank_client is None
+    assert bare.threshold == 0  # never-configured baseline has no threshold
+
+
+@pytest.mark.asyncio
+async def test_enabled_false_search_resolves_to_flat_quick():
+    """Behavior level: with the client withheld, mode=None resolves QUICK (:222),
+    so a search runs one flat vector pass — no recursion, no hotness, no scores."""
+    config = RerankConfig(ak="ak", sk="sk", threshold=0.05, enabled=False)
+    storage = QuickSearchStorage(
+        [
+            _result("viking://resources/root", 0.95, level=0, abstract="root abstract"),
+            _result("viking://resources/file", 0.9, abstract="file abstract"),
+        ]
+    )
+    retriever = HierarchicalRetriever(
+        storage=storage, embedder=DummyEmbedder(), rerank_config=config
+    )
+
+    result = await retriever.retrieve(_query(), ctx=_ctx(), limit=3)  # mode omitted
+
+    assert retriever._rerank_client is None
+    assert len(storage.search_calls) == 1
+    assert storage.child_search_calls == []
+    assert [ctx.uri for ctx in result.matched_contexts] == [
+        "viking://resources/root/.abstract.md",
+        "viking://resources/file",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_injected_shared_client_overrides_enabled_false():
+    """Construction-order contract (:176): an injected shared rerank client wins
+    over enabled=False — the flag is consulted when the retriever builds its own
+    client, not when one is handed in from the process-shared pool."""
+    client = FakeRerankClient([0.5])
+    config = RerankConfig(ak="ak", sk="sk", enabled=False)
+
+    retriever = HierarchicalRetriever(
+        storage=DummyStorage(),
+        embedder=DummyEmbedder(),
+        rerank_config=config,
+        rerank_client=client,
+    )
+
+    assert retriever._rerank_client is client

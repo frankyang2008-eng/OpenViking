@@ -11,8 +11,12 @@ class RerankConfig(BaseModel):
     enabled: bool = Field(
         default=True,
         description=(
-            "Master switch for rerank. Set to false to disable rerank entirely "
-            "(retrieval falls back to vector scores); provider credentials may stay configured."
+            "Master switch for rerank. False withholds the rerank client, which also "
+            "degrades retrieval to the flat QUICK strategy (no hierarchical recursion, "
+            "no hotness mixing) — it is not a scoring-only switch. To keep the recursive "
+            "strategy while skipping LLM scores, pass rerank=False per call instead. A "
+            "disabled-but-configured block still supplies its threshold to the vector "
+            "path; provider credentials may stay configured."
         ),
     )
 

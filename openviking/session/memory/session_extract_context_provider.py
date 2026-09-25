@@ -7,7 +7,7 @@ Session Extract Context Provider - 会话提取 Provider 实现
 """
 
 import re
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, cast
 
 from openviking.message.part import TextPart, ToolPart
 from openviking.server.identity import RequestContext, ToolContext
@@ -52,6 +52,46 @@ _RESOURCE_REASON_LANGUAGE_RE = re.compile(
 )
 
 
+def _truncate_query_text(text: Any, max_chars: int) -> str:
+    """Normalize whitespace and hard-cap a query fragment, marking the cut with '...'."""
+    normalized = " ".join(str(text or "").split())
+    if len(normalized) <= max_chars:
+        return normalized
+    return normalized[: max_chars - 3].rstrip() + "..."
+
+
+def build_prefetch_search_query_from_parts(
+    entries: List[Tuple[str, str, List[str]]],
+    fallback_query: str = "",
+) -> str:
+    """Pure core of SessionExtractContextProvider._build_prefetch_search_query.
+
+    ``entries`` carries (role, speaker, [part_text, ...]) per message in conversation
+    order: user sections first, then the rest, each part capped by role, the whole
+    query capped at _PREFETCH_SEARCH_QUERY_MAX_CHARS. Blank input falls back to
+    ``fallback_query`` (same cap). scripts/compare_internal_search_rerank.py imports
+    this so a replayed query is byte-identical to what live prefetch searched.
+    """
+    primary_sections: List[str] = []
+    supporting_sections: List[str] = []
+
+    for role, speaker, part_texts in entries:
+        cap = (
+            _PREFETCH_SEARCH_TEXT_PART_MAX_CHARS
+            if role == "user"
+            else _PREFETCH_SEARCH_ASSISTANT_TEXT_PART_MAX_CHARS
+        )
+        text_parts = [_truncate_query_text(part, cap) for part in part_texts if part]
+        if text_parts:
+            section = f"{speaker}: " + "\n".join(text_parts)
+            (primary_sections if role == "user" else supporting_sections).append(section)
+
+    query = "\n\n".join(primary_sections + supporting_sections)
+    if not query.strip():
+        return _truncate_query_text(fallback_query, _PREFETCH_SEARCH_QUERY_MAX_CHARS)
+    return _truncate_query_text(query, _PREFETCH_SEARCH_QUERY_MAX_CHARS)
+
+
 class SessionExtractContextProvider(ExtractContextProvider):
     """会话提取 Provider - 从会话消息中提取记忆"""
 
@@ -62,9 +102,9 @@ class SessionExtractContextProvider(ExtractContextProvider):
         self,
         messages: Any,
         latest_archive_overview: str = "",
-        isolation_handler: MemoryIsolationHandler = None,
-        ctx: RequestContext = None,
-        viking_fs: VikingFS = None,
+        isolation_handler: Optional[MemoryIsolationHandler] = None,
+        ctx: Optional[RequestContext] = None,
+        viking_fs: Optional[VikingFS] = None,
         transaction_handle=None,
         memory_registry: MemoryTypeRegistry | None = None,
     ):
@@ -73,7 +113,7 @@ class SessionExtractContextProvider(ExtractContextProvider):
         self._output_language = self._detect_language()
         self._registry = memory_registry  # Lazy defaults if no account snapshot was supplied.
         self._schema_directories = None
-        self._extract_context = None  # 缓存 ExtractContext 实例
+        self._extract_context: Optional["ExtractContext"] = None  # 缓存 ExtractContext 实例
         self._isolation_handler = isolation_handler
         self._read_file_contents: Dict[str, MemoryFile] = {}
         # 读取 eager_prefetch 配置
@@ -347,10 +387,7 @@ After exploring, analyze the conversation and output ALL memory write/edit/delet
         return "\n\n".join(section for section in conversation_sections if section)
 
     def _truncate_prefetch_query_text(self, text: Any, max_chars: int) -> str:
-        normalized = " ".join(str(text or "").split())
-        if len(normalized) <= max_chars:
-            return normalized
-        return normalized[: max_chars - 3].rstrip() + "..."
+        return _truncate_query_text(text, max_chars)
 
     def _build_prefetch_search_query(self) -> str:
         """Build a compact semantic query from raw conversation messages.
@@ -362,42 +399,34 @@ After exploring, analyze the conversation and output ALL memory write/edit/delet
         if not isinstance(self.messages, list):
             return ""
 
-        primary_sections: List[str] = []
-        supporting_sections: List[str] = []
-
+        entries = []
         for msg in self.messages:
             role = getattr(msg, "role", "")
             speaker = getattr(msg, "peer_id", "") or role
-            parts = getattr(msg, "parts", [])
+            part_texts = [
+                part.text
+                for part in getattr(msg, "parts", [])
+                if hasattr(part, "text") and part.text
+            ]
+            entries.append((role, speaker, part_texts))
 
-            text_parts: List[str] = []
-
-            for part in parts:
-                if hasattr(part, "text") and part.text:
-                    limit = (
-                        _PREFETCH_SEARCH_TEXT_PART_MAX_CHARS
-                        if role == "user"
-                        else _PREFETCH_SEARCH_ASSISTANT_TEXT_PART_MAX_CHARS
-                    )
-                    text_parts.append(self._truncate_prefetch_query_text(part.text, limit))
-            if text_parts:
-                section = f"{speaker}: " + "\n".join(text_parts)
-                if role == "user":
-                    primary_sections.append(section)
-                else:
-                    supporting_sections.append(section)
-
-        query = "\n\n".join(primary_sections + supporting_sections)
+        query = build_prefetch_search_query_from_parts(entries)
         if not query.strip():
             query = self._assemble_conversation(self.messages)
 
-        return self._truncate_prefetch_query_text(query, _PREFETCH_SEARCH_QUERY_MAX_CHARS)
+        return _truncate_query_text(query, _PREFETCH_SEARCH_QUERY_MAX_CHARS)
 
-    def create_tool_context(self, default_search_uris=[]):
+    def create_tool_context(
+        self, default_search_uris: Optional[List[str]] = None
+    ) -> ToolContext:
+        if default_search_uris is None:
+            default_search_uris = []
         extract_context = self.get_extract_context()
+        # Bookkeeping-only contexts (page_id_map propagation) legitimately run with
+        # viking_fs/ctx unset, so ToolContext holds None despite its annotations.
         tool_ctx = ToolContext(
-            viking_fs=self._viking_fs,
-            request_ctx=self._ctx,
+            viking_fs=cast(VikingFS, self._viking_fs),
+            request_ctx=cast(RequestContext, self._ctx),
             transaction_handle=self._transaction_handle,
             default_search_uris=default_search_uris,
             read_file_contents=self._read_file_contents,
@@ -418,7 +447,7 @@ After exploring, analyze the conversation and output ALL memory write/edit/delet
         if not read_tool:
             return None
         try:
-            result = await read_tool.execute(self.create_tool_context(), uri=uri)
+            result = await read_tool.execute(self.create_tool_context(), uri=uri)  # nosemgrep: memory tool dispatch, not SQL
             if isinstance(result, dict) and "error" in result:
                 if not self._is_expected_read_not_found(result["error"]):
                     tracer.info(f"Failed to read {uri}: {result['error']}")
@@ -505,6 +534,11 @@ After exploring, analyze the conversation and output ALL memory write/edit/delet
         ls_dirs = set()  # directories to ls (for multi-file schemas)
         read_files = set()  # files to read directly (for single-file schemas)
 
+        # The no-handler path below consumes rolescope; today every reachable
+        # caller supplies the handler. Make the assumption explicit instead of an
+        # AttributeError on None. ponytail: a real no-isolation scope needs a design
+        # decision (whose user_ids?) — revisit if a handler-less caller appears.
+        assert self._isolation_handler is not None, "prefetch message build requires isolation_handler"
         rolescope: RoleScope = self._isolation_handler.get_read_scope()
 
         for schema in schemas:
@@ -601,7 +635,7 @@ After exploring, analyze the conversation and output ALL memory write/edit/delet
         tool = get_tool(tool_call.name)
         if not tool:
             return {"error": f"Unknown tool: {tool_call.name}"}
-        result = await tool.execute(self.create_tool_context(), **tool_call.arguments)
+        result = await tool.execute(self.create_tool_context(), **tool_call.arguments)  # nosemgrep: memory tool dispatch, not SQL
         is_expected_read_not_found = (
             tool_call.name == "read"
             and isinstance(result, dict)

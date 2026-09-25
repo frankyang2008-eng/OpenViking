@@ -13,9 +13,9 @@ The workspace has an exclusive OS lock, so stop the server first:
     python scripts/compare_internal_search_rerank.py --messages-json /tmp/msgs.json
     openviking-server --with-bot
 
-Query construction replicates the production prefetch query (user sections first,
-then assistant, per-part caps 1000/500 chars, whole query capped at 5000) so an
-offline run sees the same text the live prefetch saw.
+Query construction delegates to the production prefetch query builder
+(build_prefetch_search_query_from_parts) so an offline run sees byte-identical
+query text to what live prefetch searched.
 
 Output: a table on stdout, plus JSON (--json, default under plans/rerank-mini-verification/).
 """
@@ -30,9 +30,6 @@ from typing import Any, Dict, List
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
-USER_PART_MAX_CHARS = 1000
-ASSISTANT_PART_MAX_CHARS = 500
-QUERY_MAX_CHARS = 5000
 DEFAULT_TARGETS = [
     "viking://user/trae_dever/memories/preferences",
     "viking://user/trae_dever/memories/entities",
@@ -40,39 +37,37 @@ DEFAULT_TARGETS = [
 ]
 
 
-def build_prefetch_query(messages: List[Dict[str, Any]]) -> str:
-    """Mirror of SessionExtractContextProvider._build_prefetch_search_query."""
-    primary: List[str] = []
-    supporting: List[str] = []
+def build_replay_query(messages: List[Dict[str, Any]]) -> str:
+    """Byte-identical to live prefetch: delegates to the production query builder."""
+    from openviking.session.memory.session_extract_context_provider import (
+        build_prefetch_search_query_from_parts,
+    )
+
+    entries = []
     for msg in messages:
-        role = msg.get("role", "")
+        role = str(msg.get("role") or "")
         speaker = msg.get("peer_id") or role
         text = " ".join(str(msg.get("content") or "").split())
-        if not text:
-            continue
-        cap = USER_PART_MAX_CHARS if role == "user" else ASSISTANT_PART_MAX_CHARS
-        if len(text) > cap:
-            text = text[: cap - 3].rstrip() + "..."
-        section = f"{speaker}: {text}"
-        (primary if role == "user" else supporting).append(section)
-    query = "\n\n".join(primary + supporting)
-    if len(query) > QUERY_MAX_CHARS:
-        query = query[: QUERY_MAX_CHARS - 3].rstrip() + "..."
-    return query
+        entries.append((role, speaker, [text] if text else []))
+    return build_prefetch_search_query_from_parts(entries)
 
 
-def optimize_top(result: Dict[str, Any], limit: int) -> List[Dict[str, Any]]:
-    """Mirror of MemorySearchTool: drop abstract/overview files, then cut to limit."""
-    items = result.get("memories") or result.get("results") or []
+def usable_items(items: List[Dict[str, Any]], top: int) -> List[Dict[str, Any]]:
+    """What the consumer would actually read: non-summary files, ordered, cut to top-n.
+
+    Acceptance metric for the replay. Raw top-n Jaccard conflates two different
+    failures: a side whose candidate pool is flooded with L0/L1 summaries delivers
+    fewer than ``top`` usable files (starvation), which is a collection problem,
+    not a rerank-ordering signal. Compare usable sets, and report per-side usable
+    counts so starvation stays visible instead of deflating the overlap.
+    """
     out: List[Dict[str, Any]] = []
     for item in items:
         uri = str(item.get("uri") or "")
-        if not uri:
-            continue
-        if uri.endswith(".abstract.md") or uri.endswith(".overview.md"):
+        if not uri or uri.endswith(".abstract.md") or uri.endswith(".overview.md"):
             continue
         out.append({"uri": uri, "score": item.get("score")})
-        if len(out) >= limit:
+        if len(out) >= top:
             break
     return out
 
@@ -134,7 +129,7 @@ async def main() -> int:
     ap.add_argument("--messages-json", required=True, help="[{role, content}] as committed")
     ap.add_argument("--query", default="", help="override: use this query text verbatim")
     ap.add_argument("--target-uri", action="append", default=None)
-    ap.add_argument("--limit", type=int, default=15, help="over-fetched limit (production uses 5+10)")
+    ap.add_argument("--limit", type=int, default=15, help="fetch width per side (production prefetch fetches exactly its limit since the L2-only fix)")
     ap.add_argument("--top", type=int, default=5, help="truncated top-n the consumer reads")
     ap.add_argument("--account", default="dever-space")
     ap.add_argument("--user", default="trae_dever")
@@ -157,7 +152,7 @@ async def main() -> int:
     except (OSError, json.JSONDecodeError) as exc:
         print(f"cannot read --messages-json {args.messages_json}: {exc}")
         return 2
-    query = args.query or build_prefetch_query(messages)
+    query = args.query or build_replay_query(messages)
     targets = args.target_uri or DEFAULT_TARGETS
 
     service = OpenVikingService()
@@ -167,36 +162,48 @@ async def main() -> int:
     )
     try:
         sides = []
-        handle = OperationTelemetry(operation="step2-replay", enabled=True)
         rerank_flags = (False,) if args.off_only else (True, False)
         for rerank in rerank_flags:
+            # Fresh handle per side: a shared one accumulates both runs' counters
+            # and misreports the candidate composition each side actually saw.
+            handle = OperationTelemetry(operation="step2-replay", enabled=True)
             with bind_telemetry(handle):
                 side = await run_side(service.viking_fs, query, targets, args.limit, rerank, ctx)
+            side["candidate_mix"] = report_candidate_mix(read_candidate_counters(handle))
             sides.append(side)
-            print(f"[rerank={rerank}] candidate={len(side['items'])}", flush=True)
+            print(
+                f"[rerank={rerank}] candidate={len(side['items'])} "
+                f"mix={json.dumps(side['candidate_mix'], ensure_ascii=False)}",
+                flush=True,
+            )
 
-        candidate_mix = report_candidate_mix(read_candidate_counters(handle))
+        candidate_mix = (
+            {"on": sides[0]["candidate_mix"], "off": sides[1]["candidate_mix"]}
+            if len(sides) > 1
+            else sides[0]["candidate_mix"]
+        )
         print("candidate mix:", json.dumps(candidate_mix, ensure_ascii=False))
 
         if args.off_only:
-            off_top = optimize_top(sides[0]["raw"], args.top)
+            off_usable = usable_items(sides[0]["items"], args.top)
             report = {
                 "query_chars": len(query),
                 "targets": targets,
                 "limit": args.limit,
                 "top": args.top,
                 "candidate_mix": candidate_mix,
-                "off_top": off_top,
+                "off_usable_count": len(off_usable),
+                "off_usable": off_usable,
             }
         else:
             on, off = sides[0], sides[1]
-            on_top = optimize_top(on["raw"], args.top)
-            off_top = optimize_top(off["raw"], args.top)
-            on_all = [i["uri"] for i in on["items"]]
-            off_all = [i["uri"] for i in off["items"]]
-            on_uris = [i["uri"] for i in on_top]
-            off_uris = [i["uri"] for i in off_top]
+            on_usable = usable_items(on["items"], args.top)
+            off_usable = usable_items(off["items"], args.top)
+            on_uris = [i["uri"] for i in on_usable]
+            off_uris = [i["uri"] for i in off_usable]
             common = [u for u in on_uris if u in off_uris]
+            on_set, off_set = set(on_uris), set(off_uris)
+            usable_overlap = on_set & off_set
 
             report = {
                 "query_chars": len(query),
@@ -204,15 +211,22 @@ async def main() -> int:
                 "limit": args.limit,
                 "top": args.top,
                 "candidate_mix": candidate_mix,
-                "jaccard_at_top": round(jaccard(on_uris, off_uris), 4),
-                "jaccard_at_limit": round(jaccard(on_all, off_all), 4),
+                "on_usable_count": len(on_uris),
+                "off_usable_count": len(off_uris),
+                "usable_overlap": len(usable_overlap),
+                "usable_jaccard": round(jaccard(on_uris, off_uris), 4),
+                "usable_coverage": (
+                    round(len(usable_overlap) / min(len(on_set), len(off_set)), 4)
+                    if on_set and off_set
+                    else None
+                ),
                 "top1_same": bool(on_uris and off_uris and on_uris[0] == off_uris[0]),
                 "common_at_top": common,
-                "on_only_at_top": [u for u in on_uris if u not in off_uris],
-                "off_only_at_top": [u for u in off_uris if u not in on_uris],
+                "on_only_at_top": [u for u in on_uris if u not in off_set],
+                "off_only_at_top": [u for u in off_uris if u not in on_set],
                 "ranks": {u: {"on": on_uris.index(u) + 1, "off": off_uris.index(u) + 1} for u in common},
-                "on_top": on_top,
-                "off_top": off_top,
+                "on_usable": on_usable,
+                "off_usable": off_usable,
                 "on_scores_at_limit": {i["uri"]: i["score"] for i in on["items"]},
                 "off_scores_at_limit": {i["uri"]: i["score"] for i in off["items"]},
             }
