@@ -65,3 +65,12 @@ class TestBuildReplayQuery:
 
     def test_blank_messages_produce_empty_query(self):
         assert build_replay_query([{"role": "user", "content": ""}]) == ""
+
+    def test_multi_part_message_caps_each_part_like_production(self):
+        query = build_replay_query(
+            [{"role": "user", "parts": ["a" * 1200, "b" * 600]}]
+        )
+
+        # Each part capped at 1000 separately, joined with "\n", then the whole
+        # query normalized (flattens the join into a space) — production behavior.
+        assert query == "user: " + "a" * 997 + "... " + "b" * 600

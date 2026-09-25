@@ -24,6 +24,7 @@ import argparse
 import asyncio
 import json
 import sys
+import time
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -38,7 +39,11 @@ DEFAULT_TARGETS = [
 
 
 def build_replay_query(messages: List[Dict[str, Any]]) -> str:
-    """Byte-identical to live prefetch: delegates to the production query builder."""
+    """Byte-identical to live prefetch: delegates to the production query builder.
+
+    Messages may carry ``parts`` (list of raw text parts) so each part gets the
+    production per-part cap; a bare ``content`` string is treated as one part.
+    """
     from openviking.session.memory.session_extract_context_provider import (
         build_prefetch_search_query_from_parts,
     )
@@ -47,8 +52,12 @@ def build_replay_query(messages: List[Dict[str, Any]]) -> str:
     for msg in messages:
         role = str(msg.get("role") or "")
         speaker = msg.get("peer_id") or role
-        text = " ".join(str(msg.get("content") or "").split())
-        entries.append((role, speaker, [text] if text else []))
+        if "parts" in msg:
+            parts = [str(p or "") for p in (msg.get("parts") or [])]
+        else:
+            text = str(msg.get("content") or "")
+            parts = [text] if text else []
+        entries.append((role, speaker, parts))
     return build_prefetch_search_query_from_parts(entries)
 
 
@@ -72,12 +81,16 @@ def usable_items(items: List[Dict[str, Any]], top: int) -> List[Dict[str, Any]]:
     return out
 
 
-async def run_side(viking_fs, query: str, targets: List[str], limit: int, rerank: bool, ctx):
-    result = await viking_fs.search(query, target_uri=targets, limit=limit, ctx=ctx, rerank=rerank)
+async def run_side(viking_fs, query: str, targets: List[str], limit: int, rerank: bool, ctx, level=None):
+    started = time.monotonic()
+    result = await viking_fs.search(
+        query, target_uri=targets, limit=limit, ctx=ctx, rerank=rerank, level=level
+    )
     raw = result.to_dict()
     return {
         "rerank": rerank,
         "raw": raw,
+        "elapsed_seconds": round(time.monotonic() - started, 3),
         "items": [{"uri": i.get("uri"), "score": i.get("score")} for i in (raw.get("memories") or raw.get("results") or [])],
     }
 
@@ -97,12 +110,12 @@ def _as_int(value: Any) -> int:
 
 
 def read_candidate_counters(handle) -> Dict[str, float]:
-    """Bucket sizes the retriever recorded while building the rerank batches."""
+    """Bucket sizes, vector work, and rerank token spend the side recorded."""
     counters = getattr(handle, "_counters", {}) or {}
     return {
         key: _as_float(value)
         for key, value in counters.items()
-        if key.startswith("rerank.candidates") or key.startswith("vector.")
+        if key.startswith(("rerank.candidates", "vector.", "tokens.rerank"))
     }
 
 
@@ -116,6 +129,8 @@ def report_candidate_mix(counters: Dict[str, float]) -> Dict[str, Any]:
         "directory_summary_share": share,
         "vector_searches": _as_int(counters.get("vector.searches", 0.0)),
         "vector_scored": _as_int(counters.get("vector.scored", 0.0)),
+        "rerank_prompt_tokens": _as_int(counters.get("tokens.rerank.input", 0.0)),
+        "rerank_completion_tokens": _as_int(counters.get("tokens.rerank.output", 0.0)),
     }
 
 
@@ -129,8 +144,9 @@ async def main() -> int:
     ap.add_argument("--messages-json", required=True, help="[{role, content}] as committed")
     ap.add_argument("--query", default="", help="override: use this query text verbatim")
     ap.add_argument("--target-uri", action="append", default=None)
-    ap.add_argument("--limit", type=int, default=15, help="fetch width per side (production prefetch fetches exactly its limit since the L2-only fix)")
+    ap.add_argument("--limit", type=int, default=5, help="fetch width per side (production prefetch fetches exactly its limit since the L2-only fix)")
     ap.add_argument("--top", type=int, default=5, help="truncated top-n the consumer reads")
+    ap.add_argument("--level", type=int, default=2, help="collection level filter mirroring MemorySearchTool's L2-only fix (0 disables)")
     ap.add_argument("--account", default="dever-space")
     ap.add_argument("--user", default="trae_dever")
     ap.add_argument("--json", default="plans/rerank-mini-verification/step2-replay.json")
@@ -154,6 +170,7 @@ async def main() -> int:
         return 2
     query = args.query or build_replay_query(messages)
     targets = args.target_uri or DEFAULT_TARGETS
+    level = [args.level] if args.level else None
 
     service = OpenVikingService()
     await service.initialize()
@@ -168,7 +185,9 @@ async def main() -> int:
             # and misreports the candidate composition each side actually saw.
             handle = OperationTelemetry(operation="step2-replay", enabled=True)
             with bind_telemetry(handle):
-                side = await run_side(service.viking_fs, query, targets, args.limit, rerank, ctx)
+                side = await run_side(
+                    service.viking_fs, query, targets, args.limit, rerank, ctx, level=level
+                )
             side["candidate_mix"] = report_candidate_mix(read_candidate_counters(handle))
             sides.append(side)
             print(
