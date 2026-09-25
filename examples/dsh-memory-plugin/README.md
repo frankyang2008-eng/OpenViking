@@ -189,13 +189,37 @@ The patch can also carry plugin config:
           name: '@openviking/dsh-memory-plugin'
           config:
             endpoint: http://127.0.0.1:1933
-            recallTokenBudget: 2000
+            recallMaxTokens: 2000
             scoreThreshold: 0.35
             captureToolResults: false
             skipSubagentSessions: true
             commitTokenThreshold: 20000
             mcpToolCallTimeoutMs: 60000
 ```
+
+Recall normally uses `POST /api/v1/search/search` with `mode: "context"`.
+`recallMaxTokens` (`OPENVIKING_RECALL_MAX_TOKENS`) sets this request's
+`max_tokens` budget for server-assembled context. When it is unset, the plugin
+omits `max_tokens` and uses the server's default budget.
+
+`recallLimit` (`OPENVIKING_RECALL_LIMIT`) scales the category quotas for context
+recall; it is not a strict cap on the final number of entries. When explicitly
+set, it allocates at least one slot to each of the six categories: events,
+entities, preferences, experiences, resources, and skills. For example,
+`recallLimit: 4` sends six one-slot quotas, so the result can contain more than
+four entries. Lowering it does not expand the set of categories searched.
+Actual results still depend on matching content, score filtering, deduplication,
+and the token budget. When unset, the server's coding preset supplies the quotas.
+
+The older size settings apply to fallback recall, not the primary context request:
+
+- `recallTokenBudget` (`OPENVIKING_RECALL_TOKEN_BUDGET`) controls the estimated
+  token budget of the locally rendered block when both server-side context and
+  the legacy `/api/v1/search/recall` endpoint are unavailable and recall falls
+  back to raw search results.
+- `recallMaxContentChars` (`OPENVIKING_RECALL_MAX_CONTENT_CHARS`) limits each
+  item's content in that local fallback. It also sets the legacy `/recall`
+  request's `max_chars` to `max(1000, recallMaxContentChars * recallLimit)`.
 
 ## Behavior
 
