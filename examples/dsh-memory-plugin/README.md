@@ -21,7 +21,7 @@ Or add the package to a profile directly:
 
 ```bash
 dsh plugin --profile web add @openviking/dsh-memory-plugin
-dsh --profile web --dump-config    # should list the openviking-memory group
+dsh --profile web --dump-config    # should list openviking-memory-runtime
 ```
 
 `dsh plugin` forwards to pnpm inside the profile directory, so the bundle has to
@@ -176,26 +176,18 @@ Common environment variables:
 | `OPENVIKING_WORKSPACE_PEER` | Derive a peer from each DSH session workspace's git identity by default; `0` sends no peer |
 | `OPENVIKING_RECALL_PEER_SCOPE` | `all` for cross-workspace recall or `actor` for isolation |
 
-The patch can also carry plugin config:
+The profile's `cordis.patch.yml` can also carry plugin config:
 
 ```yaml
-- insert:
-    - id: openviking-memory
-      name: '@deepseek-ai/cordis-plugin-group'
-      group: true
-      isolate:
-        openvikingMemory: true
-      config:
-        - id: openviking-memory-runtime
-          name: '@openviking/dsh-memory-plugin'
-          config:
-            endpoint: http://127.0.0.1:1933
-            recallMaxTokens: 2000
-            scoreThreshold: 0.35
-            captureToolResults: false
-            skipSubagentSessions: true
-            commitTokenThreshold: 20000
-            mcpToolCallTimeoutMs: 60000
+- id: openviking-memory-runtime
+  config:
+    endpoint: http://127.0.0.1:1933
+    recallMaxTokens: 2000
+    scoreThreshold: 0.35
+    captureToolResults: false
+    skipSubagentSessions: true
+    commitTokenThreshold: 20000
+    mcpToolCallTimeoutMs: 60000
 ```
 
 Recall normally uses `POST /api/v1/search/search` with `mode: "context"`.
