@@ -137,7 +137,7 @@ effect for the tools when DSH restarts the bundle, as it does for the runtime.
 
 Two consequences follow from the proxy being one process per profile:
 
-- **The actor peer is process-level.** Recall, capture, and commit still resolve a peer per session from that session's workspace repository, but tool calls carry the peer resolved at boot. Set `OPENVIKING_PEER_ID` when one process serves several repositories and you need tool calls attributed exactly.
+- **MCP actor scope is process-level.** With the default `recallPeerScope: all`, MCP tool calls omit the actor peer header. With `actor`, they use the peer resolved at boot. Automatic recall, capture, and commit resolve their peer from each session's workspace.
 - **`remember` is not session-scoped.** The server's MCP `remember` stores into
   its own short-lived session rather than the live `dsh-<session-id>` stream —
   the same behavior the Claude Code, Codex, and Cursor integrations have.
@@ -210,7 +210,18 @@ The patch can also carry plugin config:
 - `tools/pre-execute` denies a DSH filesystem tool (`read`, `glob`, `grep`, `edit`, `write`, `str_replace_editor`) whose path argument is a `viking://` URI, pointing the model at the bridged `mcp__openviking__*` tools instead. A `write` or `edit` under a skill directory (`viking://~/skills/...`, `viking://user/<id>/skills/...`, `viking://agent/skills/...`) points at `mcp__openviking__add_skill` instead, which creates or replaces a whole skill from its `SKILL.md` text. A `grep` whose pattern is `viking://` text still runs.
 - `tools/post-execute` lets a `bash` command that carries a `viking://` URI run unchanged and attaches a notice for the model: use the bridged tools if it meant OpenViking content, or ignore the notice when the URI is intentional data such as an `ov` argument or an HTTP payload.
 
-Each DSH session maps to `dsh-<session-id>` in OpenViking. Workspace-derived actor peers are resolved per session and sent on every session-specific request: the peer is the git identity of the session's workspace — the normalized `origin` URL (`git@github.com:volcengine/OpenViking.git` becomes `github.com-volcengine-openviking`), else the repository root path, that fallback keeping the older rule where every non-letter-or-digit character becomes `-`. Outside a git repository no peer is sent at all, and what is remembered there goes to the user-level space `viking://user/<you>/memories`. One repository therefore keeps one peer across subdirectories, worktrees, clones and machines, while a fork's different origin keeps it separate. DSH does not read workspace `.openviking/config.json` files, so a `peer.id` written there has no effect; pin a peer with `OPENVIKING_PEER_ID` instead. Memories written under the older path-derived peer stay reachable: the default `recallPeerScope: all` sweeps every peer under the user.
+Each DSH session maps to `dsh-<session-id>` in OpenViking. Workspace-derived actor peers are resolved per session and sent on every session-specific request: the peer is the git identity of the session's workspace — the normalized `origin` URL (`git@github.com:volcengine/OpenViking.git` becomes `github.com-volcengine-openviking`), else the repository root path, that fallback keeping the older rule where every non-letter-or-digit character becomes `-`. With the default peer settings, no peer is sent outside a git repository, and what is remembered there goes to the user-level space `viking://user/<you>/memories`. One repository therefore keeps one peer across subdirectories, worktrees, clones and machines, while a fork's different origin keeps it separate. Memories written under the older path-derived peer stay reachable: the default `recallPeerScope: all` sweeps every peer under the user.
+
+Workspace peer settings are loaded from `session.header.cwd` when the session first uses memory. A workspace can set `peer.id` to name its project explicitly, or `peer.source` to choose a preset or template chain. For example, `<root>/.openviking/config.json` can contain:
+
+```json
+{
+  "version": 1,
+  "peer": { "id": "my-project" }
+}
+```
+
+The shared loader also applies `config.local.json` and machine registry overrides. Explicit host `peerId`, environment overrides and pinned `ovcli.conf` credentials retain their existing precedence. The resolved peer stays fixed for the session's runtime state; new sessions load the current workspace settings. A session without a cwd falls back to the process's working directory.
 
 ## Tools
 
