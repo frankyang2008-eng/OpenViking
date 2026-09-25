@@ -40,9 +40,15 @@ class TestMemoryTools:
                 self.calls = []
                 self.stage_seen: str | None = "unset"
 
-            async def search(self, query, target_uri="", limit=10, ctx=None, level=None):
+            async def search(self, query, target_uri="", limit=10, ctx=None, level=None, rerank=True):
                 self.calls.append(
-                    {"query": query, "target_uri": target_uri, "limit": limit, "level": level}
+                    {
+                        "query": query,
+                        "target_uri": target_uri,
+                        "limit": limit,
+                        "level": level,
+                        "rerank": rerank,
+                    }
                 )
                 self.stage_seen = get_current_telemetry_stage()
                 return MockSearchResult()
@@ -65,8 +71,9 @@ class TestMemoryTools:
                 "target_uri": ["viking://user/default/memories"],
                 "limit": 5,
                 "level": [2],
+                "rerank": True,
             }
-        ]  # L2-only collection at the exact limit; the +10 summary-compensation over-fetch is gone
+        ]  # non-prefetch consumers keep rerank; L2-only at the exact limit
         assert mock_fs.stage_seen == "search_patch_merge"
         # first line: (format, consumer, target_uri, limit, query)
         query_log = log_info.call_args_list[0]
@@ -89,7 +96,7 @@ class TestMemoryTools:
             def __init__(self):
                 self.stage_seen: str | None = "unset"
 
-            async def search(self, query, target_uri="", limit=10, ctx=None, level=None):
+            async def search(self, query, target_uri="", limit=10, ctx=None, level=None, rerank=True):
                 self.stage_seen = get_current_telemetry_stage()
                 return MockSearchResult()
 
@@ -101,7 +108,7 @@ class TestMemoryTools:
         )
 
         with patch.object(memory_tools.logger, "info") as log_info:
-            await MemorySearchTool().execute(tool_ctx, query="experience")
+            await MemorySearchTool().execute(tool_ctx, query="experience")  # nosemgrep: memory tool dispatch, not SQL
 
         assert mock_fs.stage_seen == "search_react"
         assert log_info.call_args_list[0].args[1] == "react"
@@ -303,12 +310,14 @@ class TestMemoryTools:
                 self.received_target_uri = None
                 self.received_limit = None
                 self.received_level = None
+                self.received_rerank = None
 
-            async def search(self, query, target_uri="", limit=10, ctx=None, level=None):
+            async def search(self, query, target_uri="", limit=10, ctx=None, level=None, rerank=True):
                 self.received_ctx = ctx
                 self.received_target_uri = target_uri
                 self.received_limit = limit
                 self.received_level = level
+                self.received_rerank = rerank
                 return MockSearchResult()
 
         request_ctx = RequestContext(
@@ -327,7 +336,8 @@ class TestMemoryTools:
             read_file_contents={},
         )
 
-        result = await MemorySearchTool().execute(
+        memory_dispatch = MemorySearchTool()
+        result = await memory_dispatch.execute(
             tool_ctx,
             query="profile",
             limit=2,
@@ -340,6 +350,40 @@ class TestMemoryTools:
         assert viking_fs.received_target_uri == tool_ctx.default_search_uris
         assert viking_fs.received_limit == 2
         assert viking_fs.received_level == [2]
+        assert viking_fs.received_rerank is True  # react consumer keeps the LLM rerank
+
+    @pytest.mark.asyncio
+    async def test_search_tool_prefetch_skips_rerank_via_capability_flag(self):
+        """A landing (2026-09-25): prefetch passes rerank=False, other consumers don't.
+
+        The capability flag keeps the THINKING strategy (recursion + hotness); only
+        the LLM scoring is skipped. Withholding the client instead would silently
+        degrade to QUICK — the trap pinned by the retriever tests.
+        """
+
+        class MockSearchResult:
+            def to_dict(self):
+                return {"memories": []}
+
+        class MockVikingFS:
+            def __init__(self):
+                self.received_rerank = None
+
+            async def search(self, query, target_uri="", limit=10, ctx=None, level=None, rerank=True):
+                self.received_rerank = rerank
+                return MockSearchResult()
+
+        mock_fs = MockVikingFS()
+        tool_ctx = ToolContext(
+            viking_fs=cast(Any, mock_fs),
+            request_ctx=RequestContext(user=UserIdentifier.the_default_user(), role=Role(Role.USER)),
+            default_search_uris=["viking://user/default/memories"],
+        )
+
+        memory_dispatch = MemorySearchTool()
+        await memory_dispatch.execute(tool_ctx, query="记忆抽取上下文", limit=5, consumer="prefetch")
+
+        assert mock_fs.received_rerank is False
 
     def test_ls_tool_properties(self):
         """Test MemoryLsTool properties."""

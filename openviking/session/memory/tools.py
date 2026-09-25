@@ -321,6 +321,12 @@ class MemorySearchTool(MemoryTool):
             # the +10 over-fetch existed only to compensate for them. level filters
             # collection, not navigation — the retriever still recurses through L0/L1
             # directories to find these files.
+            # A (phase-1 verdict + labeling adjudication, 2026-09-25): prefetch skips
+            # the LLM rerank via the rerank=False capability parameter — never by
+            # withholding the client, which would degrade retrieval to flat QUICK.
+            # Measured on this workspace: rerank scores steer the recursive expansion
+            # toward LESS relevant files (blind dual-judge: OFF picks 1.569 vs ON
+            # 1.091) while costing ~87k prompt tok/query + 45.7s wall clock.
             with bind_telemetry_stage(f"search_{consumer}"):
                 search_result = await ctx.viking_fs.search(
                     query,
@@ -328,6 +334,7 @@ class MemorySearchTool(MemoryTool):
                     limit=limit,
                     ctx=request_ctx,
                     level=[2],
+                    rerank=consumer != "prefetch",
                 )
             result = optimize_search_result(search_result.to_dict(), limit=limit)
             # What the caller actually gets, so a later offline comparison has a
