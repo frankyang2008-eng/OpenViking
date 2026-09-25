@@ -147,6 +147,11 @@ async def main() -> int:
     ap.add_argument("--limit", type=int, default=5, help="fetch width per side (production prefetch fetches exactly its limit since the L2-only fix)")
     ap.add_argument("--top", type=int, default=5, help="truncated top-n the consumer reads")
     ap.add_argument("--level", type=int, default=2, help="collection level filter mirroring MemorySearchTool's L2-only fix (0 disables)")
+    ap.add_argument(
+        "--score-dump",
+        action="store_true",
+        help="record every raw rerank_batch score to <json>.scores.json (distribution analysis)",
+    )
     ap.add_argument("--account", default="dever-space")
     ap.add_argument("--user", default="trae_dever")
     ap.add_argument("--json", default="plans/rerank-mini-verification/step2-replay.json")
@@ -177,6 +182,25 @@ async def main() -> int:
     ctx = RequestContext(
         user=UserIdentifier(args.account, args.user), role=Role(Role.ADMIN), bypass_acl=True
     )
+
+    score_dump: List[Dict[str, Any]] = []
+    if args.score_dump:
+        from openviking.models.rerank.llm_score_rerank import LlmScoreRerankClient
+
+        original_batch = LlmScoreRerankClient.rerank_batch
+
+        def _recording_batch(self, query, documents):
+            out = original_batch(self, query, documents)
+            score_dump.append(
+                {
+                    "query_head": query[:80],
+                    "n_docs": len(documents),
+                    "scores": [float(s) for s in (out or [])],
+                }
+            )
+            return out
+
+        LlmScoreRerankClient.rerank_batch = _recording_batch
     try:
         sides = []
         rerank_flags = (False,) if args.off_only else (True, False)
@@ -258,6 +282,10 @@ async def main() -> int:
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(json.dumps(report, ensure_ascii=False, indent=2))
         print(f"\nwrote {out}")
+        if args.score_dump and score_dump:
+            dump_path = out.with_suffix(out.suffix + ".scores.json")
+            dump_path.write_text(json.dumps(score_dump, ensure_ascii=False, indent=2))
+            print(f"wrote {dump_path} ({len(score_dump)} batches)")
     finally:
         await service.close()
     return 0
