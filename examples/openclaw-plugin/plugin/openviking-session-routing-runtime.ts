@@ -9,6 +9,7 @@ import {
 
 type Logger = {
   info: (message: string) => void;
+  warn: (message: string) => void;
 };
 
 export type SessionAgentLookup = {
@@ -110,6 +111,7 @@ export function createOpenVikingSessionRoutingRuntime(options: {
           ctx?.requesterSenderId ?? ctx?.senderId,
         ),
         assistantPeerId: agentId,
+        warn: (message) => options.logger.warn(message),
       }),
     };
   };

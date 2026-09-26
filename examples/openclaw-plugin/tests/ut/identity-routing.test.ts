@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   createSessionAgentResolver,
@@ -12,88 +12,67 @@ import {
 describe("identity routing registry", () => {
   it("keeps OpenClaw session to OpenViking storage id behavior byte-compatible", () => {
     const uuid = "A1B2C3D4-E5F6-7890-ABCD-EF1234567890";
-    expect(openClawSessionToOvStorageId(uuid, undefined)).toBe(
-      uuid.toLowerCase(),
-    );
-    expect(openClawSessionToOvStorageId("plain-session", undefined)).toBe(
-      "plain-session",
-    );
-    expect(
-      openClawSessionToOvStorageId(undefined, "agent:myagent:session123"),
-    ).toMatch(/^[a-f0-9]{64}$/);
-    expect(openClawSessionToOvStorageId("C:\\Users\\test", undefined)).toMatch(
-      /^[a-f0-9]{64}$/,
-    );
-    expect(() => openClawSessionToOvStorageId("", "")).toThrow(
-      "need sessionId or sessionKey",
-    );
+    expect(openClawSessionToOvStorageId(uuid, undefined)).toBe(uuid.toLowerCase());
+    expect(openClawSessionToOvStorageId("plain-session", undefined)).toBe("plain-session");
+    expect(openClawSessionToOvStorageId(undefined, "agent:myagent:session123")).toMatch(/^[a-f0-9]{64}$/);
+    expect(openClawSessionToOvStorageId("C:\\Users\\test", undefined)).toMatch(/^[a-f0-9]{64}$/);
+    expect(() => openClawSessionToOvStorageId("", "")).toThrow("need sessionId or sessionKey");
   });
 
   it("normalizes hook/tool session refs in the concrete routing module", () => {
-    expect(
-      openClawSessionRefToOvStorageId(" A1B2C3D4-E5F6-7890-ABCD-EF1234567890 "),
-    ).toBe("a1b2c3d4-e5f6-7890-abcd-ef1234567890");
-    expect(openClawSessionRefToOvStorageId("safe-session")).toBe(
-      "safe-session",
+    expect(openClawSessionRefToOvStorageId(" A1B2C3D4-E5F6-7890-ABCD-EF1234567890 ")).toBe(
+      "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
     );
-    expect(openClawSessionRefToOvStorageId("C:\\bad\\path")).toMatch(
-      /^[a-f0-9]{64}$/,
-    );
-    expect(() => openClawSessionRefToOvStorageId("   ")).toThrow(
-      "empty session ref",
-    );
+    expect(openClawSessionRefToOvStorageId("safe-session")).toBe("safe-session");
+    expect(openClawSessionRefToOvStorageId("C:\\bad\\path")).toMatch(/^[a-f0-9]{64}$/);
+    expect(() => openClawSessionRefToOvStorageId("   ")).toThrow("empty session ref");
   });
 
   it("sanitizes OpenViking actor peer headers in the concrete routing module", () => {
-    expect(sanitizeOpenVikingAgentIdHeader("agent:role:v1")).toBe(
-      "agent_role_v1",
-    );
+    expect(sanitizeOpenVikingAgentIdHeader("agent:role:v1")).toBe("agent_role_v1");
     expect(sanitizeOpenVikingAgentIdHeader("   ")).toBe("default");
     expect(sanitizeOpenVikingAgentIdHeader("@#$%")).toBe("ov_agent");
   });
 
   it("routes sender scope to the sender peer for messages and data-plane requests", () => {
-    expect(
-      resolveOpenVikingMessagePeerId({
-        peerRole: "sender",
-        role: "user",
-        senderPeerId: "sender-42",
-      }),
-    ).toBe("sender-42");
-    expect(
-      resolveOpenVikingMessagePeerId({
-        peerRole: "sender",
-        role: "assistant",
-        senderPeerId: "sender-42",
-      }),
-    ).toBeUndefined();
-    expect(
-      resolveOpenVikingActorPeerId({
-        peerRole: "sender",
-        senderPeerId: "sender-42",
-      }),
-    ).toBe("sender-42");
-    expect(() => resolveOpenVikingActorPeerId({ peerRole: "sender" })).toThrow(
-      "peer_role=sender requires a sender identity",
-    );
+    expect(resolveOpenVikingMessagePeerId({
+      peerRole: "sender",
+      role: "user",
+      senderPeerId: "sender-42",
+    })).toBe("sender-42");
+    expect(resolveOpenVikingMessagePeerId({
+      peerRole: "sender",
+      role: "assistant",
+      senderPeerId: "sender-42",
+    })).toBeUndefined();
+    expect(resolveOpenVikingActorPeerId({
+      peerRole: "sender",
+      senderPeerId: "sender-42",
+    })).toBe("sender-42");
+  });
+
+  it("widens to the unscoped request with a warning when the sender is missing", () => {
+    const warn = vi.fn();
+    expect(resolveOpenVikingActorPeerId({ peerRole: "sender", warn })).toBeUndefined();
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("no sender identity"));
+
+    warn.mockClear();
+    expect(resolveOpenVikingActorPeerId({ peerRole: "sender", senderPeerId: "sender-42", warn })).toBe("sender-42");
+    expect(resolveOpenVikingActorPeerId({ peerRole: "assistant", assistantPeerId: "agent", warn })).toBe("agent");
+    expect(resolveOpenVikingActorPeerId({ peerRole: "none", warn })).toBeUndefined();
+    expect(warn).not.toHaveBeenCalled();
   });
 
   it("resolves session-scoped agents with aliases and config prefix unchanged", () => {
     const resolver = createSessionAgentResolver("prefix");
-    resolver.remember({
-      sessionId: "s1",
-      sessionKey: "agent:worker:session123",
-      agentId: "agent-abc",
-    });
+    resolver.remember({ sessionId: "s1", sessionKey: "agent:worker:session123", agentId: "agent-abc" });
 
     expect(resolver.resolve("s1")).toMatchObject({
       resolved: "prefix_agent-abc",
       branch: "session_resolved",
       fromExplicitBinding: true,
     });
-    expect(
-      resolver.resolve(undefined, "agent:worker:session123"),
-    ).toMatchObject({
+    expect(resolver.resolve(undefined, "agent:worker:session123")).toMatchObject({
       resolved: "prefix_agent-abc",
       branch: "session_resolved",
     });
@@ -101,12 +80,7 @@ describe("identity routing registry", () => {
       resolved: "main",
       branch: "default_no_session",
     });
-    expect(
-      createSessionAgentResolver("prefix").resolve(
-        undefined,
-        "agent:worker:session123",
-      ),
-    ).toMatchObject({
+    expect(createSessionAgentResolver("prefix").resolve(undefined, "agent:worker:session123")).toMatchObject({
       resolved: "prefix_worker",
       branch: "session_resolved",
     });

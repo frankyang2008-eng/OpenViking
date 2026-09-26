@@ -250,6 +250,28 @@ async def test_collect_grep_files_propagates_later_page_failure(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_collect_grep_files_propagates_later_page_acl_denial(monkeypatch):
+    viking_fs = VikingFS(agfs=_DummyAgfs())
+
+    async def fake_ls(uri, node_limit, offset, ctx=None):
+        if uri == "viking://resources":
+            return [{"name": "child", "isDir": True}]
+        if offset:
+            raise PermissionDeniedError("access revoked", resource=uri)
+        return [{"name": f"file_{index:04d}.md", "isDir": False} for index in range(node_limit)]
+
+    monkeypatch.setattr(viking_fs, "stat", AsyncMock(return_value={"isDir": True}))
+    monkeypatch.setattr(viking_fs, "ls", fake_ls)
+
+    with pytest.raises(PermissionDeniedError, match="access revoked"):
+        await viking_fs._collect_grep_files(
+            "viking://resources",
+            excluded_prefix=None,
+            level_limit=1,
+        )
+
+
+@pytest.mark.asyncio
 async def test_collect_grep_files_propagates_root_stat_failure(monkeypatch):
     viking_fs = VikingFS(agfs=_DummyAgfs())
     monkeypatch.setattr(
@@ -1203,7 +1225,7 @@ class _RestrictedAclManager:
     def __init__(self, effective_by_uri):
         self.effective_by_uri = effective_by_uri
 
-    def is_enabled(self, account_id):
+    async def is_enabled(self, account_id):
         return True
 
     async def resolve_many(self, uris, ctx):

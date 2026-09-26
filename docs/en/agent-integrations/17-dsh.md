@@ -41,7 +41,7 @@ After using it for a while, start a new conversation and ask about something you
    dsh --profile web --dump-config
    ```
 
-   The output should contain an `openviking-memory` plugin group.
+   The output should contain an `openviking-memory-runtime` entry.
 
 > Don't have `ovcli.conf` yet? See the [Deployment Guide → CLI](../guides/03-deployment.md#cli).
 >
@@ -71,7 +71,7 @@ A filesystem tool call whose path is a `viking://` URI is blocked with a hint po
 Credentials resolve from `OPENVIKING_*` environment variables, then `~/.openviking/ovcli.conf`, then `~/.openviking/ov.conf` — the same chain the Claude Code, Codex, OpenCode, and pi integrations use. The bundle reloads them when those files change.
 
 | Env Var | Default | Description |
-| --------- | --------- | ------------- |
+|---------|---------|-------------|
 | `OPENVIKING_URL` / `OPENVIKING_BASE_URL` | `http://127.0.0.1:1933` | Server endpoint |
 | `OPENVIKING_API_KEY` / `OPENVIKING_BEARER_TOKEN` | — | API key (sent as `Authorization: Bearer`) |
 | `OPENVIKING_ACCOUNT` / `OPENVIKING_USER` | — | Trusted-mode account and user |
@@ -83,20 +83,12 @@ Credentials resolve from `OPENVIKING_*` environment variables, then `~/.openviki
 Behavior knobs live in the profile's Cordis patch entry:
 
 ```yaml
-- insert:
-    - id: openviking-memory
-      name: '@deepseek-ai/cordis-plugin-group'
-      group: true
-      isolate:
-        openvikingMemory: true
-      config:
-        - id: openviking-memory-runtime
-          name: '@openviking/dsh-memory-plugin'
-          config:
-            recallTokenBudget: 2000
-            scoreThreshold: 0.35
-            captureToolResults: false
-            commitTokenThreshold: 20000
+- id: openviking-memory-runtime
+  config:
+    recallTokenBudget: 2000
+    scoreThreshold: 0.35
+    captureToolResults: false
+    commitTokenThreshold: 20000
 ```
 
 `syncTurns: false`, in that same block, makes the integration read-only: it still injects your profile and recalls memories, but sends nothing back — no captured turns, no commits, and no replay of writes an earlier session queued, which stay on the queue until a session that still writes drains them.
@@ -112,8 +104,8 @@ Credentials given in the patch win over the environment. Behavior knobs resolve 
 ## Troubleshooting
 
 | Issue | What to check |
-| ------- | --------------- |
-| Nothing injected, no OpenViking tools | `dsh --profile web --dump-config` should list `openviking-memory`; re-run the installer or `dsh plugin --profile web add …` |
+|-------|---------------|
+| Nothing injected, no OpenViking tools | `dsh --profile web --dump-config` should list `openviking-memory-runtime`; re-run the installer or `dsh plugin --profile web add …` |
 | Installed into the wrong profile | The installer defaults to `web`; re-run it with `--dsh-profile <name>` |
 | `ERESOLVE` during install | The `@deepseek-ai/dsh-*` prerelease tags drift apart; install `@deepseek-ai/dsh@0.1.0-rc.6` exactly |
 | Install says the package is "not in the npm registry" | pnpm refuses releases younger than 24 hours by default (`minimumReleaseAge`). Wait it out, or add the exact version to `minimumReleaseAgeExclude` in the profile's `pnpm-workspace.yaml` |

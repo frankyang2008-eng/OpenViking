@@ -15,7 +15,7 @@ List directory contents.
 **Parameters**
 
 | Parameter | Type | Required | Default | Description |
-| ----------- | ------ | ---------- | --------- | ------------- |
+|-----------|------|----------|---------|-------------|
 | uri | str | Yes | - | Viking URI |
 | simple | bool | No | False | Return only relative paths |
 | recursive | bool | No | False | List all subdirectories recursively |
@@ -65,6 +65,7 @@ not descend into it, and search results omit unreadable content. This
 discoverable-name behavior applies only to the shared
 `viking://resources` namespace; private user and peer namespaces retain their
 existing hiding rules.
+
 
 **Python HTTP SDK**
 
@@ -130,6 +131,8 @@ openviking glob "**/*.md" [--uri viking://resources/] [--simple] [--tags team=se
 
 `-f`/`--fields` accepts a comma-separated list of columns to display (ps `-o` style), producing a column-aligned table with a header row. Available fields: `name`, `uri`, `path`, `type`, `size`, `mode`, `mtime`, `locked`, `id`, `count`, `abstract`, `tags`. Combining `--simple` with `-f` outputs comma-separated values (no header, no tree indentation), one entry per line — suitable for scripting pipelines. When `--simple` is used without `-f`, the previous behavior (bare URI per line) is preserved.
 
+The HTTP `result` remains an entry array. `has_more=true` means more matching nodes remain after visibility, tags, offset, and limit are applied. The Python, TypeScript, and Go SDKs continue to return the `result` array. When more nodes are available, the CLI appends a pagination hint to its output.
+
 **Response**
 
 ```json
@@ -145,6 +148,7 @@ openviking glob "**/*.md" [--uri viking://resources/] [--simple] [--tags team=se
       "uri": "viking://resources/docs/"
     }
   ],
+  "has_more": true,
   "time": 0.1
 }
 ```
@@ -158,7 +162,7 @@ Get directory tree structure.
 **Parameters**
 
 | Parameter | Type | Required | Default | Description |
-| ----------- | ------ | ---------- | --------- | ------------- |
+|-----------|------|----------|---------|-------------|
 | uri | str | Yes | - | Viking URI |
 | output | str | No | HTTP: `agent`; SDKs: `original` | Output format: `agent` or `original` |
 | abs_limit | int | No | HTTP: 256; SDKs: 128 | Abstract length limit for `agent` output |
@@ -171,6 +175,7 @@ Get directory tree structure.
 | tags | string[] | No | Unset | Retain only nodes matching every supplied `k=v` retrieval tag |
 
 `tags` uses AND semantics and is applied before `offset` and `limit`. Tags are included for filtered responses; for an unfiltered response, request `include_tags=true` (CLI: `-f tags`).
+
 
 **Python HTTP SDK**
 
@@ -217,6 +222,8 @@ curl -X GET "http://localhost:1933/api/v1/fs/tree?uri=viking://resources/" \
 openviking tree viking://resources/my-project/
 ```
 
+As with `ls`, the HTTP `result` remains a node array and `has_more` is returned at the top level. When `has_more=true`, the CLI appends a pagination hint to the tree output.
+
 **Response**
 
 ```json
@@ -238,6 +245,7 @@ openviking tree viking://resources/my-project/
       "uri": "viking://resources/docs/api.md"
     }
   ],
+  "has_more": true,
   "time": 0.1
 }
 ```
@@ -253,6 +261,7 @@ Get file or directory status information. For directories, returns the count of 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | uri | str | Yes | - | Viking URI (e.g. `viking://resources/docs/api.md`) or a 32-character hex vector record `id` |
+
 
 **Python HTTP SDK**
 
@@ -301,6 +310,7 @@ curl -X GET "http://localhost:1933/api/v1/fs/stat?uri=viking://resources/docs/ap
 openviking stat viking://resources/my-project/docs/api.md
 openviking stat viking://resources/my-project/docs
 ```
+
 
 **Response (File)**
 
@@ -358,6 +368,7 @@ Get logical extended attributes for a file or directory.
 |-----------|------|----------|---------|-------------|
 | uri | str | Yes | - | Viking URI |
 
+
 **Python SDK (HTTP)**
 
 ```python
@@ -412,6 +423,7 @@ openviking attrs set-tags viking://resources/docs --tags team=search --mode appe
 
 Directory targets update the directory semantic records; `recursive=true` also updates existing descendant files and directory semantic records.
 
+
 **Response (Resource)**
 
 ```json
@@ -463,6 +475,7 @@ Create a directory.
 | uri | str | Yes | - | Viking URI for the new directory |
 | description | str | No | `null` | Initial directory description. When omitted, the directory name is used as the default L0; when provided, this description is used. Both forms write `.abstract.md` and queue L0 vectorization. |
 
+
 **Python HTTP SDK**
 
 ```python
@@ -507,6 +520,7 @@ openviking mkdir viking://resources/new-project/
 openviking mkdir viking://resources/new-project/ --description "API docs directory"
 ```
 
+
 **Response**
 
 ```json
@@ -534,6 +548,7 @@ Invalid URI formats, unsupported schemes, and non-public scopes return `INVALID_
 |-----------|------|----------|---------|-------------|
 | uri | str | Yes | - | Viking URI to remove |
 | recursive | bool | No | False | Remove directory recursively |
+
 
 **Python HTTP SDK**
 
@@ -584,6 +599,7 @@ curl -X DELETE "http://localhost:1933/api/v1/fs?uri=viking://resources/old-proje
 openviking rm viking://resources/old.md [--recursive]
 ```
 
+
 **Response (Single file)**
 
 ```json
@@ -626,7 +642,7 @@ Files use Exact Locks on both paths; directories use Tree Locks on both subtrees
 **Parameters**
 
 | Parameter | Type | Required | Default | Description |
-| ----------- | ------ | ---------- | --------- | ------------- |
+|-----------|------|----------|---------|-------------|
 | from_uri | str | Yes | - | Source Viking URI |
 | to_uri | str | Yes | - | Destination Viking URI, including the new file or directory name |
 | recursive | bool | No | False | Required when the source is a directory |
@@ -714,6 +730,7 @@ Files use two Exact Locks; directories use Tree Locks on the source and destinat
 | from_uri | str | Yes | - | Source Viking URI |
 | to_uri | str | Yes | - | Destination Viking URI |
 
+
 **Python HTTP SDK**
 
 ```python
@@ -761,6 +778,7 @@ curl -X POST http://localhost:1933/api/v1/fs/mv \
 ```bash
 openviking mv viking://resources/old-name/ viking://resources/new-name/
 ```
+
 
 **Response**
 
