@@ -53,6 +53,15 @@ def test_queue_concurrency_uses_separate_configured_values() -> None:
 # ===== local: QueueManager worker lifecycle (thread leak / re-init / stop) =====
 
 
+def _stub_vlm_resolver() -> SimpleNamespace:
+    """Upstream refuses to start semantic workers without a VLM resolver.
+
+    These lifecycle tests never enqueue semantic work, so a stub satisfies the
+    contract without pulling in a real provider.
+    """
+    return SimpleNamespace(get_vlm=AsyncMock(return_value=SimpleNamespace()))
+
+
 def test_init_queue_manager_replaces_without_orphaning_threads() -> None:
     """Re-init must stop the previous manager: thread count must not grow.
 
@@ -65,6 +74,7 @@ def test_init_queue_manager_replaces_without_orphaning_threads() -> None:
     try:
         for _ in range(5):
             qm.init_queue_manager(agfs=MagicMock(), timeout=1, mount_point="/tmp/ov-qm-test")
+        qm._instance.set_vlm_resolver(_stub_vlm_resolver())
         qm._instance.setup_standard_queues(vector_store=MagicMock(), start=True)
         current = threading.active_count()
         assert current <= base + 6, (
@@ -81,6 +91,7 @@ def test_init_queue_manager_stops_previous_instance() -> None:
     old = qm._instance
     try:
         first = qm.init_queue_manager(agfs=MagicMock(), timeout=1, mount_point="/tmp/ov-qm-test")
+        first.set_vlm_resolver(_stub_vlm_resolver())
         first.setup_standard_queues(vector_store=MagicMock(), start=True)
         second = qm.init_queue_manager(agfs=MagicMock(), timeout=1, mount_point="/tmp/ov-qm-test")
         assert second is not first
@@ -130,8 +141,10 @@ def test_stop_is_idempotent_and_thread_safe_after_reinit() -> None:
     old = qm._instance
     try:
         first = qm.init_queue_manager(agfs=MagicMock(), timeout=1, mount_point="/tmp/ov-qm-test")
+        first.set_vlm_resolver(_stub_vlm_resolver())
         first.setup_standard_queues(vector_store=MagicMock(), start=True)
         second = qm.init_queue_manager(agfs=MagicMock(), timeout=1, mount_point="/tmp/ov-qm-test")
+        second.set_vlm_resolver(_stub_vlm_resolver())
         second.setup_standard_queues(vector_store=MagicMock(), start=True)
         # Stopping the OLD instance must not clear the NEW global instance.
         first.stop(join_timeout=2.0)
