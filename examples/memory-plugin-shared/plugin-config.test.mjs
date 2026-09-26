@@ -60,7 +60,12 @@ const LOADERS = {
 
 // openclaw declares its own settings in TypeScript and still resolves them
 // itself; it joins this table when it moves onto the shared loader.
-const WITHOUT_A_SHARED_LOADER = new Set(["openclaw"]);
+//
+// omp resolves the same schema through its own layer stack - the extension's
+// config.json under ov.conf's `omp` block - and picks its harness from the
+// executing binary, so there is no `buildPluginConfig("omp")` call to compare
+// against. Its own tests cover that merge (omp-openviking-extension/tests).
+const WITHOUT_A_SHARED_LOADER = new Set(["openclaw", "omp"]);
 
 const SEND_ONLY_WHEN_CONFIGURED = KNOBS.filter((knob) => knob.sendOnlyWhenConfigured);
 

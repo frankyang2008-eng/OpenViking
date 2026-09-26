@@ -85,11 +85,20 @@ HAVE_CURSOR=0
 INTERACTIVE=0
 REQUESTED_HARNESSES=""
 select_harnesses
-printf '%s:%s\\n' "$HAVE_TRAE" "$SELECTED_HARNESSES"
+printf '%s:%s:%s\\n' "$HAVE_TRAE" "$HAVE_TRAE_CN" "$SELECTED_HARNESSES"
 `);
 
   assert.equal(result.status, 0, result.stderr);
-  assert.equal(result.stdout.trim(), "1:trae");
+  // The installer also probes /Applications, so whether this host has TRAE CN
+  // installed is not the fixture's to decide. Pin what the fixture does decide:
+  // TRAE Desktop is detected, and it is selected - with TRAE CN beside it only
+  // when this host really has that app.
+  const [trae, traeCn, selected] = result.stdout.trim().split(":");
+  assert.equal(trae, "1");
+  assert.deepEqual(
+    selected.split(","),
+    traeCn === "1" ? ["trae", "trae-cn"] : ["trae"],
+  );
 });
 
 test("TRAE CLI configuration does not auto-select the TRAE CLI harness", (t) => {
@@ -106,11 +115,17 @@ HAVE_CURSOR=0
 INTERACTIVE=0
 REQUESTED_HARNESSES=""
 select_harnesses
-printf '%s\\n' "$SELECTED_HARNESSES"
+printf '%s:%s\\n' "$HAVE_TRAE_CN" "$SELECTED_HARNESSES"
 `);
 
   assert.equal(result.status, 0, result.stderr);
-  assert.equal(result.stdout.trim(), "trae");
+  // A TraeCode CLI config must not add the CLI harness; TRAE CN app detection
+  // is host-dependent, so it is read back rather than assumed.
+  const [traeCn, selected] = result.stdout.trim().split(":");
+  assert.deepEqual(
+    selected.split(","),
+    traeCn === "1" ? ["trae", "trae-cn"] : ["trae"],
+  );
 });
 
 test("TraeCode CLI 2.0 command aliases use the Codex-format selection", (t) => {
@@ -138,15 +153,19 @@ REQUESTED_HARNESSES=""
 select_harnesses
 if tui_bin_detected codex ${command}; then detected=yes; else detected=no; fi
 label="$(tui_bin_label codex ${command})"
-printf '%s:%s:%s\\n' "$SELECTED_HARNESSES" "$detected" "$label"
+printf '%s:%s:%s:%s\\n' "$SELECTED_HARNESSES" "$HAVE_TRAE_CN" "$detected" "$label"
 `);
 
     assert.equal(result.status, 0, result.stderr);
-    assert.equal(
-      result.stdout.trim(),
-      "codex,trae:yes:TraeCode CLI 2.0",
+    // TRAE CN app detection is host-dependent; the CLI alias itself is not.
+    const [selected, traeCn, detected, label] = result.stdout.trim().split(":");
+    assert.deepEqual(
+      selected.split(","),
+      traeCn === "1" ? ["codex", "trae", "trae-cn"] : ["codex", "trae"],
       command,
     );
+    assert.equal(detected, "yes", command);
+    assert.equal(label, "TraeCode CLI 2.0", command);
   }
 });
 

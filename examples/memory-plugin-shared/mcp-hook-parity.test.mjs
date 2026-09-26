@@ -31,6 +31,11 @@ import { buildMcpConfig as dshMcpConfig } from "../dsh-memory-plugin/mcp-env.mjs
 import { readProxyConfig as dshProxy } from "../dsh-memory-plugin/servers/mcp-proxy.mjs";
 import { loadConfig as loadOpencode } from "../opencode-plugin/lib/config.mjs";
 import { readProxyConfig as opencodeProxy } from "../opencode-plugin/servers/mcp-proxy.mjs";
+import { loadOmpConfig } from "../omp-openviking-extension/lib/omp-config.mjs";
+import { readProxyConfig as ompProxy } from "../omp-openviking-extension/servers/mcp-proxy.mjs";
+import { readProxyConfig as agyProxy } from "../agy-memory-plugin/servers/mcp-proxy.mjs";
+
+const OMP_DIR = join(ROOT, "examples", "omp-openviking-extension");
 
 const WIRE = ["mcpUrl", "apiKey", "account", "user", "sendIdentityHeaders"];
 const wire = (cfg) => Object.fromEntries(WIRE.map((field) => [field, cfg[field]]));
@@ -89,6 +94,24 @@ const HARNESSES = [
     section: "dsh",
     hook: ({ env, cwd, host }) => loadDsh({ workspacePeer: false, ...host }, env, cwd),
     proxy: ({ env, hook, otherDir }) => dshProxy({ ...dshInherited(env), ...dshMcpConfig(hook).env }, otherDir),
+  },
+  // The fork-local harnesses: their adapters live in their own plugin directory
+  // instead of in agent-hook-plugin/hosts, so each ships its own proxy.
+  {
+    name: "agy",
+    dir: "agy-memory-plugin",
+    section: "agy",
+    hook: ({ env, cwd }) => loadAgentHookConfig("agy", cwd, { env }),
+    proxy: ({ env }) => agyProxy(env),
+  },
+  {
+    name: "omp",
+    dir: "omp-openviking-extension",
+    // omp and pi share one loader and pick the section from the executing
+    // binary; node is not `omp`, so under this test both sides read `pi`.
+    section: "pi",
+    hook: ({ env, cwd }) => loadOmpConfig(OMP_DIR, { env, cwd }),
+    proxy: ({ env }) => ompProxy(env),
   },
 ];
 
