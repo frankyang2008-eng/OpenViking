@@ -6,11 +6,13 @@ on:
     paths:
       - 'examples/hermes-plugin/**'
       - '.github/workflows/hermes-plugin-tests.yml'
+      - 'scripts/check-hermes-plugin-install.py'
   push:
     branches: [main, develop]
     paths:
       - 'examples/hermes-plugin/**'
       - '.github/workflows/hermes-plugin-tests.yml'
+      - 'scripts/check-hermes-plugin-install.py'
   workflow_dispatch:
 
 permissions:
@@ -33,7 +35,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           repository: NousResearch/hermes-agent
-          ref: 9a0a1625367242596d338ae2da541c4a1fc785a2
+          ref: 58d146e961108e84f41bfed59f586121ecb3372c
           path: .ci/hermes-agent
           persist-credentials: false
 
@@ -70,4 +72,20 @@ jobs:
         run: |
           HERMES_PYTHON="$PWD/.venv/bin/python" scripts/run_tests.sh \
             "$GITHUB_WORKSPACE/examples/hermes-plugin/tests" \
-            --confcutdir="$GITHUB_WORKSPACE/examples/hermes-plugin/tests" -q
+            --confcutdir="$GITHUB_WORKSPACE/examples/hermes-plugin/tests" -p no:cacheprovider -q
+
+      - name: Check real plugin installation and activation
+        working-directory: .ci/hermes-agent
+        run: |
+          .venv/bin/python "$GITHUB_WORKSPACE/scripts/check-hermes-plugin-install.py" \
+            --hermes-root "$PWD" \
+            --output-dir "$RUNNER_TEMP/hermes-plugin-install"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: hermes-plugin-install-logs
+          path: |
+            ${{ runner.temp }}/hermes-plugin-install/*.log
+            ${{ runner.temp }}/hermes-plugin-install/evidence.json
+          if-no-files-found: ignore

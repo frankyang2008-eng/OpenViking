@@ -76,6 +76,13 @@ the host dependency pins and run the suite before submitting the change.
 These regression tests use mock responses and local test servers; live-service
 validation remains part of release testing.
 
+CI also runs `scripts/check-hermes-plugin-install.py` through the real Hermes
+CLI in an isolated profile. It installs this repository's plugin subdirectory,
+enables it through Hermes's dependency manager, validates the installed directory,
+and checks that the external provider loads. The bundled OpenViking copy is
+temporarily removed from the test checkout. This catches dependency conflicts
+across supported platforms that runtime tests alone do not exercise.
+
 Use a Hermes checkout with its development dependencies installed.
 
 The complete mirror tests require the committed-entry event contract introduced
