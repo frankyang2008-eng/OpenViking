@@ -9,6 +9,8 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
+import { clearOvEnv, restoreOvEnv } from "./env-isolation.mjs";
+
 const EXTENSION_DIR = dirname(dirname(fileURLToPath(import.meta.url)));
 const EXTENSION_URL = pathToFileURL(EXTENSION_DIR + "/").href;
 
@@ -29,25 +31,6 @@ registerHooks({
     }
   },
 });
-
-const MANAGED_ENV = [
-  "OPENVIKING_CREDENTIAL_SOURCE",
-  "OPENVIKING_CLI_CONFIG_FILE",
-  "OPENVIKING_CONFIG_FILE",
-  "OPENVIKING_URL",
-  "OPENVIKING_BASE_URL",
-  "OPENVIKING_MCP_URL",
-  "OPENVIKING_API_KEY",
-  "OPENVIKING_BEARER_TOKEN",
-  "OPENVIKING_ACCOUNT",
-  "OPENVIKING_USER",
-  "OPENVIKING_AUTH_MODE",
-  "OPENVIKING_PEER_ID",
-  "OPENVIKING_DEBUG",
-  "OPENVIKING_DEBUG_LOG",
-  "OV_DEBUG_LOG",
-  "OPENVIKING_PENDING_DIR",
-];
 
 async function startServer() {
   const initializes = [];
@@ -123,8 +106,7 @@ function fakeCtx(notified = [], statuses = []) {
 async function withExtension(t, fn) {
   const server = await startServer();
   const dir = await mkdtemp(join(tmpdir(), "ov-pi-handshake-"));
-  const saved = Object.fromEntries(MANAGED_ENV.map((name) => [name, process.env[name]]));
-  for (const name of MANAGED_ENV) delete process.env[name];
+  const saved = clearOvEnv();
   process.env.OPENVIKING_CREDENTIAL_SOURCE = "env";
   process.env.OPENVIKING_URL = server.url;
   process.env.OPENVIKING_API_KEY = "pi-handshake-key";
@@ -134,10 +116,7 @@ async function withExtension(t, fn) {
   await writeFile(join(dir, "ovcli.conf"), JSON.stringify({ plugin: { pi: {} } }), "utf8");
 
   t.after(async () => {
-    for (const [name, value] of Object.entries(saved)) {
-      if (value === undefined) delete process.env[name];
-      else process.env[name] = value;
-    }
+    restoreOvEnv(saved);
     await server.close();
     await rm(dir, { recursive: true, force: true });
   });
@@ -162,6 +141,10 @@ async function withExtension(t, fn) {
     configPath: join(dir, "ovcli.conf"),
     turn: (prompt) => handlers.get("before_agent_start")(
       { type: "before_agent_start", prompt, systemPrompt: "BASE" },
+      fakeCtx(notified, statuses),
+    ),
+    context: (messages) => handlers.get("context")(
+      { type: "context", messages },
       fakeCtx(notified, statuses),
     ),
     shutdown: () => handlers.get("session_shutdown")(
@@ -195,6 +178,18 @@ test("the first turn attempts the handshake once, and the retry waits for the ne
     assert.equal(warnings.length, 1, JSON.stringify(notified));
     assert.match(warnings[0][0], /403/);
 
+    await shutdown();
+  });
+});
+
+test("the context hook reaches the takeover branch without a missing binding", async (t) => {
+  await withExtension(t, async ({ turn, context, shutdown }) => {
+    await turn("hello");
+    const messages = [{ role: "user", content: "hello" }];
+    // takeoverEnabled defaults to true, so this walks the line that reads the
+    // session manager's branch. A bare, undeclared reference there throws.
+    const result = await context(messages);
+    assert.ok(Array.isArray(result?.messages), JSON.stringify(result));
     await shutdown();
   });
 });

@@ -6,31 +6,10 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
+import { clearOvEnv, restoreOvEnv } from "./env-isolation.mjs";
 import { loadConfig, buildBridgeProxyConfig } from "../config.ts";
 import { OVClient } from "../client.ts";
 import { toMcpProxyConfig } from "../shared/mcp-proxy-config.mjs";
-
-const MANAGED_ENV = [
-  "OPENVIKING_CREDENTIAL_SOURCE",
-  "OPENVIKING_CLI_CONFIG_FILE",
-  "OPENVIKING_CONFIG_FILE",
-  "OPENVIKING_URL",
-  "OPENVIKING_BASE_URL",
-  "OPENVIKING_MCP_URL",
-  "OPENVIKING_API_KEY",
-  "OPENVIKING_BEARER_TOKEN",
-  "OPENVIKING_ACCOUNT",
-  "OPENVIKING_USER",
-  "OPENVIKING_AUTH_MODE",
-  "OPENVIKING_PEER_ID",
-  "OPENVIKING_WORKSPACE_PEER",
-  "OPENVIKING_RECALL_PEER_SCOPE",
-  "OPENVIKING_DEBUG",
-  "OPENVIKING_DEBUG_LOG",
-  "OV_DEBUG_LOG",
-  "OPENVIKING_TIMEOUT_MS",
-  "OPENVIKING_EXTRA_HEADERS",
-];
 
 /**
  * Run `fn` with one freshly loaded configuration.
@@ -40,8 +19,7 @@ const MANAGED_ENV = [
  */
 async function withConfig({ env = {}, plugin = {} } = {}, fn) {
   const dir = await mkdtemp(join(tmpdir(), "ov-pi-bridge-config-"));
-  const saved = Object.fromEntries(MANAGED_ENV.map((name) => [name, process.env[name]]));
-  for (const name of MANAGED_ENV) delete process.env[name];
+  const saved = clearOvEnv();
   process.env.OPENVIKING_CREDENTIAL_SOURCE = "env";
   process.env.OPENVIKING_URL = "http://127.0.0.1:1933";
   process.env.OPENVIKING_API_KEY = "pi-parity-key";
@@ -56,10 +34,7 @@ async function withConfig({ env = {}, plugin = {} } = {}, fn) {
     await writeFile(join(dir, "ovcli.conf"), JSON.stringify({ plugin: { pi: plugin } }), "utf8");
     return await fn(loadConfig());
   } finally {
-    for (const [name, value] of Object.entries(saved)) {
-      if (value === undefined) delete process.env[name];
-      else process.env[name] = value;
-    }
+    restoreOvEnv(saved);
     await rm(dir, { recursive: true, force: true });
   }
 }

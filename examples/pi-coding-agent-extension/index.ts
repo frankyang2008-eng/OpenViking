@@ -356,7 +356,7 @@ export default async function (pi: ExtensionAPI) {
     const afterTakeover = config.takeoverEnabled
       ? takeover.transformContext(
           event.messages as any,
-          typeof sessionManager?.getBranch === "function" ? sessionManager.getBranch() : [],
+          typeof sm.getBranch === "function" ? sm.getBranch() : [],
         )
       : event.messages;
     const messages = recall.injectRecall(
