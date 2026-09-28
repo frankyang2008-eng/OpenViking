@@ -43,6 +43,8 @@ export interface OVConfig {
   recallLedger: boolean;
   scoreThreshold: number;
   minQueryLength: number;
+  recallQueryFilters: string[];
+  recallExcludeUris: string[];
   profileTokenBudget: number;
   skillCatalog: boolean;
   skillCatalogTokenBudget: number;

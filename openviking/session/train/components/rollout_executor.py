@@ -42,7 +42,7 @@ class SingleTurnLLMRolloutExecutor:
     ) -> list[Rollout]:
         vlm = self.vlm
         if vlm is None:
-            from openviking.service.task_work_index import get_task_context
+            from openviking.storage.queuefs.task_work_index import get_task_context
 
             task_context = get_task_context()
             policy_context = getattr(policy_set, "request_context", None)
