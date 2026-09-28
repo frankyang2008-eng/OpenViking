@@ -599,6 +599,99 @@ class TestAppendNonStringItems:
         assert "Existing issue" in merged
 
 
+class TestUpdateNonStringContent:
+    """UPDATE content delivered as a non-string (schema-loose backend)
+    must be coerced to text, not crash the guards' .strip() calls."""
+
+    def test_update_with_list_content_joins_lines(self):
+        old_wm = _make_wm(current_state="Old State")
+        ops = {
+            "Session Title": {"op": "KEEP"},
+            "Current State": {"op": "UPDATE", "content": ["line one", "line two"]},
+            "Task & Goals": {"op": "KEEP"},
+            "Key Facts & Decisions": {"op": "KEEP"},
+            "Files & Context": {"op": "KEEP"},
+            "Errors & Corrections": {"op": "KEEP"},
+            "Open Issues": {"op": "KEEP"},
+        }
+        merged = wm.merge_wm_sections(old_wm, ops)
+        assert "line one" in merged
+        assert "line two" in merged
+
+    def test_open_issues_update_list_does_not_crash(self):
+        # Regression: this guard's (content or "").strip() was the actual
+        # AttributeError crash point in phase2 archive_summary (2026-09-27/28).
+        old_wm = _make_wm(open_issues="- Existing issue")
+        ops = {
+            "Session Title": {"op": "KEEP"},
+            "Current State": {"op": "KEEP"},
+            "Task & Goals": {"op": "KEEP"},
+            "Key Facts & Decisions": {"op": "KEEP"},
+            "Files & Context": {"op": "KEEP"},
+            "Errors & Corrections": {"op": "KEEP"},
+            "Open Issues": {
+                "op": "UPDATE",
+                "content": ["- issue A", "- issue B"],
+            },
+        }
+        merged = wm.merge_wm_sections(old_wm, ops)
+        assert "issue A" in merged
+
+    def test_update_content_list_with_mixed_types(self):
+        old_wm = _make_wm(current_state="Old")
+        ops = {
+            "Session Title": {"op": "KEEP"},
+            "Current State": {
+                "op": "UPDATE",
+                "content": ["plain text", 42, {"k": "v"}, None],
+            },
+            "Task & Goals": {"op": "KEEP"},
+            "Key Facts & Decisions": {"op": "KEEP"},
+            "Files & Context": {"op": "KEEP"},
+            "Errors & Corrections": {"op": "KEEP"},
+            "Open Issues": {"op": "KEEP"},
+        }
+        merged = wm.merge_wm_sections(old_wm, ops)
+        assert "plain text" in merged
+
+    def test_append_content_list_oversized_does_not_crash(self):
+        # Review finding A-1: APPEND op with no items falls back to reading
+        # `content`; with an oversized old Key Facts section a list content
+        # crashed at (content or "").strip(). Needs >25 old bullets to reach
+        # the APPEND-throttle branch.
+        old_body = "\n".join(f"- old fact {i}" for i in range(26))
+        old_wm = _make_wm(key_facts_and_decisions=old_body)
+        ops = {
+            "Session Title": {"op": "KEEP"},
+            "Current State": {"op": "KEEP"},
+            "Task & Goals": {"op": "KEEP"},
+            "Key Facts & Decisions": {
+                "op": "APPEND",
+                "items": [],
+                "content": ["- brand new fact XYZ"],
+            },
+            "Files & Context": {"op": "KEEP"},
+            "Errors & Corrections": {"op": "KEEP"},
+            "Open Issues": {"op": "KEEP"},
+        }
+        merged = wm.merge_wm_sections(old_wm, ops)
+        assert "brand new fact XYZ" in merged
+
+    def test_update_content_none_is_empty(self):
+        old_wm = _make_wm(current_state="Old")
+        ops = {
+            "Session Title": {"op": "KEEP"},
+            "Current State": {"op": "UPDATE", "content": None},
+            "Task & Goals": {"op": "KEEP"},
+            "Key Facts & Decisions": {"op": "KEEP"},
+            "Files & Context": {"op": "KEEP"},
+            "Errors & Corrections": {"op": "KEEP"},
+            "Open Issues": {"op": "KEEP"},
+        }
+        merged = wm.merge_wm_sections(old_wm, ops)
+        assert isinstance(merged, str)
+
+
 # =======================================================================
 # _merge_wm_sections edge cases
 # =======================================================================

@@ -738,7 +738,10 @@ def wm_enforce_key_facts_consolidation(op: Any, old_content: str) -> Dict[str, A
             return op
         append_items = op.get("items") or []
         if not append_items:
-            raw = (op.get("content") or "").strip()
+            # content may also arrive as a non-string from a schema-loose backend;
+            # coerce before extracting fallback APPEND items (same class as the
+            # UPDATE normalization — review finding A-1).
+            raw = _wm_content_to_text(op.get("content")).strip()
             append_items = wm_extract_bullet_items(raw)
         append_items = [str(it) for it in append_items if it]
         old_lower = (old_content or "").lower()
@@ -953,6 +956,26 @@ def wm_enforce_open_issues_resolved(op: Any, old_content: str) -> Dict[str, Any]
     return {"op": "UPDATE", "content": merged}
 
 
+def _wm_content_to_text(value: Any) -> str:
+    """Coerce an UPDATE op ``content`` to plain text.
+
+    The WM schema requires ``content`` to be a string, but a schema-loose VLM
+    backend can forward the LLM's JSON array (content emitted as a list of
+    lines) or object straight through json decoding. Normalize once at the
+    merge entry point so every per-section guard and the final apply treat
+    content as text instead of crashing on ``(content or "").strip()``.
+    """
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, list):
+        return "\n".join(_wm_content_to_text(item) for item in value)
+    if isinstance(value, dict):
+        return json.dumps(value, ensure_ascii=False)
+    return str(value)
+
+
 def merge_wm_sections(old_wm: str, ops: Dict[str, Any]) -> str:
     """Merge LLM per-section ops into a new Working Memory document.
 
@@ -987,6 +1010,21 @@ def merge_wm_sections(old_wm: str, ops: Dict[str, Any]) -> str:
         f"sections={list((ops or {}).keys())[:7]}"
     )
     old_sections = parse_wm_sections(old_wm)
+
+    # Normalize UPDATE content once before any guard runs. A schema-loose
+    # backend may deliver content as a JSON array (the LLM emitting content
+    # as a list of lines); without this, the guards' ``(content or "").strip()``
+    # raises AttributeError and fails the whole post-commit extraction
+    # (observed 2026-09-27/28 in phase2 archive_summary).
+    normalized_ops: Dict[str, Any] = {}
+    for header, op in (ops or {}).items():
+        if isinstance(op, dict) and (op.get("op") or "").upper() == "UPDATE":
+            fixed = dict(op)
+            fixed["content"] = _wm_content_to_text(op.get("content"))
+            normalized_ops[header] = fixed
+        else:
+            normalized_ops[header] = op
+    ops = normalized_ops
 
     parts: List[str] = ["# Working Memory", ""]
     for header in WM_SEVEN_SECTIONS:
