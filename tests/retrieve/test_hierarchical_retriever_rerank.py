@@ -119,7 +119,13 @@ async def test_retrieve_reranks_global_candidates_once(monkeypatch, mode):
             _result("viking://resources/root", 0.95, level=0, abstract="root abstract"),
             _result("viking://resources/dir", 0.85, level=1, abstract="dir overview"),
             _result("viking://resources/file-c", 0.2, abstract="file C"),
-            _result("viking://resources/file-d", 0.05, abstract="file D"),
+            _result(
+                "viking://resources/file-d",
+                0.05,
+                abstract="file D",
+                _origin_score=0.5,
+                _time_score=0.1,
+            ),
             _result("viking://resources/outside-pool", 0.01, abstract="outside pool"),
         ]
     )
@@ -128,13 +134,24 @@ async def test_retrieve_reranks_global_candidates_once(monkeypatch, mode):
     query.target_directories = ["viking://resources"]
     scope = {"op": "must", "field": "category", "conds": ["doc"]}
 
-    result = await retriever.retrieve(query, ctx=_ctx(), limit=2, mode=mode, scope_dsl=scope)
+    result = await retriever.retrieve(
+        query,
+        ctx=_ctx(),
+        limit=2,
+        mode=mode,
+        scope_dsl=scope,
+        score_threshold=0.9,
+        events_time_decay_protection="0",
+    )
 
     assert [ctx.uri for ctx in result.matched_contexts] == [
         "viking://resources/file-d",
         "viking://resources/file-c",
     ]
     assert [ctx.score for ctx in result.matched_contexts] == [0.99, 0.95]
+    # Thresholding and final ranking use model scores, without repeating recall decay.
+    assert result.matched_contexts[0].origin_score == 0.5
+    assert result.matched_contexts[0].time_score == 0.1
     assert fake_client.calls == [("hello", ["root abstract", "dir overview", "file C", "file D"])]
     assert len(storage.search_calls) == 1
     assert storage.search_calls[0]["limit"] == 4
@@ -242,20 +259,30 @@ async def test_retrieve_falls_back_to_vector_scores_when_rerank_fails(monkeypatc
     )
     storage = DummyStorage(
         [
-            _result("viking://resources/a/deep-a.md", 0.2, abstract="deep A"),
+            _result(
+                "viking://resources/a/deep-a.md",
+                0.2,
+                abstract="deep A",
+                _origin_score=0.8,
+                _time_score=0.25,
+            ),
             _result("viking://resources/b/deep-b.md", 0.8, abstract="deep B"),
             _result("viking://resources/b/deep-c.md", 0.05, abstract="deep C"),
         ]
     )
     retriever = HierarchicalRetriever(storage, DummyEmbedder(), rerank_config=_config())
 
-    result = await retriever.retrieve(_query(), ctx=_ctx(), limit=2)
+    result = await retriever.retrieve(
+        _query(), ctx=_ctx(), limit=2, events_time_decay_protection="0"
+    )
 
     assert [ctx.uri for ctx in result.matched_contexts] == [
         "viking://resources/b/deep-b.md",
         "viking://resources/a/deep-a.md",
     ]
     assert [ctx.score for ctx in result.matched_contexts] == [0.8, 0.2]
+    assert result.matched_contexts[1].origin_score == 0.8
+    assert result.matched_contexts[1].time_score == 0.25
     assert len(storage.search_calls) == 1
     assert storage.search_calls[0]["limit"] == 4
     assert fake_client.calls == [("hello", ["deep B", "deep A", "deep C"])]
@@ -372,7 +399,13 @@ async def test_retrieve_without_rerank_filters_by_vector_score():
     storage = DummyStorage(
         [
             _result("viking://resources/high", 0.91, abstract="high"),
-            _result("viking://resources/exact", 0.9, abstract="exact"),
+            _result(
+                "viking://resources/exact",
+                0.9,
+                abstract="exact",
+                _origin_score=1.0,
+                _time_score=0.9,
+            ),
         ]
     )
     retriever = HierarchicalRetriever(
@@ -386,6 +419,7 @@ async def test_retrieve_without_rerank_filters_by_vector_score():
         ctx=_ctx(),
         limit=2,
         score_threshold=0.9,
+        events_time_decay_protection="0",
     )
     inclusive_result = await retriever.retrieve(
         _query(),
@@ -393,6 +427,7 @@ async def test_retrieve_without_rerank_filters_by_vector_score():
         limit=2,
         score_threshold=0.9,
         score_gte=True,
+        events_time_decay_protection="0",
     )
 
     assert [ctx.uri for ctx in strict_result.matched_contexts] == ["viking://resources/high"]

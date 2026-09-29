@@ -30,6 +30,35 @@ use std::{
     io::{self, IsTerminal},
 };
 
+const MAX_TIME_DECAY_DURATION_DAYS: u128 = 3000 * 365;
+
+fn parse_event_time_decay_protection(value: &str) -> std::result::Result<String, String> {
+    if value == "0" {
+        return Ok(value.to_string());
+    }
+    let Some((amount, unit)) = value.split_at_checked(value.len().saturating_sub(1)) else {
+        return Err("must be '0' or a non-negative integer followed by m, h, or d".to_string());
+    };
+    if amount.is_empty() || !amount.bytes().all(|byte| byte.is_ascii_digit()) {
+        return Err("must be '0' or a non-negative integer followed by m, h, or d".to_string());
+    }
+    let amount = amount
+        .parse::<u128>()
+        .map_err(|_| "exceeds the maximum duration of 1095000d".to_string())?;
+    let duration_minutes = match unit {
+        "m" => amount,
+        "h" => amount.saturating_mul(60),
+        "d" => amount.saturating_mul(24 * 60),
+        _ => {
+            return Err("must be '0' or a non-negative integer followed by m, h, or d".to_string());
+        }
+    };
+    if duration_minutes > MAX_TIME_DECAY_DURATION_DAYS * 24 * 60 {
+        return Err("exceeds the maximum duration of 1095000d".to_string());
+    }
+    Ok(value.to_string())
+}
+
 /// CLI context shared across commands
 #[derive(Debug, Clone)]
 pub struct CliContext {
@@ -922,6 +951,14 @@ enum Commands {
         /// Include the full visible content for every matched URI
         #[arg(long, help_heading = "Advanced options")]
         read_content: bool,
+        /// Enable event decay with protection duration: 0 (immediate) or Xm/Xh/Xd
+        #[arg(
+            long,
+            alias = "events_time_decay_protection",
+            value_parser = parse_event_time_decay_protection,
+            help_heading = "Advanced options"
+        )]
+        events_time_decay_protection: Option<String>,
     },
     /// [Experimental][Data] Run context-aware retrieval
     Search {
@@ -994,6 +1031,14 @@ enum Commands {
         /// Include the full visible content for every matched URI
         #[arg(long, help_heading = "Advanced options")]
         read_content: bool,
+        /// Enable event decay with protection duration: 0 (immediate) or Xm/Xh/Xd
+        #[arg(
+            long,
+            alias = "events_time_decay_protection",
+            value_parser = parse_event_time_decay_protection,
+            help_heading = "Advanced options"
+        )]
+        events_time_decay_protection: Option<String>,
     },
     /// [Data] Run content pattern search
     Grep {
@@ -3852,6 +3897,7 @@ async fn main() {
             context_type,
             tags,
             read_content,
+            events_time_decay_protection,
         } => {
             handlers::handle_find(
                 query,
@@ -3865,6 +3911,7 @@ async fn main() {
                 context_type,
                 tags,
                 read_content,
+                events_time_decay_protection,
                 ctx,
             )
             .await
@@ -3882,6 +3929,7 @@ async fn main() {
             context_type,
             tags,
             read_content,
+            events_time_decay_protection,
         } => {
             handlers::handle_search(
                 query,
@@ -3896,6 +3944,7 @@ async fn main() {
                 context_type,
                 tags,
                 read_content,
+                events_time_decay_protection,
                 ctx,
             )
             .await

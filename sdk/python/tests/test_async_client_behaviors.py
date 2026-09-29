@@ -902,11 +902,14 @@ async def test_search_forwards_level_zero_and_omits_unset_time_filters():
     client._handle_response_data = lambda _response: {"result": {}}
 
     # level=0 is a valid level and must survive compaction (is-None check, not falsy).
-    await client.search("hello", session_id="s1", options={"level": 0})
+    await client.search(
+        "hello", session_id="s1", options={"level": 0, "events_time_decay_protection": "0"}
+    )
 
     payload = client._request.await_args.kwargs["json"]
     assert payload["level"] == 0
     assert payload["session_id"] == "s1"
+    assert payload["events_time_decay_protection"] == "0"
     for key in ("since", "until", "time_field"):
         assert key not in payload
 
