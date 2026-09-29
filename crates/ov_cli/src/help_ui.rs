@@ -575,8 +575,8 @@ const COMMAND_HELP_SPECS: &[CommandHelpSpec] = &[
         purpose: "Manage workspace snapshots: commit, restore, show, diff, and walk history.",
         examples: &[
             HelpItem {
-                label: "ov snapshot commit -m \"checkpoint before refactor\"",
-                description: "Commit the current workspace state.",
+                label: "ov snapshot commit -m \"checkpoint before refactor\" --paths viking://resources/my_project",
+                description: "Commit a project directory for which you have write access.",
             },
             HelpItem {
                 label: "ov snapshot log --branch main",
@@ -601,11 +601,11 @@ const COMMAND_HELP_SPECS: &[CommandHelpSpec] = &[
         purpose: "Commit the current workspace state as a new snapshot.",
         examples: &[
             HelpItem {
-                label: "ov snapshot commit -m \"checkpoint before refactor\"",
-                description: "Commit the full workspace on the main branch.",
+                label: "ov snapshot commit -m \"checkpoint before refactor\" --paths viking://resources/my_project",
+                description: "Commit a writable project directory on the main branch. Omit --paths only in local ROOT mode.",
             },
             HelpItem {
-                label: "ov snapshot commit -m \"docs only\" --paths viking://docs",
+                label: "ov snapshot commit -m \"docs only\" --paths viking://resources/docs",
                 description: "Commit only the given viking:// URIs. Directories are expanded recursively (with snapshot pruning rules applied).",
             },
         ],
@@ -724,7 +724,7 @@ const COMMAND_HELP_SPECS: &[CommandHelpSpec] = &[
             },
         ],
         next_steps: &[HelpItem {
-            label: "ov snapshot commit -m \"with ignore\"",
+            label: "ov snapshot commit -m \"with ignore\" --paths viking://resources/my_project",
             description: "Commit; matching files are excluded (see the `ignored` count).",
         }],
     },
