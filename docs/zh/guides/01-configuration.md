@@ -812,6 +812,8 @@ LiteLLM 的 Bedrock bearer-token API-key 鉴权，请设置 `forward_api_key=tru
 }
 ```
 
+`vlm.extra_request_body` 也适用于音视频的方舟 Responses 请求，例如 `{"service_tier": "flex", "thinking": {"type": "disabled"}}`。请使用所选模型和 Responses API 支持的字段。显式配置的额外字段通过 SDK 覆盖自动生成的请求字段，包括 `store`；响应存储默认设为 `false`，仅在显式配置时覆盖。这些字段不会传给文件上传、状态查询或删除请求。
+
 VLM 的 `model` 填写对应的方舟模型 endpoint ID。`video_fps` 仅用于视频，控制发送给方舟的视频采样帧率。
 
 推荐使用 `doubao-seed-2-0-lite-260428` 或 `doubao-seed-2-0-mini-260428` 作为音视频理解模型。它们是可直接采用的推荐示例，并非完整的支持模型列表；方舟会持续更新模型及其输入能力。视频理解的可选模型请参考方舟官方[视频输入能力列表](https://console.volcengine.com/ark/region:cn-beijing/docs/82379/1330310?lang=zh#ff5ef604)，音频理解的可选模型请参考方舟官方[音频输入能力列表](https://console.volcengine.com/ark/region:cn-beijing/docs/82379/1330310?lang=zh#9619c0ba)。如果 `model` 填写的是 `ep-*` 推理接入点 ID，请确认该接入点背后的基础模型支持对应的媒体输入。OpenViking 不会在配置加载时校验模型的音频或视频能力。
@@ -825,7 +827,7 @@ VLM 的 `model` 填写对应的方舟模型 endpoint ID。`video_fps` 仅用于�
 
 不在“可理解”列中的格式继续沿用现有 Parser 和存储行为；OpenViking 不会对这些文件转码，也不会把它们发送给理解模型。当文件被识别为音频或视频叶子节点时，空媒体摘要会使用文件名入库。
 
-对于支持的文件，OpenViking 将媒体上传到方舟 Files API，且不显式指定 `expire_at`，因此文件保留时间遵循方舟的默认策略。文件处理完成后，OpenViking 通过禁用响应存储的 Responses API 请求引用其 `file_id`，最后在较短的清理超时内尝试删除方舟文件。远端删除属于 best-effort；如果删除失败或超时，不会覆盖已经成功的理解结果，文件将继续遵循方舟的默认保留策略。本地临时文件独立清理，即使远端清理失败或请求被取消也会删除。
+对于支持的文件，OpenViking 将媒体上传到方舟 Files API，且不显式指定 `expire_at`，因此文件保留时间遵循方舟的默认策略。文件处理完成后，OpenViking 通过默认禁用响应存储的 Responses API 请求引用其 `file_id`，最后在较短的清理超时内尝试删除方舟文件。远端删除属于 best-effort；如果删除失败或超时，不会覆盖已经成功的理解结果，文件将继续遵循方舟的默认保留策略。本地临时文件独立清理，即使远端清理失败或请求被取消也会删除。
 
 - 目录中只有一个音频或视频文件且理解成功时，该摘要直接成为目录 L1，并通过现有语义链路派生 L0，不再调用通用 VLM 做第二次总结。
 - 媒体位于混合目录时，其摘要仍参与现有通用 VLM 聚合。
