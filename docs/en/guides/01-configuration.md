@@ -356,7 +356,7 @@ With `input: "multimodal"`, OpenViking can embed text, images (PNG, JPG, etc.), 
 - `voyage`: Voyage AI Embedding API
 - `minimax`: MiniMax Embedding API
 - `cohere`: Cohere Embedding API
-- `gemini`: Google Gemini Embedding API (text-only; requires `google-genai>=1.0.0`)
+- `gemini`: Google Gemini Embedding API (text-only; requires `google-genai>=1.39.0`)
 - `dashscope`: DashScope (Alibaba Tongyi) Embedding API
 - `litellm`: LiteLLM Embedding API
 - `local`: Local GGUF embedding models
@@ -531,7 +531,9 @@ OpenViking also expects dense float vectors throughout storage and retrieval, so
 
 **gemini provider example:**
 
-> **Note:** Requires `google-genai>=1.0.0` in the server environment — uv install: `uv tool install openviking --upgrade --with "google-genai>=1.0.0"`; pip install: `pip install "google-genai>=1.0.0"`. For async batching use the extra instead: `uv tool install "openviking[gemini-async]" --upgrade` or `pip install "openviking[gemini-async]"`.
+Version 1.39.0 is the minimum SDK version with the client context managers and close methods used to keep asynchronous embedding requests on their owning event loop. Upgrade older SDK pins before enabling this provider.
+
+> **Note:** Requires `google-genai>=1.39.0` in the server environment — uv install: `uv tool install openviking --upgrade --with "google-genai>=1.39.0"`; pip install: `pip install "google-genai>=1.39.0"`. For async batching use the extra instead: `uv tool install "openviking[gemini-async]" --upgrade` or `pip install "openviking[gemini-async]"`.
 
 ```json
 {

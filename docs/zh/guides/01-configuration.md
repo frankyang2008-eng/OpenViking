@@ -355,7 +355,7 @@ OpenAI 已于 2026 年 8 月 31 日[停止在 ChatGPT 登录的 Codex 中提供 
 - `voyage`: Voyage AI Embedding API
 - `minimax`: MiniMax Embedding API
 - `cohere`: Cohere Embedding API
-- `gemini`: Google Gemini Embedding API（仅文本；需安装 `google-genai>=1.0.0`）
+- `gemini`: Google Gemini Embedding API（仅文本；需安装 `google-genai>=1.39.0`）
 - `dashscope`: DashScope（阿里通义）Embedding API
 - `litellm`: LiteLLM Embedding API
 - `local`: 本地 GGUF embedding 模型
@@ -498,7 +498,9 @@ OpenAI 已于 2026 年 8 月 31 日[停止在 ChatGPT 登录的 Codex 中提供 
 
 **gemini provider 配置示例:**
 
-> **注意：** 需要在服务端环境安装 `google-genai>=1.0.0`——uv 安装：`uv tool install openviking --upgrade --with "google-genai>=1.0.0"`；pip 安装：`pip install "google-genai>=1.0.0"`。异步批量嵌入改用 extra：`uv tool install "openviking[gemini-async]" --upgrade` 或 `pip install "openviking[gemini-async]"`。
+SDK 1.39.0 起提供所需的客户端上下文管理器和关闭方法，用于在所属事件循环内完成异步嵌入请求及清理。启用此 provider 前，请升级固定在旧版本的 SDK。
+
+> **注意：** 需要在服务端环境安装 `google-genai>=1.39.0`——uv 安装：`uv tool install openviking --upgrade --with "google-genai>=1.39.0"`；pip 安装：`pip install "google-genai>=1.39.0"`。异步批量嵌入改用 extra：`uv tool install "openviking[gemini-async]" --upgrade` 或 `pip install "openviking[gemini-async]"`。
 
 ```json
 {
