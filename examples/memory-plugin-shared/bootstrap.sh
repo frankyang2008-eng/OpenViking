@@ -15,7 +15,7 @@
 #     it prints the same list and proceeds.
 #
 # Install without prompts:
-#   curl -fsSL https://openviking.net/install | bash -s -- --yes --url <server-url> --api-key <key>
+#   curl -fsSL https://openviking.ai/install | bash -s -- --yes --url <server-url> --api-key <key>
 # The server URL and API key come from the user; leave both out for a local
 # server at http://127.0.0.1:1933. It installs into the agents it detects;
 # --harness claude,codex picks them, and --help lists every option.
@@ -29,7 +29,7 @@
 #   this file in the repository:  examples/memory-plugin-shared/bootstrap.sh
 #   the installer:                examples/memory-plugin-shared/install.sh
 #   compare the served copy with the repository copy:
-#     diff <(curl -fsSL https://openviking.net/install) \
+#     diff <(curl -fsSL https://openviking.ai/install) \
 #          <(curl -fsSL https://raw.githubusercontent.com/volcengine/OpenViking/main/examples/memory-plugin-shared/bootstrap.sh)
 #   star count today:  gh api repos/volcengine/OpenViking --jq .stargazers_count
 #   documentation:     https://docs.openviking.net or https://docs.openviking.ai

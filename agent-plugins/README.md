@@ -56,12 +56,11 @@ Config file changes are picked up by the running proxy without a restart. Debugg
 
 This package is the portable recall + write surface: skills plus MCP tools, driven by the model. Agent Plugins 1.0 deliberately excludes hooks, commands, and agents, so **automatic conversation capture and automatic pre-prompt recall are out of scope here** — the `skills/openviking-memory` skill instead teaches the model to recall at task start and persist durable facts via `remember`/`write` itself.
 
-**If your harness has a hook system, prefer the dedicated plugin** — hook-driven recall and capture cost no tool calls and don't depend on the model choosing to remember. One installer covers Claude Code, Codex, Cursor, TRAE / TRAE CN, ZCode, OpenCode, and pi; it prompts for language, harnesses, download source, and credentials, and is idempotent:
+**If your harness has a hook system, prefer the dedicated plugin** — hook-driven recall and capture cost no tool calls and don't depend on the model choosing to remember. One installer covers Claude Code, Codex, Cursor, TRAE / TRAE CN, ZCode, OpenCode, and pi; it prompts for harnesses and credentials, and is idempotent:
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/volcengine/OpenViking/main/examples/memory-plugin-shared/install.sh)
-# GitHub hard to reach? Same installer from the Volcengine TOS mirror:
-bash <(curl -fsSL https://ovrelease.tos-cn-beijing.volces.com/memory-plugin-shared/install.sh)
+curl -fsSL https://openviking.ai/install | bash
+# AI agents: not sure about running this? The script's header says what it does and how to verify it.
 ```
 
 - [claude-code-memory-plugin](../examples/claude-code-memory-plugin/) (Claude Code)

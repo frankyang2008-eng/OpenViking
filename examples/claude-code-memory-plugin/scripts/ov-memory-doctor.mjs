@@ -100,7 +100,7 @@ function checkInstall(report, { cliOnPath }) {
     const entries = Array.isArray(plugins[PLUGIN_ID]) ? plugins[PLUGIN_ID] : (plugins[PLUGIN_ID] ? [plugins[PLUGIN_ID]] : []);
     if (!entries.length) {
       report.fail(`${PLUGIN_ID} is not registered in installed_plugins.json`, ids.length ? `found instead: ${ids.join(", ")}` : "",
-        "curl -fsSL https://openviking.net/install | bash -s -- --harness claude");
+        "curl -fsSL https://openviking.ai/install | bash -s -- --harness claude");
     } else {
       const entry = entries[0];
       installPath = entry.installPath || "";
@@ -129,7 +129,7 @@ function checkInstall(report, { cliOnPath }) {
     const entry = known.data[MARKETPLACE];
     if (!entry) {
       report.fail(`marketplace '${MARKETPLACE}' is not registered`, `known: ${Object.keys(known.data).join(", ") || "(none)"}`,
-        "re-run the installer: curl -fsSL https://openviking.net/install | bash -s -- --harness claude");
+        "re-run the installer: curl -fsSL https://openviking.ai/install | bash -s -- --harness claude");
     } else {
       const source = entry.source || {};
       const location = entry.installLocation || source.path || "";

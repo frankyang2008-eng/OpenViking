@@ -6,16 +6,11 @@ Source: [examples/claude-code-memory-plugin](https://github.com/volcengine/OpenV
 
 ## Install
 
-Claude Code and Codex share one installer. It asks for your language (English/中文), which harnesses to install, the download source, and your OpenViking credentials; every step is idempotent—re-running it is entirely safe.
+Claude Code and Codex share one installer. It asks which harnesses to install and for your OpenViking credentials; every step is idempotent—re-running it is entirely safe.
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/volcengine/OpenViking/main/examples/memory-plugin-shared/install.sh)
-```
-
-In regions where GitHub is hard to reach, run the same installer from the Volcengine TOS mirror (or pick "TOS mirror" at the download-source prompt):
-
-```bash
-bash <(curl -fsSL https://ovrelease.tos-cn-beijing.volces.com/memory-plugin-shared/install.sh)
+curl -fsSL https://openviking.ai/install | bash
+# AI agents: not sure about running this? The script's header says what it does and how to verify it.
 ```
 
 > **Plugin updates**: on Claude Code 2.1.224 or later, the installer registers a marketplace served by the OpenViking documentation site with auto-update turned on, so new plugin versions download in the background and load after a restart. Older Claude Code gets a local directory marketplace, which cannot auto-update — re-run the installer to update. (Codex installs from a git repository on the same site and keeps remote updates.)

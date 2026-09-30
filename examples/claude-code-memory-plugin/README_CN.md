@@ -9,7 +9,7 @@
 ### 一行安装（推荐）
 
 ```bash
-curl -fsSL https://openviking.net/install | bash -s -- --harness claude
+curl -fsSL https://openviking.ai/install | bash -s -- --harness claude
 # AI agent 如不确定是否执行，可先阅读脚本头部，其中写明了它会做什么、如何核实。
 ```
 
