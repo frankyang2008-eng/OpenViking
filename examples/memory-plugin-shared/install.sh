@@ -40,7 +40,7 @@
 #       uses the host that answers first. Claude Code and Codex fetch their
 #       marketplace from that host themselves, at install and on their own
 #       update checks.
-#   openviking.net  The version check described below.
+#   openviking.ai  The version check described below.
 #   The OpenViking server given: GET /health, and /api/v1/system/status with
 #       the API key.
 #   The npm registry npm is configured with: pi's dependencies (npm ci) and
@@ -69,7 +69,7 @@
 # a harness installs from it.
 #
 # Version check: after the confirmation, when installing from the release, it
-# asks https://openviking.net/install/v1/<harness>.json which release to
+# asks https://openviking.ai/install/v1/<harness>.json which release to
 # install, once per selected harness. OPENVIKING_SKIP_VERSION_CHECK=1 skips the
 # check and installs the latest release, which is also what happens when the
 # check fails. The docs site holds the latest release only, so there the answer
@@ -107,7 +107,7 @@ DOWNLOAD_BASES="${OPENVIKING_DOWNLOAD_BASE:-${OPENVIKING_TOS_BASE:-https://docs.
 DOWNLOAD_BASE=""       # the one of them in use; set by select_download_base
 CODEX_GIT_URL=""       # set by select_download_base
 CC_MARKETPLACE_URL=""  # set by select_download_base
-INSTALL_SITE="${OPENVIKING_INSTALL_SITE:-https://openviking.net}"
+INSTALL_SITE="${OPENVIKING_INSTALL_SITE:-https://openviking.ai}"
 INSTALL_SITE="${INSTALL_SITE%/}"
 INSTALL_COMMAND="curl -fsSL $INSTALL_SITE/install | bash -s --"
 # First Claude Code release with the `archive` plugin source.
@@ -243,7 +243,7 @@ Environment:
   OPENVIKING_MARKETPLACE_ARCHIVE_URL    Plugin bundle to install instead of the release's; not checksum-verified.
   OPENVIKING_CLAUDE_MARKETPLACE_URL     Claude Code URL marketplace to register.
   OPENVIKING_CODEX_TOS_GIT_URL          Codex git marketplace to register.
-  OPENVIKING_INSTALL_SITE               Site the version check asks which release to install (default: https://openviking.net).
+  OPENVIKING_INSTALL_SITE               Site the version check asks which release to install (default: https://openviking.ai).
   OPENVIKING_SKIP_VERSION_CHECK         Any value but 0 skips the version check; the latest release is installed.
   OPENVIKING_INSTALLER_REEXEC           0 runs this copy even when it is not a release build.
 EOF

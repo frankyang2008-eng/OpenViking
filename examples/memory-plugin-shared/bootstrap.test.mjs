@@ -78,7 +78,7 @@ test("passes the user's arguments through unchanged after --dist tos", async () 
     assert.deepEqual(argsOf(result.stdout), [
       "--dist", "tos", "--yes", "--url", "http://127.0.0.1:1933", "--api-key", "key with spaces", "",
     ]);
-    assert.match(result.stdout, /^site=https:\/\/openviking\.net$/m);
+    assert.match(result.stdout, /^site=$/m, "the installer picks the version-check site");
     assert.match(result.stdout, /^reexec=0$/m);
     assert.match(result.stdout, /^stdin=device$/m, "without a terminal the installer reads /dev/null");
     assert.deepEqual(readdirSync(fixture.tmp), [], "the downloaded installer is removed");

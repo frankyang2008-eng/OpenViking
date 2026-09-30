@@ -48,10 +48,9 @@
 #   3. Runs it with bash as `install.sh --dist tos [--harness <harness>] <your arguments>`,
 #      reading input from the terminal, then deletes the temp directory and
 #      exits with the installer's status.
-# The installer's own header lists the files it writes and the hosts it
-# contacts. It asks https://openviking.net/install/v1/<harness>.json which
-# release to install, also when this script came from openviking.ai;
-# OPENVIKING_SKIP_VERSION_CHECK=1 skips the check and installs the latest release.
+# The installer's own header lists the files it writes, the hosts it contacts
+# and the version check it makes; OPENVIKING_SKIP_VERSION_CHECK=1 skips that
+# check and installs the latest release.
 #
 # bootstrap-version: 1
 
@@ -109,7 +108,6 @@ main() {
   fetch_installer || return 1
 
   export OPENVIKING_DOWNLOAD_BASE="$base"
-  export OPENVIKING_INSTALL_SITE="${OPENVIKING_INSTALL_SITE:-https://openviking.net}"
   export OPENVIKING_INSTALLER_REEXEC=0
   if [ -n "$harness" ]; then
     set -- --harness "$harness" "$@"
