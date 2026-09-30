@@ -195,6 +195,21 @@ printf '%s|%s\\n' "$WIZ_URL" "$WIZ_KEY"
   );
 });
 
+test("choosing the cloud service says where to get an API key", () => {
+  const result = runInstallerPrelude(`
+tui_menu() { TUI_MENU_CHOICE=1; }
+INTERACTIVE=1
+exec 3< <(printf 'cloud-key\\n')
+prompt_connection "" ""
+printf '%s|%s\\n' "$WIZ_URL" "$WIZ_KEY"
+`);
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /User Management → API Key/);
+  assert.match(result.stdout, /https:\/\/console\.volcengine\.com\/vikingdb\/openviking\//);
+  assert.equal(result.stdout.trim().split("\n").pop(), "https://api.vikingdb.cn-beijing.volces.com/openviking|cloud-key");
+});
+
 test("the credentials step writes ovcli.conf when the stored key is kept", (t) => {
   const home = makeTempHome(t);
   const conf = join(home, "ovcli.conf");
@@ -321,7 +336,7 @@ printf '%s|%s\\n' "$WIZ_URL" "$WIZ_KEY"
   assert.equal(result.stdout.trim().split("\n").pop(), "http://127.0.0.1:1933|");
 });
 
-test("the language follows --lang, OPENVIKING_LANG, the locale, then the macOS setting", (t) => {
+test("without a terminal, the language follows --lang, OPENVIKING_LANG, the locale, then the macOS setting", (t) => {
   const fake = makeTempHome(t);
   writeFileSync(join(fake, "uname"), '#!/bin/sh\nprintf \'%s\\n\' "$FAKE_UNAME"\n', { mode: 0o755 });
   writeFileSync(join(fake, "defaults"), [
@@ -332,6 +347,7 @@ test("the language follows --lang, OPENVIKING_LANG, the locale, then the macOS s
   ].join("\n"), { mode: 0o755 });
   const detect = (env, langArg = "") => {
     const result = runInstallerPrelude(`
+INTERACTIVE=0
 LANG_ARG=${JSON.stringify(langArg)}
 select_language
 printf '%s\\n' "$UI_LANG"
@@ -494,6 +510,24 @@ ${mainMarker}`));
   assert.doesNotMatch(`${result.stdout}${result.stderr}`, /secret-api-key/);
   assert.deepEqual(readdirSync(home), ["bin"]);
   assert.equal(existsSync(dshLog), false);
+});
+
+test("an interactive run without --lang asks for the language first", (t) => {
+  const { run } = detachedInstaller(t, (source) => source.replace(mainMarker, `INTERACTIVE=1
+unset OPENVIKING_LANG
+exec 3</dev/null
+tui_menu() {
+  printf 'menu: %s\\n' "$1"
+  TUI_MENU_CHOICE="$2"
+  case "$1" in Language*) TUI_MENU_CHOICE=1 ;; 开始安装*) TUI_MENU_CHOICE=1 ;; esac
+}
+${mainMarker}`));
+
+  const result = run(["--harness", "cursor", "--url", "http://127.0.0.1:9", "--api-key", ""]);
+
+  assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+  assert.match(result.stdout, /^menu: Language \/ 语言\n/);
+  assert.match(result.stdout, /已取消，未做任何修改。/);
 });
 
 test("the statusline is asked about before the review, which lists it only when chosen", (t) => {

@@ -234,14 +234,23 @@ exit 0
 
 // It records its calls and keeps the one marketplace registration the
 // installer reads back; FAKE_CODEX_GIT_FAILS makes adding a git marketplace fail.
+// A \`legacy\` file stands for a pre-unification marketplace whose directory is
+// gone, which makes Codex fail every \`marketplace list\`.
 function writeFakeCodex(bin, dir) {
   writeExecutable(join(bin, "codex"), `#!/bin/sh
 echo "$*" >> "${dir}/calls.log"
 case "$*" in
-  "plugin marketplace list --json") cat "${dir}/marketplaces.json" 2>/dev/null || echo '{"marketplaces":[]}' ;;
+  "plugin marketplace list --json")
+    [ ! -f "${dir}/legacy" ] || { echo "Error: failed to load marketplace(s)" >&2; exit 1; }
+    cat "${dir}/marketplaces.json" 2>/dev/null || echo '{"marketplaces":[]}' ;;
+  "plugin marketplace remove openviking-plugins-local") rm -f "${dir}/legacy" ;;
   "plugin marketplace remove "*) rm -f "${dir}/marketplaces.json" ;;
   "plugin marketplace add "*)
     case "$4" in *.git) [ -z "$FAKE_CODEX_GIT_FAILS" ] || { echo "fatal: git marketplace unreachable" >&2; exit 1; } ;; esac
+    if [ -f "${dir}/marketplaces.json" ] && ! grep -qF "\"$4\"" "${dir}/marketplaces.json"; then
+      echo "Error: marketplace 'openviking' is already added from a different source; remove it before adding this source" >&2
+      exit 1
+    fi
     printf '{"marketplaces":[{"name":"openviking","marketplaceSource":{"source":"%s"}}]}' "$4" > "${dir}/marketplaces.json" ;;
   "plugin list") echo "openviking-memory@openviking" ;;
 esac
@@ -284,6 +293,34 @@ test("Codex moves to the git marketplace, falls back to the bundle, and says how
   assert.match(fallback.stdout, /Git marketplace unavailable; falling back to the archive directory/);
   assert.ok(fallback.calls.includes(`plugin marketplace add ${join(home, ".openviking", "memory-plugin-marketplace")}`), fallback.calls.join("\n"));
   assert.match(fallback.stdout, /Codex\n {4}Next: .*\n {4}Updates: re-run this installer\n/);
+});
+
+test("Codex drops the pre-unification marketplace and replaces a registration it hid", () => {
+  const home = mkdtempSync(join(work, "home-"));
+  const bin = join(home, "bin");
+  const fake = join(home, "fake-codex");
+  mkdirSync(bin);
+  mkdirSync(fake);
+  writeFakeCodex(bin, fake);
+  mkdirSync(join(home, ".codex"));
+  writeFileSync(join(home, ".codex", "config.toml"), '[marketplaces.openviking-plugins-local]\nsource_type = "local"\nsource = "/gone"\n');
+  writeFileSync(join(fake, "legacy"), "");
+  writeFileSync(join(fake, "marketplaces.json"), JSON.stringify({
+    marketplaces: [{ name: "openviking", marketplaceSource: { source: "https://github.com/volcengine/OpenViking.git" } }],
+  }));
+
+  const result = run(home, bin, [
+    "--harness", "codex", "--lang", "en", "--url", "http://127.0.0.1:9", "--api-key", "", "--yes",
+  ]);
+
+  assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+  assert.match(result.stdout, /Removes the old marketplace openviking-plugins-local/);
+  const calls = readFileSync(join(fake, "calls.log"), "utf8").split("\n");
+  assert.ok(calls.includes("plugin remove openviking-memory@openviking-plugins-local"), calls.join("\n"));
+  assert.ok(calls.includes("plugin marketplace remove openviking-plugins-local"), calls.join("\n"));
+  assert.ok(calls.includes("plugin marketplace remove openviking"), calls.join("\n"));
+  assert.equal(calls.filter((line) => line === `plugin marketplace add file://${tosBase}/plugins/memory-plugins.git`).length, 1);
+  assert.doesNotMatch(result.stdout, /falling back/);
 });
 
 test("of several download locations, the first to answer serves the whole install", () => {
@@ -530,6 +567,7 @@ exit 0
   assert.match(downloads()[0], /releases\/v9\.9\.9\/memory-plugin-marketplace\.zip/);
   assert.ok(readFileSync(traeLog, "utf8").split("\n").includes(`plugin marketplace add ${pinnedGit}`));
   assert.match(result.stdout, /Release: 9\.9\.9/);
+  assert.doesNotMatch(result.stdout, /Removes the deprecated TRAE CLI Hooks integration/);
   assert.ok(existsSync(join(home, ".openviking", "agent-integrations", "cursor", "scripts", "hook.mjs")));
 });
 
