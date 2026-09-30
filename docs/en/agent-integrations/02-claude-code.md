@@ -18,7 +18,7 @@ In regions where GitHub is hard to reach, run the same installer from the Volcen
 bash <(curl -fsSL https://ovrelease.tos-cn-beijing.volces.com/memory-plugin-shared/install.sh)
 ```
 
-> **TOS and Claude Code updates**: on Claude Code 2.1.224 or later, the TOS channel registers a TOS-hosted marketplace with auto-update turned on, so new plugin versions download in the background and load after a restart. Older Claude Code gets a local directory marketplace, which cannot auto-update — re-run the installer to update. (Codex on TOS installs from a TOS-hosted git repo and keeps remote updates.)
+> **Plugin updates**: on Claude Code 2.1.224 or later, the installer registers a marketplace served by the OpenViking documentation site with auto-update turned on, so new plugin versions download in the background and load after a restart. Older Claude Code gets a local directory marketplace, which cannot auto-update — re-run the installer to update. (Codex installs from a git repository on the same site and keeps remote updates.)
 
 No shell wrapper is needed anymore: the plugin ships a stdio MCP proxy that reads `~/.openviking/ovcli.conf` (or `OPENVIKING_*` env vars) at runtime, same as the hooks.
 

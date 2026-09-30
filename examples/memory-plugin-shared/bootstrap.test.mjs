@@ -16,12 +16,13 @@ const FAKE_INSTALLER = `#!/usr/bin/env bash
 # OpenViking Memory Plugin shared installer (test double).
 for arg in "$@"; do printf 'arg=[%s]\\n' "$arg"; done
 echo "site=$OPENVIKING_INSTALL_SITE"
+echo "base=$OPENVIKING_DOWNLOAD_BASE"
 echo "reexec=$OPENVIKING_INSTALLER_REEXEC"
 if [ -c /dev/stdin ]; then echo "stdin=device"; else echo "stdin=other"; fi
 exit "\${FAKE_EXIT:-0}"
 `;
 
-async function withFixture(body, fn) {
+async function serve(body) {
   const server = createServer((req, res) => {
     if (req.url !== "/memory-plugin-shared/install.sh") {
       res.writeHead(404).end();
@@ -30,6 +31,11 @@ async function withFixture(body, fn) {
     res.writeHead(200, { "content-type": "text/plain" }).end(body);
   });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  return server;
+}
+
+async function withFixture(body, fn) {
+  const server = await serve(body);
   const root = mkdtempSync(join(tmpdir(), "openviking-bootstrap-"));
   const tmp = join(root, "tmp");
   mkdirSync(tmp);
@@ -45,7 +51,7 @@ async function withFixture(body, fn) {
 // and /dev/tty cannot be opened, whatever terminal the test runner has.
 function run(args, { base, tmp, env = {}, stdin = "" }) {
   const { OPENVIKING_INSTALL_SITE, OPENVIKING_INSTALLER_REEXEC, ...inherited } = process.env;
-  const childEnv = { ...inherited, OPENVIKING_TOS_BASE: base, TMPDIR: tmp, ...env };
+  const childEnv = { ...inherited, OPENVIKING_DOWNLOAD_BASE: base, TMPDIR: tmp, ...env };
   return new Promise((resolve, reject) => {
     const child = spawn("bash", args, { env: childEnv, detached: true });
     let stdout = "";
@@ -105,7 +111,7 @@ test("refuses to run an HTML page served in place of the installer", async () =>
     const result = await run([bootstrap, "--yes"], fixture);
     assert.equal(result.status, 1);
     assert.equal(result.stdout, "");
-    assert.match(result.stderr, /did not return the installer script/);
+    assert.match(result.stderr, /install\.sh is not the OpenViking installer/);
     assert.deepEqual(readdirSync(fixture.tmp), []);
   });
 });
@@ -152,5 +158,36 @@ dir="$(cd "$(dirname "\${BASH_SOURCE[0]}")" && pwd -P)"
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /^stray=unseen$/m);
     assert.deepEqual(readdirSync(fixture.tmp), ["lib"]);
+  });
+});
+
+const PAGE = "<!doctype html>\n<html><body>OpenViking Memory Plugin shared installer</body></html>\n";
+
+test("of several download locations, one that works serves the install", async () => {
+  await withFixture(FAKE_INSTALLER, async (fixture) => {
+    const page = await serve(PAGE);
+    try {
+      const others = ["http://127.0.0.1:1/dl/", `http://127.0.0.1:${page.address().port}`];
+      for (const bases of [[...others, `${fixture.base}/`], [fixture.base, ...others]]) {
+        const result = await run([bootstrap, "--yes"], { ...fixture, base: bases.join(" ") });
+        assert.equal(result.status, 0, result.stderr);
+        assert.deepEqual(argsOf(result.stdout), ["--dist", "tos", "--yes"]);
+        assert.match(result.stdout, new RegExp(`^base=${fixture.base}$`, "m"), "the installer keeps downloading from it");
+        assert.deepEqual(readdirSync(fixture.tmp), []);
+      }
+    } finally {
+      page.close();
+    }
+  });
+});
+
+test("the download location can be given as OPENVIKING_TOS_BASE", async () => {
+  await withFixture(FAKE_INSTALLER, async (fixture) => {
+    const result = await run([bootstrap], {
+      ...fixture,
+      env: { OPENVIKING_DOWNLOAD_BASE: undefined, OPENVIKING_TOS_BASE: fixture.base },
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, new RegExp(`^base=${fixture.base}$`, "m"));
   });
 });

@@ -92,11 +92,19 @@ Formal GitHub Releases trigger the TOS upload automatically and overwrite the st
 
 If TOS secrets are not fully configured, the workflow skips uploading and reports it in the step summary without failing the whole workflow.
 
-### Memory Plugin Hotfix and Rollback
+### Memory Plugin Downloads on the Docs Site
 
-The memory plugins are installed and updated from the stable paths: `plugins/claude/marketplace.json` (Claude Code), `plugins/memory-plugins.git` (Codex and TraeCode CLI), `releases/latest/memory-plugin-marketplace.zip` (every other host), `releases/latest/channels.json` (install version resolution), and `memory-plugin-shared/install.sh` and `bootstrap.sh`. One run of the workflow builds all of them from the commit of the tag it is given.
+The installer and the memory plugins are downloaded from the documentation site, not from the TOS release bucket. Both docs deployments (`17. Docs` to GitHub Pages at `docs.openviking.ai`, `19. Docs TOS Deploy` to `docs.openviking.net`) run `.github/scripts/build-plugin-downloads.sh` and publish its output under `/dl`, with the same layout as the release bucket: `memory-plugin-shared/install.sh` and `bootstrap.sh`, `releases/latest/memory-plugin-marketplace.zip`, `plugins/claude/marketplace.json` with `plugins/claude/openviking-memory-<plugin version>.zip`, `plugins/memory-plugins.git`, and `releases/latest/channels.json`, which the install site's version check reads.
 
-To publish a plugin hotfix without a product release:
+They deploy on every push to `main` that changes the docs, a plugin, the installer or `.github/scripts`, so a plugin change is published when it is merged, without a tag or a GitHub Release. The published installer reports `<date>-<commit>` as its version. To publish a plugin fix, merge it with the version bumps that `.github/scripts/check-plugin-version-bumps.sh` requires; to roll back, revert the change on `main` and bump the versions again. Both workflows can also be started by hand from `main`.
+
+The TOS release bucket keeps receiving the same files with each release for installs that still point at it, as described below.
+
+### Memory Plugin Hotfix and Rollback on TOS
+
+Installs that point at the TOS release bucket read its stable paths: `plugins/claude/marketplace.json` (Claude Code), `plugins/memory-plugins.git` (Codex and TraeCode CLI), `releases/latest/memory-plugin-marketplace.zip` (every other host), `releases/latest/channels.json` (install version resolution), and `memory-plugin-shared/install.sh` and `bootstrap.sh`. One run of the workflow builds all of them from the commit of the tag it is given.
+
+To publish a plugin hotfix there without a product release:
 
 1. Merge the fix with the plugin version bumps that `.github/scripts/check-plugin-version-bumps.sh` requires. Claude Code only updates an installed plugin when its version string changes.
 2. Tag a commit that holds the last release plus the fix, for example on a branch cut from the last `vX.Y.Z` tag with the fix cherry-picked. Use a tag that does not start with `v`, such as `memory-plugins-YYYY.M.D`, and do not publish a GitHub Release for it: `v*.*.*` tag pushes trigger the Docker workflow, published Releases trigger the main release workflows, and the main package version is resolved from `v*` tags.

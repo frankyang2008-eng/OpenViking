@@ -48,6 +48,7 @@ function runInstaller(home, args, extraEnv = {}, script = installer) {
       HOME: home,
       OPENVIKING_HOME: join(home, ".openviking"),
       OPENVIKING_INSTALLER_REEXEC: "0",
+      OPENVIKING_DOWNLOAD_BASE: "https://downloads.example.invalid",
       OPENVIKING_SKIP_VERSION_CHECK: "1",
       ...extraEnv,
     },
@@ -578,7 +579,7 @@ test("uninstall with no installer runtime on disk removes what it can and fetche
       force: true,
     });
     const result = runInstaller(home, ["--harness", "cursor", "--uninstall", "--lang", "en", "--yes"], {
-      OPENVIKING_TOS_BASE: "file:///nonexistent",
+      OPENVIKING_DOWNLOAD_BASE: "file:///nonexistent",
     }, detached);
     const output = `${result.stdout}\n${result.stderr}`;
     assert.equal(result.status, 0, output);

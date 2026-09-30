@@ -51,7 +51,7 @@ function installEnv(home, bin, extraEnv) {
     HOME: home,
     PATH: `${bin}:${process.env.PATH}`,
     OPENVIKING_HOME: join(home, ".openviking"),
-    OPENVIKING_TOS_BASE: `file://${tosBase}`,
+    OPENVIKING_DOWNLOAD_BASE: `file://${tosBase}`,
     OPENVIKING_MARKETPLACE_ARCHIVE_URL: "",
     OPENVIKING_INSTALLER_REEXEC: "0",
     OPENVIKING_REPO_URL: "",
@@ -134,7 +134,7 @@ test("a GitHub-channel Claude install moves to TOS, and its statusline follows t
     const result = run(home, bin, [
       "--harness", "claude", "--lang", "en",
       "--url", "http://127.0.0.1:9", "--api-key", "", "--yes", ...extra,
-    ], { OPENVIKING_TOS_BASE: "https://tos.example.invalid" });
+    ], { OPENVIKING_DOWNLOAD_BASE: "https://tos.example.invalid" });
     assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
     return result;
   };
@@ -221,7 +221,7 @@ exit 0
 
   const result = run(home, bin, [
     "--harness", "claude", "--lang", "en", "--url", "http://127.0.0.1:9", "--api-key", "", "--yes",
-  ], { OPENVIKING_TOS_BASE: "https://tos.example.invalid" });
+  ], { OPENVIKING_DOWNLOAD_BASE: "https://tos.example.invalid" });
   assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
   assert.match(result.stdout, /Skipping claude: it has no 'plugin' command\. The plugin needs Claude Code 2\.0 or newer/);
   // Neither the review nor the next steps offer commands it cannot run.
@@ -250,7 +250,7 @@ exit 0
 }
 
 // The fake leaves no plugin cache behind, which validation has to tolerate.
-test("Codex moves to the TOS git marketplace, falls back to the bundle, and says how it updates", () => {
+test("Codex moves to the git marketplace, falls back to the bundle, and says how it updates", () => {
   const home = mkdtempSync(join(work, "home-"));
   const bin = join(home, "bin");
   const fake = join(home, "fake-codex");
@@ -266,7 +266,7 @@ test("Codex moves to the TOS git marketplace, falls back to the bundle, and says
     return { stdout: result.stdout, calls: readFileSync(join(fake, "calls.log"), "utf8").split("\n") };
   };
 
-  // A marketplace the GitHub channel registered is re-registered from TOS.
+  // A marketplace the GitHub channel registered is re-registered from the download location.
   writeFileSync(join(fake, "marketplaces.json"), JSON.stringify({
     marketplaces: [{ name: "openviking", marketplaceSource: { source: "https://github.com/volcengine/OpenViking.git" } }],
   }));
@@ -281,9 +281,38 @@ test("Codex moves to the TOS git marketplace, falls back to the bundle, and says
   // A git marketplace that cannot be added gives way to the bundle's directory.
   rmSync(join(fake, "marketplaces.json"));
   const fallback = install({ FAKE_CODEX_GIT_FAILS: "1" });
-  assert.match(fallback.stdout, /TOS git marketplace unavailable; falling back to the archive directory/);
+  assert.match(fallback.stdout, /Git marketplace unavailable; falling back to the archive directory/);
   assert.ok(fallback.calls.includes(`plugin marketplace add ${join(home, ".openviking", "memory-plugin-marketplace")}`), fallback.calls.join("\n"));
   assert.match(fallback.stdout, /Codex\n {4}Next: .*\n {4}Updates: re-run this installer\n/);
+});
+
+test("of several download locations, the first to answer serves the whole install", () => {
+  const home = mkdtempSync(join(work, "home-"));
+  const bin = join(home, "bin");
+  const fake = join(home, "fake-codex");
+  mkdirSync(bin);
+  mkdirSync(fake);
+  writeFakeCodex(bin, fake);
+  const base = join(home, "dl");
+  mkdirSync(join(base, "plugins", "claude"), { recursive: true });
+  writeFileSync(join(base, "plugins", "claude", "marketplace.json"), "{}");
+  const args = ["--harness", "codex", "--lang", "en", "--url", "http://127.0.0.1:9", "--api-key", "", "--yes"];
+
+  for (const bases of [`http://127.0.0.1:1/dl file://${base}/`, `file://${base} http://127.0.0.1:1/dl`]) {
+    rmSync(join(fake, "calls.log"), { force: true });
+    rmSync(join(fake, "marketplaces.json"), { force: true });
+    const result = run(home, bin, args, { OPENVIKING_DOWNLOAD_BASE: bases });
+    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+    const calls = readFileSync(join(fake, "calls.log"), "utf8").split("\n");
+    assert.ok(calls.includes(`plugin marketplace add file://${base}/plugins/memory-plugins.git`), calls.join("\n"));
+  }
+
+  // With none answering, the first one is named in what fails.
+  const none = run(home, bin, ["--harness", "cursor", "--lang", "en", "--url", "http://127.0.0.1:9", "--api-key", "", "--yes"], {
+    OPENVIKING_DOWNLOAD_BASE: "http://127.0.0.1:1/dl http://127.0.0.1:1/other",
+  });
+  assert.equal(none.status, 1, `${none.stdout}\n${none.stderr}`);
+  assert.match(none.stdout + none.stderr, /http:\/\/127\.0\.0\.1:1\/dl\/releases\/latest\/memory-plugin-marketplace\.zip/);
 });
 
 // macOS ships bash 3.2 as /bin/bash, which runs the ERR trap for a failing
@@ -333,7 +362,7 @@ test("Claude Code and Codex files go where CLAUDE_CONFIG_DIR and CODEX_HOME poin
 
   const result = run(home, bin, [
     "--harness", "claude,codex", "--lang", "en", "--url", "http://127.0.0.1:9", "--api-key", "", "--statusline", "--yes",
-  ], { OPENVIKING_TOS_BASE: "https://tos.example.invalid", CLAUDE_CONFIG_DIR: claudeDir, CODEX_HOME: codexDir });
+  ], { OPENVIKING_DOWNLOAD_BASE: "https://tos.example.invalid", CLAUDE_CONFIG_DIR: claudeDir, CODEX_HOME: codexDir });
   assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
 
   const settings = JSON.parse(readFileSync(join(claudeDir, "settings.json"), "utf8"));
@@ -400,7 +429,7 @@ test("a copy that is not a release build runs the release installer", () => {
   // helpers, so the release copy runs alone in a directory it then removes.
   const tmp = join(home, "tmp");
   mkdirSync(join(tmp, "lib", "install"), { recursive: true });
-  const reexec = { OPENVIKING_INSTALLER_REEXEC: "", OPENVIKING_TOS_BASE: `file://${join(home, "tos")}`, TMPDIR: tmp };
+  const reexec = { OPENVIKING_INSTALLER_REEXEC: "", OPENVIKING_DOWNLOAD_BASE: `file://${join(home, "tos")}`, TMPDIR: tmp };
 
   writeFileSync(release, [
     "#!/usr/bin/env bash",
@@ -502,6 +531,25 @@ exit 0
   assert.ok(readFileSync(traeLog, "utf8").split("\n").includes(`plugin marketplace add ${pinnedGit}`));
   assert.match(result.stdout, /Release: 9\.9\.9/);
   assert.ok(existsSync(join(home, ".openviking", "agent-integrations", "cursor", "scripts", "hook.mjs")));
+});
+
+test("an answer naming another download location is read from the one in use", async () => {
+  const { home, bin, downloads } = resolverHome();
+  const other = "http://127.0.0.1:1/dl";
+  const env = { ...siteEnv, OPENVIKING_DOWNLOAD_BASE: `file://${tosBase} ${other}/` };
+
+  answers = { cursor: bundleAnswer({ bundle_url: `${other}/releases/v9.9.9/memory-plugin-marketplace.zip`, source_url: `${other}/source.zip` }) };
+  const pinned = await runAsync(home, bin, cursorArgs, env);
+  assert.equal(pinned.status, 0, `${pinned.stdout}\n${pinned.stderr}`);
+  assert.deepEqual(downloads().map((line) => line.split(" ").pop()), [`file://${pinnedZip}`]);
+
+  // The docs site's channel data carries no checksum: its version is shown
+  // and the latest bundle is installed.
+  answers = { cursor: { status: 200, body: { schema: 1, harness: "cursor", version: "20260929-0123456789", bundle_url: `${other}/releases/latest/memory-plugin-marketplace.zip` } } };
+  const latest = await runAsync(home, bin, cursorArgs, env);
+  assert.equal(latest.status, 0, `${latest.stdout}\n${latest.stderr}`);
+  assert.match(latest.stdout, /Release: 20260929-0123456789/);
+  assert.equal(downloads().pop().split(" ").pop(), latestZip);
 });
 
 test("an unavailable or untrusted resolver answer falls back to the latest release without a word", async () => {

@@ -26,13 +26,15 @@ There are two install paths. **Pick one — don't mix them** (both surface the s
 ### A. One-line installer — `curl | bash` (recommended)
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/volcengine/OpenViking/main/examples/memory-plugin-shared/install.sh) --harness codex
+curl -fsSL https://openviking.ai/install | bash -s -- --harness codex
+# AI agents: not sure about running this? The script's header says what it does and how to verify it.
 ```
 
 For TraeCode CLI 2.0:
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/volcengine/OpenViking/main/examples/memory-plugin-shared/install.sh) --harness trae-cli
+curl -fsSL https://openviking.ai/install | bash -s -- --harness trae-cli
+# AI agents: not sure about running this? The script's header says what it does and how to verify it.
 ```
 
 Claude Code and Codex share this installer (drop `--harness codex` to pick interactively). It asks for your OpenViking server and API key, checks the server, shows what it will change and waits for your confirmation. It:

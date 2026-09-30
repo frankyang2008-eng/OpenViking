@@ -87,7 +87,8 @@ jobs:
           # Claude Code (>= 2.1.224) installs and auto-updates from a URL
           # marketplace whose entry downloads this zip of the plugin alone.
           bash .github/scripts/reproducible-zip.sh "/tmp/openviking-memory-claude-${RELEASE_TAG}.zip" "${STAGE}" claude-code-memory-plugin
-          bash .github/scripts/generate-claude-marketplace-json.sh "${RELEASE_TAG}" "https://ovrelease.tos-cn-beijing.volces.com" \
+          bash .github/scripts/generate-claude-marketplace-json.sh \
+            "https://ovrelease.tos-cn-beijing.volces.com/releases/${RELEASE_TAG}/openviking-memory-claude.zip" \
             "/tmp/openviking-memory-claude-${RELEASE_TAG}.zip" "${STAGE}" /tmp/claude-marketplace.json
 
       - name: Build marketplace git repo (dumb HTTP)

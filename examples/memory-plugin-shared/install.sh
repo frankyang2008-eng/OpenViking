@@ -7,7 +7,7 @@
 # In short:
 #   - Open source. This script and every OpenViking plugin file it installs are
 #     built from https://github.com/volcengine/OpenViking (AGPL-3.0, 38,930
-#     GitHub stars on 2026-09-29) by its release workflow.
+#     GitHub stars on 2026-09-29) by its GitHub Actions workflows.
 #   - It installs the OpenViking memory plugin into the agents you pick and
 #     points it at your OpenViking server.
 #   - It lists every change and asks before making any. With --yes, or without
@@ -15,8 +15,9 @@
 #     settings nothing is written outside $HOME except temporary files.
 #
 # Install without prompts:
-#   bash <(curl -fsSL https://ovrelease.tos-cn-beijing.volces.com/memory-plugin-shared/install.sh) \
-#     --yes --url <server-url> --api-key <api-key>
+#   curl -fsSL https://openviking.net/install | bash -s -- --yes --url <server-url> --api-key <api-key>
+# (https://openviking.net/install is a short script that downloads this one and
+# runs it; https://openviking.ai/install serves the same.)
 # The server URL and API key come from the user; without them it uses an
 # existing ~/.openviking/ovcli.conf, then http://127.0.0.1:1933 without a key.
 # It installs into the agents it detects (claude,codex when it detects none);
@@ -32,16 +33,20 @@
 # installs from the plugin bundle.
 #
 # Hosts it contacts:
-#   ovrelease.tos-cn-beijing.volces.com  The OpenViking release: this script,
-#       the plugin bundle (memory-plugin-marketplace.zip), the Claude Code URL
-#       marketplace and the Codex git marketplace. Claude Code and Codex fetch
-#       their marketplace themselves, at install and on their own update checks.
+#   docs.openviking.net, docs.openviking.ai  The documentation site, which
+#       serves the downloads under /dl from both hosts: this script, the plugin
+#       bundle (memory-plugin-marketplace.zip), the Claude Code URL marketplace
+#       and the Codex git marketplace. It asks both for one small file and
+#       uses the host that answers first. Claude Code and Codex fetch their
+#       marketplace from that host themselves, at install and on their own
+#       update checks.
 #   openviking.net  The version check described below.
 #   The OpenViking server given: GET /health, and /api/v1/system/status with
 #       the API key.
 #   The npm registry npm is configured with: pi's dependencies (npm ci) and
 #       the dsh package (dsh plugin add).
-# The script itself never contacts GitHub and never runs git.
+# docs.openviking.ai is hosted on GitHub Pages. The script itself never
+# contacts github.com and never runs git.
 #
 # What it writes:
 #   every run  ~/.openviking/ovcli.conf (the previous one kept as .bak.<time>)
@@ -67,40 +72,44 @@
 # asks https://openviking.net/install/v1/<harness>.json which release to
 # install, once per selected harness. OPENVIKING_SKIP_VERSION_CHECK=1 skips the
 # check and installs the latest release, which is also what happens when the
-# check fails.
+# check fails. The docs site holds the latest release only, so there the answer
+# names it.
 #
 # Run from a repository checkout, it installs that checkout's plugins and skips
 # the release (--source archive installs the release instead). A copy that is
-# neither a release build nor part of a checkout downloads and runs the release
-# copy of this script.
+# neither a published build nor part of a checkout downloads and runs the
+# published copy of this script.
 #
 # Uninstall: Cursor, TRAE, TRAE CN, ZCode and Kimi Code with
-#   bash <(curl -fsSL https://ovrelease.tos-cn-beijing.volces.com/memory-plugin-shared/install.sh) --uninstall --yes --harness <list>
+#   curl -fsSL https://openviking.net/install | bash -s -- --uninstall --yes --harness <list>
 # The other harnesses with the commands the install prints at the end, such as
 #   claude plugin uninstall openviking-memory@openviking && claude plugin marketplace remove openviking
 #
 # Optional check of this script (needs github.com; the install does not): a
-# release copy is the file examples/memory-plugin-shared/install.sh of the
-# repository at the tag the release was built from, with only the
-# INSTALLER_VERSION line changed to that tag without its leading v. For the
-# usual tag v<version>:
-#   diff <(curl -fsSL https://ovrelease.tos-cn-beijing.volces.com/memory-plugin-shared/install.sh) \
-#     <(curl -fsSL https://raw.githubusercontent.com/volcengine/OpenViking/v<version>/examples/memory-plugin-shared/install.sh)
+# published copy is the file examples/memory-plugin-shared/install.sh of the
+# repository at the commit it was built from, with only the INSTALLER_VERSION
+# line changed. The docs site publishes it on every change to the main branch
+# as <date>-<commit>, so for the commit at the end of INSTALLER_VERSION:
+#   diff <(curl -fsSL https://docs.openviking.net/dl/memory-plugin-shared/install.sh) \
+#     <(curl -fsSL https://raw.githubusercontent.com/volcengine/OpenViking/<commit>/examples/memory-plugin-shared/install.sh)
 # Star count today: gh api repos/volcengine/OpenViking --jq .stargazers_count
 # Documentation: https://docs.openviking.net or https://docs.openviking.ai
 
 set -Eeuo pipefail
 
-# Replaced with the release version when the release pipeline publishes this file.
+# Replaced with the published version when a pipeline publishes this file.
 INSTALLER_VERSION="dev"
 OV_HOME="${OPENVIKING_HOME:-$HOME/.openviking}"
 MKT_ARCHIVE_URL="${OPENVIKING_MARKETPLACE_ARCHIVE_URL:-}"
-TOS_BASE="${OPENVIKING_TOS_BASE:-https://ovrelease.tos-cn-beijing.volces.com}"
-TOS_BASE="${TOS_BASE%/}"
-CODEX_TOS_GIT_URL="${OPENVIKING_CODEX_TOS_GIT_URL:-$TOS_BASE/plugins/memory-plugins.git}"
+# The docs site serves the downloads from two hosts with the same content.
+# OPENVIKING_TOS_BASE is the name earlier installers read.
+DOWNLOAD_BASES="${OPENVIKING_DOWNLOAD_BASE:-${OPENVIKING_TOS_BASE:-https://docs.openviking.net/dl https://docs.openviking.ai/dl}}"
+DOWNLOAD_BASE=""       # the one of them in use; set by select_download_base
+CODEX_GIT_URL=""       # set by select_download_base
+CC_MARKETPLACE_URL=""  # set by select_download_base
 INSTALL_SITE="${OPENVIKING_INSTALL_SITE:-https://openviking.net}"
 INSTALL_SITE="${INSTALL_SITE%/}"
-CC_TOS_MARKETPLACE_URL="${OPENVIKING_CLAUDE_TOS_MARKETPLACE_URL:-$TOS_BASE/plugins/claude/marketplace.json}"
+INSTALL_COMMAND="curl -fsSL $INSTALL_SITE/install | bash -s --"
 # First Claude Code release with the `archive` plugin source.
 CC_ARCHIVE_SOURCE_MIN_VERSION="2.1.224"
 ARCHIVE_MARKER='.openviking-archive-source'
@@ -228,9 +237,11 @@ Environment:
   OPENVIKING_CLAUDE_BINS                Same as --claude-bin.
   OPENVIKING_CODEX_BINS                 Same as --codex-bin.
   OPENVIKING_DSH_PROFILE                Same as --dsh-profile.
-  OPENVIKING_TOS_BASE                   Release location (default: https://ovrelease.tos-cn-beijing.volces.com).
+  OPENVIKING_DOWNLOAD_BASE              Download locations, separated by spaces; the first to answer is used
+                                        (default: https://docs.openviking.net/dl https://docs.openviking.ai/dl).
+                                        OPENVIKING_TOS_BASE is read as well.
   OPENVIKING_MARKETPLACE_ARCHIVE_URL    Plugin bundle to install instead of the release's; not checksum-verified.
-  OPENVIKING_CLAUDE_TOS_MARKETPLACE_URL Claude Code URL marketplace to register.
+  OPENVIKING_CLAUDE_MARKETPLACE_URL     Claude Code URL marketplace to register.
   OPENVIKING_CODEX_TOS_GIT_URL          Codex git marketplace to register.
   OPENVIKING_INSTALL_SITE               Site the version check asks which release to install (default: https://openviking.net).
   OPENVIKING_SKIP_VERSION_CHECK         Any value but 0 skips the version check; the latest release is installed.
@@ -1482,6 +1493,40 @@ resolve_self_checkout() {
   fi
 }
 
+# Sets DOWNLOAD_BASE and the marketplace URLs under it. The download locations
+# are asked for the same small file at once and the first to answer serves the
+# whole install: it is the one that is near, and Claude Code and Codex keep its
+# marketplace URL for their own updates.
+select_download_base() {
+  [ -z "$DOWNLOAD_BASE" ] || return 0
+  local dir base asked=0
+  # shellcheck disable=SC2086
+  set -- $DOWNLOAD_BASES
+  if [ "$#" -gt 1 ] && command -v curl >/dev/null 2>&1 \
+    && dir="$(mktemp -d "${TMPDIR:-/tmp}/ov-base.XXXXXX")"; then
+    : >"$dir/up"; : >"$dir/down"
+    for base in "$@"; do
+      asked=$((asked + 1))
+      (
+        if curl -fsS -m 5 -o /dev/null "${base%/}/plugins/claude/marketplace.json"; then
+          printf '%s\n' "$base" >>"$dir/up"
+        else
+          echo >>"$dir/down"
+        fi
+      ) >/dev/null 2>&1 &
+    done
+    while [ ! -s "$dir/up" ] && [ "$(wc -l <"$dir/down")" -lt "$asked" ]; do
+      sleep 0.1
+    done
+    IFS= read -r DOWNLOAD_BASE <"$dir/up" || true
+    rm -rf "$dir"
+  fi
+  [ -n "$DOWNLOAD_BASE" ] || DOWNLOAD_BASE="$1"
+  DOWNLOAD_BASE="${DOWNLOAD_BASE%/}"
+  CODEX_GIT_URL="${OPENVIKING_CODEX_TOS_GIT_URL:-$DOWNLOAD_BASE/plugins/memory-plugins.git}"
+  CC_MARKETPLACE_URL="${OPENVIKING_CLAUDE_MARKETPLACE_URL:-$DOWNLOAD_BASE/plugins/claude/marketplace.json}"
+}
+
 # A copy that is neither a release build nor part of a checkout (one fetched
 # from GitHub, say) would run against helpers and plugins from the release
 # bundle. Running the release copy instead keeps the script and the bundle on
@@ -1490,13 +1535,15 @@ reexec_release_installer() { # reexec_release_installer <original-args...>
   [ "$INSTALLER_VERSION" = "dev" ] && [ -z "$CHECKOUT_DIR" ] \
     && [ "${OPENVIKING_INSTALLER_REEXEC:-}" != "0" ] || return 0
   local dir status=0
+  select_download_base
   # A directory of its own: install_lib_dir takes a lib/install found beside
   # the running script.
   dir="$(mktemp -d "${TMPDIR:-/tmp}/ov-install.XXXXXX")" || return 0
-  if curl -fsSL --connect-timeout 10 -o "$dir/install.sh" "$TOS_BASE/memory-plugin-shared/install.sh" 2>/dev/null; then
+  if curl -fsSL --connect-timeout 10 -o "$dir/install.sh" "$DOWNLOAD_BASE/memory-plugin-shared/install.sh" 2>/dev/null; then
     case "$(head -n 5 "$dir/install.sh")" in
       '#!'*'OpenViking Memory Plugin shared installer'*)
-        OPENVIKING_INSTALLER_REEXEC=0 bash "$dir/install.sh" --dist tos "$@" || status=$?
+        OPENVIKING_INSTALLER_REEXEC=0 OPENVIKING_DOWNLOAD_BASE="$DOWNLOAD_BASE" \
+          bash "$dir/install.sh" --dist tos "$@" || status=$?
         rm -rf "$dir"
         exit "$status"
         ;;
@@ -1532,8 +1579,9 @@ EOF
 }
 
 # Asks the install site which release to install, one request per harness in
-# parallel. Anything short of a well-formed answer that points into the TOS
-# bucket keeps the built-in latest-release URLs, without a word: the answer
+# parallel. The answer names one download location; the same paths are read
+# from the one in use. Anything short of a well-formed answer that points into
+# a download location keeps the built-in latest-release URLs, without a word: the answer
 # only pins the release and must never slow down or break the install.
 resolve_release() {
   [ "$SOURCE_MODE" = "archive" ] || return 0
@@ -1555,19 +1603,21 @@ EOF
       version) RELEASE_VERSION="$value" ;;
       bundle_url) BUNDLE_URL="$value" ;;
       sha256) BUNDLE_SHA256="$value" ;;
-      git_url) [ -n "${OPENVIKING_CODEX_TOS_GIT_URL:-}" ] || CODEX_TOS_GIT_URL="$value" ;;
+      git_url) [ -n "${OPENVIKING_CODEX_TOS_GIT_URL:-}" ] || CODEX_GIT_URL="$value" ;;
     esac
   done <<EOF
 $(node -e '
   const fs = require("node:fs");
-  const [dir, prefix, names] = process.argv.slice(1);
+  const [dir, base, bases, names] = process.argv.slice(1);
+  const known = bases.split(/\s+/).filter(Boolean).map((b) => b.replace(/\/+$/, "") + "/");
   const out = {};
   for (const name of names.split("\n").filter(Boolean)) {
     let r;
     try { r = JSON.parse(fs.readFileSync(dir + "/" + name + ".json", "utf8")); } catch { continue; }
     if (!r || r.schema !== 1) continue;
     const urls = Object.keys(r).filter((k) => k.endsWith("_url"));
-    if (urls.some((k) => typeof r[k] !== "string" || !r[k].startsWith(prefix) || /\s/.test(r[k]))) continue;
+    if (urls.some((k) => typeof r[k] !== "string" || /\s/.test(r[k]) || !known.some((b) => r[k].startsWith(b)))) continue;
+    for (const k of urls) r[k] = base + "/" + r[k].slice(known.find((b) => r[k].startsWith(b)).length);
     if (!out.version && typeof r.version === "string" && /^[\w.+-]+$/.test(r.version)) out.version = r.version;
     if (!out.bundle_url && r.bundle_url && /^[0-9a-f]{64}$/i.test(r.sha256 ?? "")) {
       out.bundle_url = r.bundle_url;
@@ -1576,7 +1626,7 @@ $(node -e '
     if (!out.git_url && r.git_url) out.git_url = r.git_url;
   }
   for (const [key, value] of Object.entries(out)) process.stdout.write(key + "=" + value + "\n");
-' "$dir" "$TOS_BASE/" "$names" 2>/dev/null || true)
+' "$dir" "$DOWNLOAD_BASE" "$DOWNLOAD_BASES" "$names" 2>/dev/null || true)
 EOF
   rm -rf "$dir"
 }
@@ -1619,7 +1669,7 @@ ensure_bundle() {
   if [ "$SOURCE_MODE" = "dev" ]; then
     MKT_DIR="$CHECKOUT_DIR/examples"
   else
-    local url="${BUNDLE_URL:-$TOS_BASE/releases/latest/memory-plugin-marketplace.zip}" sha256="$BUNDLE_SHA256"
+    local url="${BUNDLE_URL:-$DOWNLOAD_BASE/releases/latest/memory-plugin-marketplace.zip}" sha256="$BUNDLE_SHA256"
     if [ -n "$MKT_ARCHIVE_URL" ]; then
       url="$MKT_ARCHIVE_URL"
       sha256=""
@@ -1681,7 +1731,7 @@ require_install_lib_dir() {
 # ---------------------------------------------------------------------------
 
 CLAUDE_BIN="claude"
-CLAUDE_URL_BINS=""  # Claude-format CLIs registered on the TOS URL marketplace
+CLAUDE_URL_BINS=""  # Claude-format CLIs registered on the URL marketplace
 
 is_native_claude_bin() {
   [ "$(bin_basename "$CLAUDE_BIN")" = "claude" ]
@@ -1750,15 +1800,20 @@ claude_marketplace_sync() { # claude_marketplace_sync <source>
   }
 }
 
-# The TOS URL marketplace lists the plugin as an `archive` source (a zip over
+# The URL marketplace lists the plugin as an `archive` source (a zip over
 # HTTPS). Custom Claude-format CLIs don't share Claude Code's version line, so
 # only the native command qualifies, and a custom one that already lists the
 # URL marketplace, such as a wrapper sharing Claude Code's config: replacing it
 # with the directory marketplace would turn off auto-update for Claude Code too.
 claude_supports_archive_source() {
   if ! is_native_claude_bin; then
-    [ "$(claude_marketplace_current_source)" = "$CC_TOS_MARKETPLACE_URL" ] || return 1
-    return 0
+    local current base
+    current="$(claude_marketplace_current_source)"
+    [ "$current" != "$CC_MARKETPLACE_URL" ] || return 0
+    for base in $DOWNLOAD_BASES; do
+      [ "$current" != "${base%/}/plugins/claude/marketplace.json" ] || return 0
+    done
+    return 1
   fi
   local version
   version="$(claude_cmd --version 2>/dev/null || true)"
@@ -1893,7 +1948,7 @@ claude_install_plugin() {
   fi
 }
 
-# Claude Code's shallow clones can't use the TOS dumb-HTTP git repo, but a URL
+# Claude Code's shallow clones can't use the dumb-HTTP git repo, but a URL
 # marketplace whose entry downloads the plugin zip installs and auto-updates
 # with no git at all. Registering it already removed any earlier registration
 # and its plugin, so an install that fails from it falls back as well.
@@ -1909,15 +1964,15 @@ install_claude() {
   fi
   local url=0
   if [ "$SOURCE_MODE" = "archive" ] && claude_supports_archive_source; then
-    if claude_marketplace_sync "$CC_TOS_MARKETPLACE_URL" && claude_install_plugin; then
+    if claude_marketplace_sync "$CC_MARKETPLACE_URL" && claude_install_plugin; then
       url=1
     else
-      warn "$(t 'TOS marketplace unavailable; falling back to the archive directory.' 'TOS marketplace 不可用，回退到归档目录方式。')"
+      warn "$(t 'URL marketplace unavailable; falling back to the archive directory.' 'URL marketplace 不可用，回退到归档目录方式。')"
     fi
   fi
   if [ "$url" -eq 1 ]; then
     if is_native_claude_bin; then
-      claude_enable_marketplace_autoupdate "$CC_TOS_MARKETPLACE_URL"
+      claude_enable_marketplace_autoupdate "$CC_MARKETPLACE_URL"
     fi
     CLAUDE_URL_BINS="$(append_csv_list "$CLAUDE_URL_BINS" "$CLAUDE_BIN")"
   else
@@ -1937,7 +1992,7 @@ install_claude() {
 # ---------------------------------------------------------------------------
 
 CODEX_BIN="codex"
-CODEX_GIT_BINS=""   # Codex-format CLIs registered on the TOS git marketplace
+CODEX_GIT_BINS=""   # Codex-format CLIs registered on the git marketplace
 
 is_native_codex_bin() {
   [ "$(bin_basename "$CODEX_BIN")" = "codex" ]
@@ -2066,10 +2121,10 @@ install_codex() {
     return 0
   }
   # Codex clones git marketplaces served over dumb HTTP from static hosting,
-  # so the TOS release carries a slim marketplace git repo that Codex upgrades.
-  if [ "$SOURCE_MODE" = "dev" ] || ! codex_marketplace_sync "$CODEX_TOS_GIT_URL" 2>/dev/null; then
+  # so the release carries a slim marketplace git repo that Codex upgrades.
+  if [ "$SOURCE_MODE" = "dev" ] || ! codex_marketplace_sync "$CODEX_GIT_URL" 2>/dev/null; then
     [ "$SOURCE_MODE" = "dev" ] \
-      || warn "$(t 'TOS git marketplace unavailable; falling back to the archive directory.' 'TOS git marketplace 不可用，回退到归档目录方式。')"
+      || warn "$(t 'Git marketplace unavailable; falling back to the archive directory.' 'Git marketplace 不可用，回退到归档目录方式。')"
     ensure_bundle
     codex_marketplace_sync "$MKT_DIR" || {
       err "$CODEX_BIN plugin marketplace add failed"
@@ -2861,7 +2916,7 @@ print_plan() {
       command -v "$CLAUDE_BIN" >/dev/null 2>&1 || continue
       has_plugin_subcommand || continue
       if [ "$SOURCE_MODE" = "archive" ] && claude_supports_archive_source; then
-        plan_item "$CLAUDE_BIN plugin marketplace add/update $CC_TOS_MARKETPLACE_URL ($fallback)"
+        plan_item "$CLAUDE_BIN plugin marketplace add/update $CC_MARKETPLACE_URL ($fallback)"
       else
         plan_item "$CLAUDE_BIN plugin marketplace add/update $bundle"
       fi
@@ -2880,7 +2935,7 @@ EOF
       [ -n "$CODEX_BIN" ] || continue
       command -v "$CODEX_BIN" >/dev/null 2>&1 || continue
       if [ "$SOURCE_MODE" = "archive" ]; then
-        plan_item "$CODEX_BIN plugin marketplace add/upgrade $CODEX_TOS_GIT_URL ($fallback)"
+        plan_item "$CODEX_BIN plugin marketplace add/upgrade $CODEX_GIT_URL ($fallback)"
       else
         plan_item "$CODEX_BIN plugin marketplace add/upgrade $bundle"
       fi
@@ -2942,8 +2997,8 @@ warn_default_connection() {
   printf '\n'
   warn "${BOLD}$(t 'No server was given: the plugin is configured for http://127.0.0.1:1933 without an API key.' '未指定服务：插件将连接 http://127.0.0.1:1933，且不带 API key。')${RESET}"
   warn "$(t 'To use another server, re-run with its URL and API key:' '如需连接其他服务，请带上服务地址和 API key 重新运行：')"
-  printf '      bash <(curl -fsSL %s/memory-plugin-shared/install.sh) --yes --harness %s%s --url <server-url> --api-key <api-key>\n\n' \
-    "$TOS_BASE" "${PUBLIC_SELECTED_HARNESSES:-$SELECTED_HARNESSES}" "$bins"
+  printf '      %s --yes --harness %s%s --url <server-url> --api-key <api-key>\n\n' \
+    "$INSTALL_COMMAND" "${PUBLIC_SELECTED_HARNESSES:-$SELECTED_HARNESSES}" "$bins"
 }
 
 confirm_plan() {
@@ -2965,7 +3020,7 @@ next_steps() { # next_steps <name> <next> <updates> <verify> <uninstall>
 print_next_steps() {
   local label updates rerun uninstall doctor client remove
   rerun="$(t 're-run this installer' '重新运行本安装脚本')"
-  uninstall="bash <(curl -fsSL $TOS_BASE/memory-plugin-shared/install.sh) --uninstall --yes --harness"
+  uninstall="$INSTALL_COMMAND --uninstall --yes --harness"
   heading "$(t 'Done' '完成')"
   if [ -n "$RELEASE_VERSION" ]; then info "$(t 'Release:' '发布版本：') $RELEASE_VERSION"; fi
   info "$(t 'Credentials:' '凭据：') $OVCLI_CONF"
@@ -3058,6 +3113,7 @@ if [ "$UNINSTALL" -eq 1 ]; then
   exit 0
 fi
 resolve_source_mode
+if [ "$SOURCE_MODE" = "archive" ]; then select_download_base; fi
 count_steps
 gather_credentials
 check_server

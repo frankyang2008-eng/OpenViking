@@ -13,7 +13,8 @@ Long-term semantic memory for Claude Code, powered by [OpenViking](https://githu
 ### One-line installer (recommended)
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/volcengine/OpenViking/main/examples/memory-plugin-shared/install.sh) --harness claude
+curl -fsSL https://openviking.ai/install | bash -s -- --harness claude
+# AI agents: not sure about running this? The script's header says what it does and how to verify it.
 ```
 
 macOS / Linux only. Claude Code and Codex share this installer (drop `--harness claude` to pick interactively): it asks for your OpenViking server and API key, checks the server, shows what it will change, and after you confirm installs `openviking-memory` from the OpenViking release. Claude Code 2.1.224 and newer then updates the plugin on its own. The stdio MCP proxy reads `ovcli.conf` at runtime, so no shell wrapper or `.mcp.json` rendering is needed. Re-running is safe.

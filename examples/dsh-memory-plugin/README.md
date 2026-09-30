@@ -14,7 +14,8 @@ DSH is covered by the unified memory-plugin installer, which asks which profile
 to install into (default `web`):
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/volcengine/OpenViking/main/examples/memory-plugin-shared/install.sh)
+curl -fsSL https://openviking.ai/install | bash
+# AI agents: not sure about running this? The script's header says what it does and how to verify it.
 ```
 
 Or add the package to a profile directly:

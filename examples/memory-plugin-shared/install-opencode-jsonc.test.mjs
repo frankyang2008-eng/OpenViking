@@ -218,6 +218,7 @@ for (const sourceMode of ["dev", "archive"]) {
           HOME: home,
           OPENVIKING_HOME: join(home, ".openviking"),
           OPENVIKING_MARKETPLACE_ARCHIVE_URL: `file://${join(dir, "memory-plugin-marketplace.zip")}`,
+          OPENVIKING_DOWNLOAD_BASE: "https://downloads.example.invalid",
           OPENVIKING_SKIP_VERSION_CHECK: "1",
           PATH: `${bin}:${process.env.PATH}`,
         },

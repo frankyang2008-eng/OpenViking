@@ -7,9 +7,10 @@
 # In short:
 #   - Open source. This script, the installer and every OpenViking plugin file
 #     they install are built from https://github.com/volcengine/OpenViking
-#     (AGPL-3.0, 38,930 GitHub stars on 2026-09-29) by its release workflow.
-#   - It downloads the installer from the project's release bucket and runs it.
-#     No sudo. Nothing is written outside $HOME except a temp directory.
+#     (AGPL-3.0, 38,930 GitHub stars on 2026-09-29) by its GitHub Actions
+#     workflows.
+#   - It downloads the installer from the project's documentation site and runs
+#     it. No sudo. Nothing is written outside $HOME except a temp directory.
 #   - The installer lists every change and asks before making any. With --yes
 #     it prints the same list and proceeds.
 #
@@ -36,11 +37,14 @@
 # The /install/<harness> variants differ only in the `harness=` line.
 #
 # What this script does:
-#   1. Downloads $OPENVIKING_TOS_BASE/memory-plugin-shared/install.sh
-#      (default base https://ovrelease.tos-cn-beijing.volces.com, the release
-#      bucket) into a new temp directory.
-#   2. Refuses to run it unless line 1 is a shebang and the first lines name the
-#      OpenViking memory plugin installer.
+#   1. Downloads memory-plugin-shared/install.sh into a new temp directory from
+#      https://docs.openviking.net/dl and https://docs.openviking.ai/dl at the
+#      same time. The two hosts serve the same documentation site and the same
+#      downloads; the copy that arrives first is used, and the installer takes
+#      the rest of its downloads from that host. OPENVIKING_DOWNLOAD_BASE names
+#      other locations.
+#   2. Refuses to run a copy unless line 1 is a shebang and the first lines name
+#      the OpenViking memory plugin installer.
 #   3. Runs it with bash as `install.sh --dist tos [--harness <harness>] <your arguments>`,
 #      reading input from the terminal, then deletes the temp directory and
 #      exits with the installer's status.
@@ -53,38 +57,68 @@
 
 harness=""
 
-main() {
-  local base url input installer
-  base="${OPENVIKING_TOS_BASE:-https://ovrelease.tos-cn-beijing.volces.com}"
-  url="${base%/}/memory-plugin-shared/install.sh"
+is_installer() {
+  head -n 1 "$1" | grep -q '^#!' &&
+    head -n 5 "$1" | grep -q 'OpenViking Memory Plugin shared installer'
+}
 
+# Leaves the installer in $workdir/install.sh and its location in $base.
+fetch_installer() {
+  local asked=0 seen=0 n
+  # OPENVIKING_TOS_BASE is the name earlier installers read.
+  # shellcheck disable=SC2086
+  set -- ${OPENVIKING_DOWNLOAD_BASE:-${OPENVIKING_TOS_BASE:-https://docs.openviking.net/dl https://docs.openviking.ai/dl}}
+  : >"$workdir/up"
+  : >"$workdir/down"
+  for base in "$@"; do
+    asked=$((asked + 1))
+    (
+      if curl -fsSL --connect-timeout 10 -m 120 -o "$workdir/$asked.sh" "${base%/}/memory-plugin-shared/install.sh"; then
+        printf '%s %s\n' "$asked" "${base%/}" >>"$workdir/up"
+      else
+        echo >>"$workdir/down"
+      fi
+    ) 2>"$workdir/$asked.err" &
+  done
+  while :; do
+    while [ "$(wc -l <"$workdir/up")" -gt "$seen" ]; do
+      seen=$((seen + 1))
+      read -r n base <<LINE
+$(sed -n "${seen}p" "$workdir/up")
+LINE
+      if is_installer "$workdir/$n.sh"; then
+        mv "$workdir/$n.sh" "$workdir/install.sh"
+        return 0
+      fi
+      echo "openviking: $base/memory-plugin-shared/install.sh is not the OpenViking installer." >&2
+    done
+    [ "$((seen + $(wc -l <"$workdir/down")))" -lt "$asked" ] || break
+    sleep 0.1
+  done
+  cat "$workdir"/*.err >&2
+  echo "openviking: could not download the installer from: $*" >&2
+  return 1
+}
+
+main() {
+  local input
   # A directory of its own: the installer looks for its helpers next to itself.
   # Global, not local: the EXIT trap runs after main has returned.
   workdir="$(mktemp -d "${TMPDIR:-/tmp}/openviking-install.XXXXXX")" || return 1
   trap 'rm -rf "$workdir"' EXIT
-  installer="$workdir/install.sh"
+  fetch_installer || return 1
 
-  if ! curl -fsSL "$url" -o "$installer"; then
-    echo "OpenViking: could not download $url" >&2
-    return 1
-  fi
-  if ! head -n 1 "$installer" | grep -q '^#!' ||
-    ! head -n 5 "$installer" | grep -q 'OpenViking Memory Plugin shared installer'; then
-    echo "OpenViking: $url did not return the installer script; not running it." >&2
-    return 1
-  fi
-
+  export OPENVIKING_DOWNLOAD_BASE="$base"
   export OPENVIKING_INSTALL_SITE="${OPENVIKING_INSTALL_SITE:-https://openviking.net}"
   export OPENVIKING_INSTALLER_REEXEC=0
   if [ -n "$harness" ]; then
     set -- --harness "$harness" "$@"
   fi
-  # Under `curl ... | bash` stdin is this script, so the installer's prompts need the terminal.
   input=/dev/null
   if { true </dev/tty; } 2>/dev/null; then
     input=/dev/tty
   fi
-  bash "$installer" --dist tos "$@" <"$input"
+  bash "$workdir/install.sh" --dist tos "$@" <"$input"
 }
 
 main "$@"
