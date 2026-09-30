@@ -1,6 +1,6 @@
 # 检索
 
-OpenViking 提供多种检索方法，包括简单的向量相似度搜索、带会话上下文的智能检索、正则表达式匹配搜索和文件模式匹配。
+OpenViking 提供多种检索方法，包括简单的向量相似度搜索、关键词搜索、带会话上下文的智能检索、正则表达式匹配搜索和文件模式匹配。
 
 ## find 与 search 对比
 
@@ -391,6 +391,7 @@ openviking find "红色海报风格" --image ./poster.png --uri "viking://resour
 |------|------|------|--------|------|
 | query | str | 否 | "" | 搜索查询字符串；未提供 `image_url` 时必填 |
 | image_url | str | 否 | None | 图片查询，支持 `data:image/...;base64,...`、`http(s)://` 或 `viking://` URI；需要 multimodal embedding 模型 |
+| search_type | `"semantic"` \| `"keywords"` | 否 | `"semantic"` | 检索类型。`semantic` 使用 Embedding 和向量召回；`keywords` 使用 BM25 关键词召回 |
 | target_uri | str \| List[str] | 否 | "" | 限制搜索范围到指定的 URI 前缀 |
 | session | Session | 否 | None | 用于上下文感知搜索的会话（SDK）|
 | session_id | str | 否 | None | 用于上下文感知搜索的会话 ID（HTTP）|
@@ -409,7 +410,7 @@ openviking find "红色海报风格" --image ./poster.png --uri "viking://resour
 | read_content | bool | 否 | False | 按可见内容 read 语义读取每个最终命中的 URI，并以内联 `content` 返回。单个读取失败时保留原命中，不附加内容；仅支持 `mode="list"`。 |
 | telemetry | bool \| object | 否 | False | 在响应中附带遥测数据 |
 
-`search()` 使用和 `find()` 相同的目标解析和显式标签过滤规则，包括由 `X-OpenViking-Actor-Peer` 或 SDK `actor_peer_id` 选择的 peer 集合过滤。提供 `image_url` 时，`search()` 会直接执行图片检索并跳过会话 query planning。
+`search()` 使用和 `find()` 相同的目标解析和显式标签过滤规则，包括由 `X-OpenViking-Actor-Peer` 或 SDK `actor_peer_id` 选择的 peer 集合过滤。提供 `image_url` 时，`search()` 会直接执行图片检索并跳过会话 query planning。`keywords` 要求非空文本 query，不支持图片，且需要远程 VikingDB 配置全文索引。
 
 事件时间衰减作用于语义 `find()`、`search(mode="list")` 和 `search(mode="context")` 中带 `memory_type=events` 标签的结果。记忆提取流程将该标签写入 user / peer 事件的 L2 记录；检索按标签判断，不从 URI 或层级推断事件类型。无事件标签的结果、无 query 的纯过滤 `find()`、`recall`、`grep` 和 `glob` 不受影响。事件召回阶段由向量引擎将原向量分乘以 `time_score`；响应中的 `score` 是最终检索分数，开启模型 rerank 时使用模型分。context 模式按最终分组装候选。保护期内 `time_score` 为 1，原分不变；时间距离与 VikingDB 指数衰减算子一致，取时间戳与请求时间的绝对差。list 响应中的 event 结果额外返回 `origin_score` 和 `time_score`，CLI 分别展示为 semantic、time 和 final 分。时间取自已有索引的 `updated_at` 字段，无需重新索引或改写时间戳；本地计算遇到缺失或非法时间时保持原分；云端使用索引中的日期时间字段和后处理算子。衰减曲线由服务端内部维护，调用方只需按请求传入保护期，无需修改 `ov.conf` 或 `ovcli.conf`。
 
@@ -453,6 +454,19 @@ curl -X POST http://localhost:1933/api/v1/search/search \
     -d '{
         "query": "how to implement OAuth 2.0 authorization code flow"
 }'
+```
+
+**关键词检索**
+```bash
+curl -X POST http://localhost:1933/api/v1/search/search \
+    -H "Content-Type: application/json" \
+    -H "X-API-Key: your-key" \
+    -d '{
+        "query": "hnsw",
+        "search_type": "keywords",
+        "target_uri": "viking://resources/docs",
+        "limit": 10
+    }'
 ```
 
 **图片搜索**
@@ -563,6 +577,9 @@ openviking search "recent decisions" --context-type memory --level 2 \
 
 # 不带会话的搜索（仍进行意图分析）
 openviking search "how to implement OAuth 2.0 authorization code flow"
+
+# BM25 关键词检索
+openviking search "SearchByKeywords" --search-type keywords --uri "viking://resources/docs"
 
 # 限定层级范围（仅 L0）
 openviking search "best practices" --level 0

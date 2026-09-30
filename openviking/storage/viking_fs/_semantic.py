@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional, Union
 
 from openviking.core.context import ContextLevel
 from openviking.core.retrieval_targets import resolve_retrieval_targets
+from openviking.core.retrieval_types import SearchType
 from openviking.server.error_mapping import is_not_found_error, map_exception
 from openviking.server.identity import RequestContext
 from openviking.storage.abstract_overview import (
@@ -202,6 +203,7 @@ class _SemanticMixin:
         level: Optional[List[int]] = None,
         image_url: Optional[str] = None,
         events_time_decay_protection: Optional[str] = None,
+        search_type: SearchType = "semantic",
     ):
         """Semantic search.
 
@@ -271,7 +273,7 @@ class _SemanticMixin:
             raise RuntimeError("Vector store not initialized. Call OpenViking.initialize() first.")
 
         embedder = self._get_embedder(real_ctx)
-        if not embedder:
+        if search_type == "semantic" and not embedder:
             raise RuntimeError("Embedder not configured.")
 
         retriever = HierarchicalRetriever(
@@ -306,6 +308,7 @@ class _SemanticMixin:
             level=level,
             events_time_decay_protection=events_time_decay_protection,
             request_now=request_now,
+            search_type=search_type,
         )
 
         # Convert QueryResult to FindResult
@@ -398,6 +401,7 @@ class _SemanticMixin:
         level: Optional[List[int]] = None,
         image_url: Optional[str] = None,
         events_time_decay_protection: Optional[str] = None,
+        search_type: SearchType = "semantic",
     ):
         """Complex search with session context.
 
@@ -525,6 +529,7 @@ class _SemanticMixin:
                 level=level,
                 events_time_decay_protection=events_time_decay_protection,
                 request_now=request_now,
+                search_type=search_type,
             )
 
         query_results = await asyncio.gather(*[_execute(tq) for tq in typed_queries])

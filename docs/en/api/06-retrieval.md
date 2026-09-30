@@ -1,6 +1,6 @@
 # Retrieval
 
-OpenViking provides multiple retrieval methods, including simple vector similarity search, intelligent retrieval with session context, regex pattern matching, and file pattern matching.
+OpenViking provides multiple retrieval methods, including simple vector similarity search, keyword search, intelligent retrieval with session context, regex pattern matching, and file pattern matching.
 
 ## find vs search
 
@@ -390,6 +390,7 @@ The `search()` method adds session context understanding and intent analysis cap
 |-----------|------|----------|---------|-------------|
 | query | str | No | "" | Search query string. Required unless `image_url` is provided |
 | image_url | str | No | None | Image query as a `data:image/...;base64,...`, `http(s)://`, or `viking://` URI. Requires a multimodal embedding model |
+| search_type | `"semantic"` \| `"keywords"` | No | `"semantic"` | Retrieval type. `semantic` uses embeddings and vector recall; `keywords` uses BM25 keyword recall |
 | target_uri | str \| List[str] | No | "" | Limit search to specific URI prefix |
 | session | Session | No | None | Session for context-aware search (SDK) |
 | session_id | str | No | None | Session ID for context-aware search (HTTP) |
@@ -407,7 +408,7 @@ The `search()` method adds session context understanding and intent analysis cap
 | read_content | bool | No | False | Read each final matched URI with the visible-content read semantics and inline the result as `content`. Individual read failures leave the hit unchanged. Only supported by `mode="list"`. |
 | telemetry | bool \| object | No | False | Attach telemetry data to response |
 
-`search()` uses the same target resolution and explicit tag filtering rules as `find()`, including the peer collection filter selected by `X-OpenViking-Actor-Peer` or SDK `actor_peer_id`. When `image_url` is provided, `search()` uses direct image retrieval and skips session query planning.
+`search()` uses the same target resolution and explicit tag filtering rules as `find()`, including the peer collection filter selected by `X-OpenViking-Actor-Peer` or SDK `actor_peer_id`. When `image_url` is provided, `search()` uses direct image retrieval and skips session query planning. `keywords` requires a non-empty text query, does not support images, and requires a remote VikingDB backend with a full-text index.
 
 Event time decay applies to results tagged `memory_type=events` in semantic `find()` and both `search(mode="list")` and `search(mode="context")`. Memory extraction writes this tag on user/peer event L2 records; retrieval identifies events by the tag rather than inferring the type from a URI or level. Untagged/non-event results, query-less filter-only `find()`, `recall`, `grep`, and `glob` are unaffected. During event recall, the vector engine multiplies the original vector score by `time_score`. List responses expose this recall-stage vector score as `origin_score` and the factor as `time_score`; `score` is the final retrieval score, which may come from model rerank. Context mode uses that final score while assembling its candidates. The CLI labels list-result scores as semantic, time, and final scores. Inside the protection period `time_score` is 1, so the original score is unchanged. Time distance follows the VikingDB exponential decay operator, using the absolute difference from the request time. Time is read from the existing indexed `updated_at` field; no reindex or timestamp rewrite is required. Local fusion preserves the original score for missing or invalid timestamps; cloud fusion uses the indexed date-time field and the backend operator. The curve is owned by the server; callers only provide the per-request protection period. No `ov.conf` or `ovcli.conf` change is required.
 
@@ -451,6 +452,19 @@ curl -X POST http://localhost:1933/api/v1/search/search \
     -d '{
         "query": "how to implement OAuth 2.0 authorization code flow"
 }'
+```
+
+**Keyword Search**
+```bash
+curl -X POST http://localhost:1933/api/v1/search/search \
+    -H "Content-Type: application/json" \
+    -H "X-API-Key: your-key" \
+    -d '{
+        "query": "hnsw",
+        "search_type": "keywords",
+        "target_uri": "viking://resources/docs",
+        "limit": 10
+    }'
 ```
 
 **Image Search**
@@ -561,6 +575,9 @@ openviking search "recent decisions" --context-type memory --level 2 \
 
 # Search without session (still performs intent analysis)
 openviking search "how to implement OAuth 2.0 authorization code flow"
+
+# BM25 keyword retrieval
+openviking search "SearchByKeywords" --search-type keywords --uri "viking://resources/docs"
 
 # Limit to specific level(s) (L0 only)
 openviking search "best practices" --level 0

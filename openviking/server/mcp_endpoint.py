@@ -43,6 +43,7 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 
 from openviking.core.path_variables import resolve_path_variables
 from openviking.core.retrieval_targets import default_target_directories
+from openviking.core.retrieval_types import SearchType
 from openviking.core.uri_validation import (
     validate_content_target_uri,
     validate_request_viking_uri,
@@ -399,6 +400,7 @@ _MCP_CONTEXT_ONLY_ALIASES = {
 @mcp.tool(annotations=_DESTRUCTIVE_TOOL_ANNOTATIONS)
 async def search(
     query: str,
+    search_type: SearchType = "semantic",
     target_uri: str = "",
     session_id: Optional[str] = None,
     limit: int = 10,
@@ -422,7 +424,7 @@ async def search(
     read_content: bool = False,
     events_time_decay_protection: Optional[str] = None,
 ) -> str:
-    """Deep semantic retrieval with optional session context and intent analysis.
+    """Retrieval with optional session context and intent analysis.
 
     ``mode="list"`` returns ranked memories, resources, and skills with URI,
     abstract, and score. ``mode="context"`` returns an injection-ready,
@@ -436,6 +438,8 @@ async def search(
         raise InvalidArgumentError(str(exc)) from exc
     service = get_service()
     ctx = _get_ctx()
+    if search_type == "keywords" and not query.strip():
+        raise InvalidArgumentError("query must not be empty when search_type='keywords'")
     context_filter = _resolve_context_type_filter(context_type)
     if mode == "context":
         if read_content:
@@ -460,6 +464,7 @@ async def search(
             ctx=ctx,
             params=AssembleParams(
                 query=query,
+                search_type=search_type,
                 limit=limit,
                 score_threshold=min_score,
                 filter=context_filter,
@@ -528,6 +533,7 @@ async def search(
         await session.load()
     result = await service.search.search(
         query=query,
+        search_type=search_type,
         ctx=ctx,
         target_uri=target_uri,
         session=session,
