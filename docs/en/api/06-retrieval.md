@@ -103,9 +103,11 @@ class MatchedContext:
     abstract: str                    # L0 content
     overview: Optional[str]          # L1 overview (optional for non-leaf nodes)
     category: str                    # Category
-    score: float                     # Relevance score (0-1)
+    score: float                     # Relevance score; scale depends on the retrieval pipeline
     match_reason: str                # Why this matched
 ```
+
+`score` is not universally bounded to `[0, 1]`: its scale depends on the backend, metric and postprocessing. See [observer.vikingdb](18-observer.md#observer-vikingdb) for the runtime metric, pure-dense scale and its scope.
 
 #### 3. Usage Examples
 

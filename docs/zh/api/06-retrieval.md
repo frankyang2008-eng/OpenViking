@@ -104,9 +104,11 @@ class MatchedContext:
     abstract: str                    # L0 内容
     overview: Optional[str]          # L1 概览（非叶子节点时可选）
     category: str                    # 分类
-    score: float                     # 相关性分数 (0-1)
+    score: float                     # 相关性分数，尺度取决于检索流程
     match_reason: str                # 匹配原因
 ```
+
+`score` 并非总在 `[0, 1]` 内，其尺度取决于后端、metric 和后处理。运行时 metric、纯 dense 尺度及其适用范围见 [observer.vikingdb](18-observer.md#observer-vikingdb)。
 
 #### 3. 使用示例
 

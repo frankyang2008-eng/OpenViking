@@ -51,6 +51,12 @@ from openviking_cli.utils.config.vectordb_config import DEFAULT_INDEX_NAME, Vect
 
 logger = get_logger(__name__)
 
+_LOCAL_PURE_DENSE_SCORE_SCALES = {
+    "cosine": "cosine_affine_0_1",
+    "ip": "inner_product",
+    "l2": "one_minus_squared_l2",
+}
+
 RETRIEVAL_OUTPUT_FIELDS = [
     "uri",
     "level",
@@ -237,8 +243,9 @@ class _AsyncVectorAdapter:
             ) or {}
             if self._adapter.mode in {"local", "cuvs"}:
                 index_meta = collection.get_index_meta_data(index_name) or {}
-                if "ScalarIndex" in index_meta:
-                    meta["ScalarIndex"] = index_meta["ScalarIndex"]
+                for key in ("VectorIndex", "ScalarIndex"):
+                    if key in index_meta:
+                        meta[key] = index_meta[key]
             return meta
 
         return await self.run(_get)
@@ -510,12 +517,40 @@ class _SingleAccountBackend:
     async def get_collection_info(self) -> Optional[Dict[str, Any]]:
         if not await self.collection_exists():
             return None
-        config = self._collection_config
+        meta = (
+            await self._async_adapter.collection_meta(self._index_name)
+            if self._mode in {"local", "cuvs"}
+            else {}
+        )
+        vector_index = meta.get("VectorIndex") or {}
+        distance_metric = vector_index.get("Distance")
+        if not isinstance(distance_metric, str):
+            distance_metric = None
+        vector_dim = (
+            vector_index.get("Dimension")
+            or self._collection_config.get("vector_dim")
+            or next(
+                (
+                    field.get("Dim")
+                    for field in meta.get("Fields", [])
+                    if field.get("FieldType") == "vector"
+                ),
+                None,
+            )
+        )
         return {
             "name": self._collection_name,
-            "vector_dim": config.get("vector_dim"),
+            "backend": self._mode,
+            "index_name": self._index_name,
+            "vector_dim": vector_dim,
             "count": await self.count(),
             "status": "active",
+            "distance_metric": distance_metric,
+            "pure_dense_score_scale": (
+                _LOCAL_PURE_DENSE_SCORE_SCALES.get(distance_metric, "backend_defined")
+                if self._mode == "local" and distance_metric is not None
+                else "backend_defined"
+            ),
         }
 
     @_backend_operation
