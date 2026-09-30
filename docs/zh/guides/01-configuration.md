@@ -1036,9 +1036,18 @@ PDF 解析配置。支持三种策略：`local`（本地 pdfplumber）、`mineru
 - `api_base` 必须带 `/typesafe` 后缀；`https://ai-gateway.vercel.sh/v1` 是
   Vercel 自有的 evaluate 协议，适配器不支持。
 
-Jev 适配器将 query 和候选文档作为结构化 System One `state`，并为每个候选
-提出一个独立的 Noul 相关性问题。每个问题返回的 yes 概率就是该文档的 rerank
-分数。所有问题在一次请求中并行计算，各文档分数互不竞争，也不要求总和为 1。
+Jev 适配器将 query 和候选文档作为共享的 System One `state`，支持两种模式：
+
+- `noul`（默认）：为每篇文档提出独立的相关性问题，返回的 yes 概率作为分数。
+  所有问题放在一次 HTTP 请求中，各文档分数不要求总和为 1。
+- `choice`：用一个问题横向比较所有候选文档，以 `candidate_{index}` 对应输入
+  下标，并按原文档顺序读取 `probabilities` 作为分数。
+
+通过 `rerank.mode` 选择模式；未配置或配置为 `null` 时默认使用 `noul`。Choice
+返回候选池内总和为 1 的相对概率，不是绝对相关概率，不适合使用绝对分数阈值。
+启用 Choice 时建议同时设置 `"threshold": 0`。MCP `find` 和 `search` 的
+`min_score` 会覆盖该配置，因此通过 MCP 使用 Choice 时还需要显式传入
+`min_score=0`。
 
 **参数**
 
@@ -1051,6 +1060,7 @@ Jev 适配器将 query 和候选文档作为结构化 System One `state`，并�
 | `api_key` | str | API Key（用于 `openai`、`cohere` 或 `jev` 提供方） |
 | `api_base` | str | 接口地址（用于 `openai` 或 `jev`；Jev 默认为 `https://api.typesafe.ai`，Vercel 使用 `https://ai-gateway.vercel.sh/typesafe`） |
 | `model` | str | 模型名称（用于 OpenAI 兼容、LiteLLM 或 `jev` 提供方） |
+| `mode` | `"noul"`、`"choice"` 或 `null` | Jev Rerank 模式；省略或 `null` 时使用 `"noul"` |
 | `timeout` | float | HTTP Rerank provider（包括 Jev）的请求超时时间，单位为秒。默认：`30.0` |
 | `max_input_tokens` | int | 每个 query-document 对发送给 reranker 的最大估算原始文本 token 数；超长输入会保留开头和结尾。`0` 表示不截断。默认：`0` |
 | `log_payloads` | bool | 记录完整 rerank 请求和响应；日志可能包含 query 和文档内容。默认：`false` |
@@ -1062,7 +1072,7 @@ Jev 适配器将 query 和候选文档作为结构化 System One `state`，并�
 - `cohere`: Cohere Rerank API
 - `openai`: OpenAI 兼容的 Rerank 接口
 - `litellm`: LiteLLM Rerank 接口
-- `jev`: Jev (TypeSafe System One) 结构化判定接口，为每篇文档独立计算 Noul 相关性分数
+- `jev`: Jev (TypeSafe System One) 结构化判定接口，支持 Choice 横向比较和 Noul 独立评分
 
 如果未配置 Rerank，搜索仅使用向量相似度。
 
