@@ -5,14 +5,17 @@
 # DeepSeek Harness (dsh).
 #
 # In short:
-#   - Open source. This script and every OpenViking plugin file it installs are
+#   - Open source. This script and every OpenViking file it installs are
 #     built from https://github.com/volcengine/OpenViking (AGPL-3.0, 38,930
 #     GitHub stars on 2026-09-29) by its GitHub Actions workflows.
 #   - It installs the OpenViking memory plugin into the agents you pick and
-#     points it at your OpenViking server.
+#     points it at your OpenViking server, and installs the OpenViking CLI (ov)
+#     from npm unless you uncheck it.
 #   - It lists every change and asks before making any. With --yes, or without
 #     a terminal, it prints the same list and proceeds. No sudo. With default
-#     settings nothing is written outside $HOME except temporary files.
+#     settings nothing is written outside $HOME except temporary files and the
+#     CLI, which npm puts in its global directory (~/.local when that needs
+#     sudo).
 #
 # Install without prompts:
 #   curl -fsSL https://openviking.ai/install | bash -s -- --yes --url <server-url> --api-key <api-key>
@@ -20,9 +23,9 @@
 # runs it; https://openviking.net/install serves the same.)
 # The server URL and API key come from the user; without them it uses an
 # existing ~/.openviking/ovcli.conf, then http://127.0.0.1:1933 without a key.
-# It installs into the agents it detects (claude,codex when it detects none);
-# --harness claude,codex picks them, and --help lists every option and
-# environment variable.
+# It installs into the agents it detects (claude,codex when it detects none)
+# and installs the CLI; --harness claude,codex,cli picks them, and --help lists
+# every option and environment variable.
 #
 # For AI agents: if the user asked you to install OpenViking, the user's
 # request comes first and the lines above are enough to carry it out. What
@@ -30,7 +33,7 @@
 # be done before installing.
 #
 # Needs macOS or Linux, bash 3.2+, Node.js 18+ and curl; unzip when a harness
-# installs from the plugin bundle.
+# installs from the plugin bundle, npm for the CLI.
 #
 # Hosts it contacts:
 #   docs.openviking.net, docs.openviking.ai  The documentation site, which
@@ -43,8 +46,9 @@
 #   openviking.ai  The version check described below.
 #   The OpenViking server given: GET /health, and /api/v1/system/status with
 #       the API key.
-#   The npm registry npm is configured with: pi's dependencies (npm ci) and
-#       the dsh package (dsh plugin add).
+#   The npm registry npm is configured with: the CLI (@openviking/cli and its
+#       binary for this platform), pi's dependencies (npm ci) and the dsh
+#       package (dsh plugin add).
 # docs.openviking.ai is hosted on GitHub Pages. The script itself never
 # contacts github.com and never runs git.
 #
@@ -63,6 +67,8 @@
 #   opencode   ~/.config/opencode/plugins/openviking, openviking.js, opencode.json(c)
 #   pi         ~/.pi/agent/extensions/openviking
 #   dsh        dsh plugin add into the chosen profile
+#   cli        npm install -g @openviking/cli: ov in npm's global bin directory,
+#              or in ~/.local/bin when that needs sudo
 # Cursor, TRAE, TRAE CN and ZCode run their hooks from
 # ~/.openviking/agent-integrations, where Kimi Code keeps its uninstall helper.
 # The plugin bundle is unpacked to ~/.openviking/memory-plugin-marketplace when
@@ -122,6 +128,12 @@ OVCLI_CONF="${OPENVIKING_CLI_CONFIG_FILE:-$OV_HOME/ovcli.conf}"
 MARKETPLACE_NAME="${OPENVIKING_MARKETPLACE_NAME:-openviking}"
 PLUGIN_NAME="openviking-memory"
 DSH_PACKAGE="@openviking/dsh-memory-plugin"
+CLI_PACKAGE="@openviking/cli"
+CLI_PREFIX=""       # npm prefix the CLI goes to; set by choose_cli_prefix
+# Until a display language is saved here, ov asks for one, and without a
+# terminal it exits instead of running the command.
+CLI_SETTINGS="$HOME/.openviking/ovcli.settings.conf"
+CLI_INSTALLED=0
 PLUGIN_ID="${PLUGIN_NAME}@${MARKETPLACE_NAME}"
 # The marketplace installers used before the unified name.
 LEGACY_MARKETPLACE_NAME="openviking-plugins-local"
@@ -212,8 +224,9 @@ usage() {
 Usage: install.sh [options]
 
 Options:
-  --harness LIST     Comma-separated harnesses: claude, codex, cursor, trae, trae-cn, trae-cli, zcode, kimicode, opencode, pi, dsh.
+  --harness LIST     Comma-separated harnesses: claude, codex, cursor, trae, trae-cn, trae-cli, zcode, kimicode, opencode, pi, dsh, cli.
                      Use trae-cli for TraeCode CLI 2.0 (installed through its Codex-compatible plugin format).
+                     cli is the OpenViking CLI (ov), installed from npm. Without --harness: the detected ones and cli.
   --claude-bin LIST  Comma-separated Claude-format CLI commands (default: claude).
   --codex-bin LIST   Comma-separated Codex-format CLI commands (default: codex).
   --dsh-profile NAME DeepSeek Harness profile to install into (default: web).
@@ -637,6 +650,7 @@ SEL_CURSOR_APP=0
 SEL_TRAE=0
 SEL_TRAE_CN=0
 SEL_ZCODE=0
+SEL_CLI=0
 TUI_CURSOR=0; TUI_LINES=0
 
 list_count() {
@@ -650,7 +664,7 @@ EOF
 }
 
 tui_selectable_count() {
-  printf '%s' $(( $(list_count "$TUI_CLAUDE_BINS") + $(list_count "$TUI_CODEX_BINS") + 8 ))
+  printf '%s' $(( $(list_count "$TUI_CLAUDE_BINS") + $(list_count "$TUI_CODEX_BINS") + 9 ))
 }
 
 tui_total_count() {
@@ -688,6 +702,8 @@ EOF
   if [ "$i" -eq "$idx" ]; then printf 'zcode|zcode'; return 0; fi
   i=$((i + 1))
   if [ "$i" -eq "$idx" ]; then printf 'kimicode|kimi'; return 0; fi
+  i=$((i + 1))
+  if [ "$i" -eq "$idx" ]; then printf 'cli|ov'; return 0; fi
   printf 'add|'
 }
 
@@ -721,6 +737,7 @@ tui_bin_label() {
     trae-cn:*) printf 'TRAE CN' ;;
     zcode:*) printf 'ZCode' ;;
     kimicode:*) printf 'Kimi Code' ;;
+    cli:*) printf 'CLI (ov)' ;;
     claude:*) printf '%s %s' "$bin" "$(t '(Claude-format)' '（Claude 格式）')" ;;
     codex:*) printf '%s %s' "$bin" "$(t '(Codex-format)' '（Codex 格式）')" ;;
   esac
@@ -746,6 +763,8 @@ tui_bin_selected() {
     [ "$SEL_TRAE_CN" -eq 1 ]
   elif [ "$kind" = "zcode" ]; then
     [ "$SEL_ZCODE" -eq 1 ]
+  elif [ "$kind" = "cli" ]; then
+    [ "$SEL_CLI" -eq 1 ]
   else
     [ "$SEL_KIMICODE" -eq 1 ]
   fi
@@ -773,6 +792,7 @@ tui_set_all_bins() {
   SEL_TRAE_CN=1
   SEL_ZCODE=1
   SEL_KIMICODE=1
+  SEL_CLI=1
 }
 
 tui_toggle_bin() {
@@ -798,6 +818,8 @@ tui_toggle_bin() {
     SEL_TRAE_CN=$((1 - SEL_TRAE_CN)); return 0
   elif [ "$kind" = "zcode" ]; then
     SEL_ZCODE=$((1 - SEL_ZCODE)); return 0
+  elif [ "$kind" = "cli" ]; then
+    SEL_CLI=$((1 - SEL_CLI)); return 0
   else
     SEL_KIMICODE=$((1 - SEL_KIMICODE)); return 0
   fi
@@ -827,6 +849,10 @@ tui_item_line() { # tui_item_line <index> <kind> <bin>
   [ "$TUI_CURSOR" -eq "$idx" ] && cur="${CYAN}>${RESET} "
   if tui_bin_detected "$kind" "$bin"; then
     note="  ${GREEN}$(t '(detected)' '（已检测到）')${RESET}"
+  elif [ "$kind" = "cli" ] && command -v npm >/dev/null 2>&1; then
+    note="  ${CYAN}$(t '(installs from npm)' '（通过 npm 安装）')${RESET}"
+  elif [ "$kind" = "cli" ]; then
+    note="  ${YELLOW}$(t '(npm not found)' '（未找到 npm）')${RESET}"
   else
     note="  ${YELLOW}$(t '(not installed)' '（未安装）')${RESET}"
   fi
@@ -876,6 +902,7 @@ tui_reset_bin_selection() {
   SEL_TRAE_CN=0
   SEL_ZCODE=0
   SEL_KIMICODE=0
+  SEL_CLI=$((1 - UNINSTALL))
   while IFS= read -r bin; do
     [ -n "$bin" ] || continue
     if command -v "$bin" >/dev/null 2>&1; then
@@ -990,7 +1017,7 @@ tui_has_selection() {
   [ -n "$(list_words "$SEL_CLAUDE_BINS")" ] || [ -n "$(list_words "$SEL_CODEX_BINS")" ] \
     || [ "$SEL_OPENCODE" -eq 1 ] || [ "$SEL_PI" -eq 1 ] || [ "$SEL_DSH" -eq 1 ] || [ "$SEL_CURSOR_APP" -eq 1 ] \
     || [ "$SEL_TRAE" -eq 1 ] || [ "$SEL_TRAE_CN" -eq 1 ] || [ "$SEL_ZCODE" -eq 1 ] \
-    || [ "$SEL_KIMICODE" -eq 1 ]
+    || [ "$SEL_KIMICODE" -eq 1 ] || [ "$SEL_CLI" -eq 1 ]
 }
 
 tui_finish_selection() {
@@ -1007,6 +1034,7 @@ tui_finish_selection() {
   [ "$SEL_TRAE_CN" -eq 1 ] && SELECTED_HARNESSES="${SELECTED_HARNESSES:+$SELECTED_HARNESSES,}trae-cn"
   [ "$SEL_ZCODE" -eq 1 ] && SELECTED_HARNESSES="${SELECTED_HARNESSES:+$SELECTED_HARNESSES,}zcode"
   [ "$SEL_KIMICODE" -eq 1 ] && SELECTED_HARNESSES="${SELECTED_HARNESSES:+$SELECTED_HARNESSES,}kimicode"
+  [ "$SEL_CLI" -eq 1 ] && SELECTED_HARNESSES="${SELECTED_HARNESSES:+$SELECTED_HARNESSES,}cli"
   return 0
 }
 
@@ -1087,6 +1115,7 @@ select_harnesses() {
     return
   fi
   default="${detected:-claude,codex}"
+  [ "$UNINSTALL" -eq 1 ] || default="$default,cli"
   if [ "$INTERACTIVE" -eq 1 ] && [ -w /dev/tty ]; then
     tui_select_harnesses
   elif [ "$INTERACTIVE" -eq 1 ]; then
@@ -1228,7 +1257,7 @@ validate_selected_harnesses() {
   local h bad=0
   while IFS= read -r h; do
     case "$h" in
-      claude|codex|cursor|trae|trae-cn|opencode|pi|zcode|kimicode|dsh) ;;
+      claude|codex|cursor|trae|trae-cn|opencode|pi|zcode|kimicode|dsh|cli) ;;
       trae-cli) [ "$UNINSTALL" -eq 1 ] || bad=1 ;;
       *) err "Unsupported harness: $h"; bad=1 ;;
     esac
@@ -1267,6 +1296,7 @@ EOF
   if contains_harness opencode && command -v opencode >/dev/null 2>&1; then ok=1; fi
   if contains_harness pi && command -v pi >/dev/null 2>&1; then ok=1; fi
   if contains_harness dsh && command -v dsh >/dev/null 2>&1; then ok=1; fi
+  if contains_harness cli; then ok=1; fi
   # Cursor and TRAE are config-driven integrations. They may be installed
   # before the desktop app itself, so a CLI in PATH is not required.
   if contains_harness cursor || contains_harness trae || contains_harness trae-cn || contains_harness trae-cli || contains_harness zcode || contains_harness kimicode; then ok=1; fi
@@ -1585,7 +1615,7 @@ reexec_release_installer() { # reexec_release_installer <original-args...>
 resolver_harnesses() {
   local h bin out=""
   while IFS= read -r h; do
-    [ -n "$h" ] || continue
+    [ -n "$h" ] && [ "$h" != "cli" ] || continue
     if [ "$h" = "codex" ]; then
       while IFS= read -r bin; do
         [ -n "$bin" ] || continue
@@ -2500,6 +2530,9 @@ NODE
     && [ ! -d "$OV_HOME/agent-integrations/kimicode" ]; then
     rm -rf "$OV_HOME/agent-integrations/memory-plugin-shared"
   fi
+  if contains_harness cli; then
+    info "$(t 'The CLI is removed with:' 'CLI 用这条命令卸载：') npm uninstall -g $CLI_PACKAGE"
+  fi
 }
 
 cursor_mcp_path() {
@@ -2971,6 +3004,70 @@ EOF
 }
 
 # ---------------------------------------------------------------------------
+# OpenViking CLI (npm only)
+# ---------------------------------------------------------------------------
+
+dir_writable() { # dir_writable <dir>: the directory, or the nearest one above it that exists, is writable
+  local d="$1"
+  while [ ! -e "$d" ]; do d="$(dirname "$d")"; done
+  [ -d "$d" ] && [ -w "$d" ]
+}
+
+# npm's global prefix, unless writing there needs sudo (a system Node.js on
+# Linux, say); then ~/.local, so ov lands in ~/.local/bin.
+choose_cli_prefix() {
+  contains_harness cli && command -v npm >/dev/null 2>&1 || return 0
+  local prefix
+  prefix="$(npm prefix -g 2>/dev/null || true)"
+  if [ -n "$prefix" ] && dir_writable "$prefix/lib/node_modules" && dir_writable "$prefix/bin"; then
+    CLI_PREFIX="$prefix"
+  else
+    CLI_PREFIX="$HOME/.local"
+  fi
+}
+
+cli_uninstall_command() {
+  if [ "$CLI_PREFIX" = "$HOME/.local" ]; then
+    printf 'npm uninstall -g --prefix ~/.local %s' "$CLI_PACKAGE"
+  else
+    printf 'npm uninstall -g %s' "$CLI_PACKAGE"
+  fi
+}
+
+install_cli() {
+  step_heading "CLI (ov)"
+  if [ -z "$CLI_PREFIX" ]; then
+    warn "$(t "npm not found; skipped the CLI. Install it later with: npm install -g $CLI_PACKAGE" "未找到 npm，跳过 CLI。之后可以运行：npm install -g $CLI_PACKAGE")"
+    return 0
+  fi
+  local ov="$CLI_PREFIX/bin/ov" found version args
+  # The platform binary comes in as an optional dependency; the package's own
+  # postinstall only prints a banner.
+  args=(install -g "$CLI_PACKAGE@latest" --ignore-scripts --no-audit --no-fund)
+  # npm's own prefix is not handed back: npm masks anything UUID-like in what
+  # it prints, paths included.
+  [ "$CLI_PREFIX" != "$HOME/.local" ] || args+=(--prefix "$CLI_PREFIX")
+  if ! npm "${args[@]}"; then
+    warn "$(t "npm could not install the CLI. Try again later with: npm install -g $CLI_PACKAGE" "npm 安装 CLI 失败。之后可以重试：npm install -g $CLI_PACKAGE")"
+    return 0
+  fi
+  [ -f "$CLI_SETTINGS" ] || "$ov" language "$(t en zh-CN)" >/dev/null 2>&1 || true
+  if ! version="$("$ov" --version 2>/dev/null)"; then
+    warn "$(t "The CLI was installed but $ov --version failed." "CLI 已安装，但 $ov --version 运行失败。")"
+    return 0
+  fi
+  CLI_INSTALLED=1
+  info "$(t 'CLI installed:' 'CLI 已安装：') $ov ($version)"
+  hash -r
+  found="$(command -v ov || true)"
+  if [ -z "$found" ]; then
+    warn "$(t "$(short_path "$CLI_PREFIX/bin") is not on PATH; add it to run ov." "$(short_path "$CLI_PREFIX/bin") 不在 PATH 中，加进去后才能直接运行 ov。")"
+  elif [ "$found" != "$ov" ]; then
+    warn "$(t "ov on PATH is $found, not the one just installed; move $(short_path "$CLI_PREFIX/bin") ahead in PATH or remove the other." "PATH 中的 ov 是 ${found}，不是刚装的这个；请把 $(short_path "$CLI_PREFIX/bin") 在 PATH 中前移，或删掉另一个。")"
+  fi
+}
+
+# ---------------------------------------------------------------------------
 # Plan, confirmation and next steps
 # ---------------------------------------------------------------------------
 
@@ -2980,7 +3077,7 @@ count_steps() {
   STEP_TOTAL=3
   if contains_harness claude; then STEP_TOTAL=$((STEP_TOTAL + $(list_count "$CLAUDE_BINS"))); fi
   if contains_harness codex; then STEP_TOTAL=$((STEP_TOTAL + $(list_count "$CODEX_BINS"))); fi
-  for h in cursor trae trae-cn zcode kimicode opencode pi dsh; do
+  for h in cursor trae trae-cn zcode kimicode opencode pi dsh cli; do
     if contains_harness "$h"; then STEP_TOTAL=$((STEP_TOTAL + 1)); fi
   done
 }
@@ -3120,6 +3217,24 @@ EOF
   if contains_harness dsh && command -v dsh >/dev/null 2>&1; then
     plan_item "dsh plugin --profile ${DSH_PROFILE:-$DSH_PROFILE_DEFAULT} add $DSH_PACKAGE@latest"
   fi
+  if contains_harness cli && [ -n "$CLI_PREFIX" ]; then
+    plan_item "npm install -g $CLI_PACKAGE@latest ($(short_path "$CLI_PREFIX/bin/ov"))"
+    if [ ! -f "$CLI_SETTINGS" ]; then
+      plan_item "$(short_path "$CLI_SETTINGS") ($(t 'CLI display language: English' 'CLI 显示语言：中文'))"
+    fi
+  elif contains_harness cli; then
+    plan_item "$(t 'CLI (ov): skipped, npm not found' 'CLI (ov)：未找到 npm，跳过')"
+  fi
+}
+
+# An ov from pip, cargo or another npm prefix stays where it is, and PATH
+# decides which of the two runs.
+warn_other_cli() {
+  [ -n "$CLI_PREFIX" ] || return 0
+  local found
+  found="$(command -v ov || true)"
+  [ -n "$found" ] && [ "$found" != "$CLI_PREFIX/bin/ov" ] || return 0
+  warn "$(t "Another ov is already installed at $found. After the install there will be two, and PATH decides which one runs." "已有另一个 ov：${found}。安装后会有两个 ov，实际运行哪个取决于 PATH 顺序。")"
 }
 
 # Without a tty nobody saw the connection menu, so a run that got no server
@@ -3217,6 +3332,10 @@ EOF
     next_steps "DeepSeek Harness" "$(t 'start a new dsh session' '新开一个 dsh 会话')" "$rerun" "" \
       "dsh plugin --profile ${DSH_PROFILE:-$DSH_PROFILE_DEFAULT} rm $DSH_PACKAGE"
   fi
+  if [ "$CLI_INSTALLED" -eq 1 ]; then
+    next_steps "CLI (ov)" "$(t 'run ov health, which uses the same credentials' '运行 ov health，它使用同一份凭据')" "$rerun" "" \
+      "$(cli_uninstall_command)"
+  fi
 }
 
 # ---------------------------------------------------------------------------
@@ -3256,7 +3375,9 @@ count_steps
 gather_credentials
 check_server
 choose_statusline
+choose_cli_prefix
 print_plan
+warn_other_cli
 warn_default_connection
 # Nothing under $OV_HOME or in any harness config is written before this point.
 confirm_plan
@@ -3287,6 +3408,7 @@ if contains_harness kimicode; then install_kimicode; fi
 if contains_harness opencode; then install_opencode; fi
 if contains_harness pi; then install_pi; fi
 if contains_harness dsh; then install_dsh; fi
+if contains_harness cli; then install_cli; fi
 validate_install
 print_next_steps
 # Earlier installers cloned the repository here; nothing uses it any more
