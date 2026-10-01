@@ -65,7 +65,7 @@ Debugging: set `OPENVIKING_DEBUG=1` to write JSON lines to `~/.openviking/logs/a
 
 Agent Plugins 1.0 covers skills and MCP servers only — hooks, commands, and agents are deliberately outside the version, because their semantics differ too much between clients. So this package is the **portable recall + write surface**, driven by the model rather than by lifecycle events: automatic conversation capture and automatic pre-prompt recall are out of scope here.
 
-The bundled `openviking-memory` skill compensates by teaching the model the full loop itself — recall at task start with `find` / `search` + `read` (using `search` with `mode="context"` when assembled context is useful), then persist durable facts with `remember` / `write` / `edit`, with priority and safety rules for using retrieved memory.
+The bundled `openviking-memory` skill compensates by teaching the model the full loop itself — recall at task start with `find` / `search` + `read` (using `search` with `mode="context"` when assembled context is useful), then persist durable facts with `remember` / `write` / `edit` (`write` / `edit` only for files the model authors, never to store a file, URL, or skill the user hands over), with priority and safety rules for using retrieved memory.
 
 The bundled `ov-experience-memory` skill has the model search `viking://~/memories/experiences` before executable work and read the Experience files that apply. Here it is retrieval-only: with no session capture, its reads are not linked back to the Experience they used and produce no new trajectories. The Experience it finds comes from harnesses that do capture sessions.
 

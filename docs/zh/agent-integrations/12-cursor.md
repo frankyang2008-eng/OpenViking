@@ -20,6 +20,7 @@ curl -fsSL https://openviking.ai/install | bash
 - 生命周期 Hook：自动加载画像、按问题召回、捕获对话、提交会话并保护 `viking://` URI。
 - OpenViking MCP Server：提供 `search`、`read`、`remember`、`add_skill` 等工具；`search` 的 `mode="context"` 可返回组装后的上下文。
 - always-on Rule 和 `openviking-memory` Skill：告诉 Agent 如何使用已注入的上下文和记忆工具；另有 `openviking-skills` Skill，讲如何查找、使用、创建（`add_skill`）、共享和迁移存放在 OpenViking 里的 skill。
+- `ov-experience-memory` Skill：让 Agent 在执行类任务前检索并应用以往任务的 Experience。Cursor 只捕获文本，所以这里该 Skill 只负责检索和应用 Experience，它的读取不会关联回所用的 Experience。
 
 ## 验证
 

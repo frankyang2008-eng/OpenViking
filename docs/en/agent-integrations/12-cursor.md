@@ -20,6 +20,7 @@ Quit Cursor completely and restart it after installation.
 - Lifecycle Hooks for profile loading, prompt recall, conversation capture, session commit, and `viking://` URI protection.
 - The OpenViking MCP server with tools such as `search`, `read`, `remember`, and `add_skill`; `search` with `mode="context"` returns assembled context.
 - An always-on Rule and the `openviking-memory` Skill, which tell the Agent how to use injected context and memory tools, plus the `openviking-skills` Skill for finding, using, creating (`add_skill`), sharing, and migrating skills stored in OpenViking.
+- The `ov-experience-memory` Skill, which has the Agent search and apply prior task Experience before executable work. Cursor captures text only, so here the Skill only retrieves and applies Experience; its reads are not linked back to the Experience they used.
 
 ## Verify
 

@@ -1,6 +1,6 @@
 # DeepSeek Harness Memory Bundle
 
-Give [DeepSeek Harness](https://www.npmjs.com/package/@deepseek-ai/dsh) (`dsh`) cross-project and cross-session long-term memory. Once installed, every conversation automatically recalls relevant memories and captures new content, and the model gets the OpenViking tools and the `openviking-memory` and `openviking-skills` skills without any extra setup.
+Give [DeepSeek Harness](https://www.npmjs.com/package/@deepseek-ai/dsh) (`dsh`) cross-project and cross-session long-term memory. Once installed, every conversation automatically recalls relevant memories and captures new content, and the model gets the OpenViking tools and the `openviking-memory`, `openviking-skills`, and `ov-experience-memory` skills without any extra setup.
 
 Source: [examples/dsh-memory-plugin](https://github.com/volcengine/OpenViking/tree/main/examples/dsh-memory-plugin)
 
@@ -56,7 +56,7 @@ The bundle runs inside DSH as a Cordis plugin rather than as external hooks, so 
 
 Each DSH session maps to `dsh-<session-id>` in OpenViking, and every subagent gets its own session.
 
-The model-facing surface is the OpenViking MCP tool set, reached through the same stdio proxy the other memory integrations use and published under an `mcp__openviking__` prefix. Because that proxy runs once per profile, `mcp__openviking__remember` stores into a short-lived server-side session rather than the current one—automatic capture still records the conversation itself—and tool calls carry the actor peer resolved at startup. Set `OPENVIKING_PEER_ID` when one process serves several workspaces and tool calls need exact attribution. The bundle also ships two shared skills: `openviking-memory`, so the model knows when to search, read, and write, and `openviking-skills`, which covers finding, using, creating, sharing, and migrating skills stored in OpenViking.
+The model-facing surface is the OpenViking MCP tool set, reached through the same stdio proxy the other memory integrations use and published under an `mcp__openviking__` prefix. Because that proxy runs once per profile, `mcp__openviking__remember` stores into a short-lived server-side session rather than the current one—automatic capture still records the conversation itself—and tool calls carry the actor peer resolved at startup. Set `OPENVIKING_PEER_ID` when one process serves several workspaces and tool calls need exact attribution. The bundle also ships three shared skills: `openviking-memory`, so the model knows when to search, read, and write; `openviking-skills`, which covers finding, using, creating, sharing, and migrating skills stored in OpenViking; and `ov-experience-memory`, which retrieves and applies prior task Experience before executable work. Tool results are captured by default (`captureToolResults: true`), which lets the server link the skill's reads back to the Experience they used; with `false` the skill only retrieves and applies Experience.
 
 A filesystem tool call whose path is a `viking://` URI is blocked with a hint pointing at the right OpenViking tool. For a write or edit under a skill directory such as `viking://~/skills/<name>/`, that tool is `mcp__openviking__add_skill`, which creates or replaces a whole skill from its `SKILL.md` text. A shell command that carries a `viking://` URI still runs, and the model gets a notice suggesting the OpenViking tools, which it can ignore when the URI is intentional data.
 
@@ -84,7 +84,7 @@ Behavior knobs live in the profile's Cordis patch entry:
   config:
     recallTokenBudget: 2000
     scoreThreshold: 0.35
-    captureToolResults: false
+    captureToolResults: true
     commitTokenThreshold: 20000
 ```
 

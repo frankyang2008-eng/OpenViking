@@ -509,12 +509,12 @@ MCP `write` / REST `content/write` 的三道 guard（`content_write.py`）：可
 |---|---|---|---|---|---|
 | claude-code | ✅ 独立进程写 settings.json（段位丰富，1min TTL） | ✅ `/openviking-memory:ov`（服务状态 + 身份 + 注入溯源） | 4 个 skill（`openviking-memory`、`openviking-skills`、`ov-experience-memory`、`ov-memory-doctor`） | ✅ 行式问答 | uri-guard 不受插件开关门控 |
 | codex / trae-cli | ❌ | ❌ | 与 claude-code 相同的 4 个 skill | ✅ | README.md Testing 一节的 live 检查 |
-| cursor | ❌ | ❌ | rule（alwaysApply）+ 2 个 skill（`openviking-memory`、`openviking-skills`） | ❌（共用安装器 TUI） | 独立 uri-guard，不受插件开关控制 |
+| cursor | ❌ | ❌ | rule（alwaysApply）+ 3 个 skill（`openviking-memory`、`openviking-skills`、`ov-experience-memory`） | ❌（共用安装器 TUI） | 独立 uri-guard，不受插件开关控制 |
 | trae/trae-cn | ❌ | ❌ | 无 | ❌ | — |
 | zcode | ❌ | ❌ | 无 | ❌ | — |
-| opencode | ❌ | ❌ | 无（设计上不提供） | ✅ | v1 有 toast；v2 只写日志 |
-| dsh | ❌ | ❌ | 2 个 skill：`openviking-memory` 与 `openviking-skills`（独立的 `ctx.skills` provider） | ❌ | `ctx.provide("openvikingMemory")` 供其他 Cordis 插件二次开发 |
-| pi | ✅ `ctx.ui.setStatus` | ✅ `/viking` `/viking commit` | 无 | ✅ | e2e-live.sh |
+| opencode | ❌ | ❌ | 3 个 skill（`openviking-memory`、`openviking-skills`、`ov-experience-memory`），仅随 MCP server 提供 | ✅ | v1 有 toast；v2 只写日志 |
+| dsh | ❌ | ❌ | 3 个 skill：`openviking-memory`、`openviking-skills` 与 `ov-experience-memory`（独立的 `ctx.skills` provider） | ❌ | `ctx.provide("openvikingMemory")` 供其他 Cordis 插件二次开发 |
+| pi | ✅ `ctx.ui.setStatus` | ✅ `/viking` `/viking commit` | 3 个 skill（`openviking-memory`、`openviking-skills`、`ov-experience-memory`），经 `resources_discover` 加入 | ✅ | e2e-live.sh |
 | openclaw | ❌ | ✅ 5 个（/add-resource /add-skill /ov-search /ov-query-config /ov-recall-trace） | 3 skill 随插件分发 | ✅（key 角色探测 + 版本兼容检查 + `status` 命令） | Gateway HTTP 路由做 recall trace 可视化；feature-gate RPC；健康检查脚本 |
 | hermes | ❌ | ❌ | 无 | ✅ curses 多层菜单 | `hermes memory status`（含 env 覆盖列表）；`hermes backup` 收集 `$HOME` 下默认或环境变量指定的 `ovcli.conf`；YAML 关联的命名文件需单独备份 |
 | ov CLI | ❌ | ❌（自身即命令） | 无 | ✅ TUI 向导 | 完整 help 系统（63 条 curated）；语言门禁；`ov tui` 全屏文件浏览器（含终端内图片预览） |
@@ -554,8 +554,8 @@ MCP `write` / REST `content/write` 的三道 guard（`content_write.py`）：可
 ## cursor
 
 - **集成文档**：[Cursor 记忆集成](./12-cursor.md)
-- **形态**：配置驱动（写 `~/.cursor/hooks.json`+`mcp.json`）+ MCP 代理 + always-on rule + 2 个 skill（`openviking-memory`、`openviking-skills`）。6 hook：sessionStart(30s) / beforeSubmitPrompt(20s) / beforeReadFile(5s) / stop(30s) / preCompact(30s) / sessionEnd(30s)。相对 import 共享 lib（不 vendoring）。版本 0.5.0。
-- **能力亮点**：beforeReadFile 上的 uri-guard 拒绝读取 `viking://` 路径（不受插件开关控制）；shell 命令不做检查，升级时会移除旧版本注册的 beforeShellExecution 条目；rule 与两个 skill 随装。
+- **形态**：配置驱动（写 `~/.cursor/hooks.json`+`mcp.json`）+ MCP 代理 + always-on rule + 3 个 skill（`openviking-memory`、`openviking-skills`、`ov-experience-memory`）。6 hook：sessionStart(30s) / beforeSubmitPrompt(20s) / beforeReadFile(5s) / stop(30s) / preCompact(30s) / sessionEnd(30s)。相对 import 共享 lib（不 vendoring）。版本 0.5.0。
+- **能力亮点**：beforeReadFile 上的 uri-guard 拒绝读取 `viking://` 路径（不受插件开关控制）；shell 命令不做检查，升级时会移除旧版本注册的 beforeShellExecution 条目；rule 与三个 skill 随装；捕获只有文本，因此 `ov-experience-memory` 只检索和应用 Experience，读取不会关联回所用的 Experience。
 - **行为要点**：session id 为 `cu-<conversation_id>`；stop 每 8 条消息 commit（`commitTurnThreshold=8`，消息条数计数，keep 0）；`sessionEnd` 仅 window_close 触发，且此时宿主已销毁 shell-exec host，实践中不执行（[§3.3.3](#_3-3-3-关闭方式-×-harness-终局矩阵)）——结束在 <8 条消息水位的会话，尾部依赖后续同会话消息触发归档（[§3.3.3](#_3-3-3-关闭方式-×-harness-终局矩阵)）；服务端不可达时，每轮等满 15s 召回超时。
 - **配置**：env + ovcli.conf `plugin.cursor` + workspace 文件（[§3.1.4](#_3-1-4-配置体系分层)）。
 - **维度索引**：工具面 [§2.1](#_2-1-服务端-mcp-工具面) ｜召回 [§3.2](#_3-2-自动召回与注入) ｜commit [§3.3.2](#_3-3-2-常规-commit-触发条件)/[§3.3.3](#_3-3-3-关闭方式-×-harness-终局矩阵) ｜降级 [§3.6](#_3-6-降级与容错)。
@@ -590,7 +590,7 @@ MCP `write` / REST `content/write` 的三道 guard（`content_write.py`）：可
 ## opencode
 
 - **集成文档**：[OpenCode 插件](./10-opencode.md)
-- **形态**：npm 插件 `@openviking/opencode-plugin` 0.5.0，同一入口支持 OpenCode v1 ≥1.15.7 与 v2 ≥2.0.15。v1 保留原有 hooks；v2 使用 `setup(ctx)`、prompt/context/tool hooks 和结构化生命周期事件。MCP 工具保持 `openviking_*` 前缀，v2 显式设置 `codemode:false`。
+- **形态**：npm 插件 `@openviking/opencode-plugin` 0.5.0，同一入口支持 OpenCode v1 ≥1.15.7 与 v2 ≥2.0.15。v1 保留原有 hooks；v2 使用 `setup(ctx)`、prompt/context/tool hooks 和结构化生命周期事件。MCP 工具保持 `openviking_*` 前缀，v2 显式设置 `codemode:false`。附带 3 个 skill（`openviking-memory`、`openviking-skills`、`ov-experience-memory`）：v1 在 `config` hook 里把插件的 `skills/` 目录加进 `skills.paths`，v2 用 `skill.transform` 注册；两者都只在插件注册自己的 OpenViking MCP server 时加入（hook-only 模式或关闭 `mcp.openviking` 时不加）。
 - **能力亮点**：v2 在 prompt hook 只召回一次并把上下文存进用户消息 metadata，后续每个模型 step 注入同一份内容，避免重复请求和 prompt cache 失效；execution 结束后通过 `session.context()` 捕获完整的用户、助手和工具消息。repo 列表继续进入 system prompt（[§3.2.3](#_3-2-3-profile-开场注入)）。
 - **行为要点**：`commitTokenThreshold=20000`，commit 超时 30000ms。v2 在每次 execution 结束（succeeded、failed、interrupted）后按阈值提交，session 删除、compaction ended 和 cleanup 时强制提交；failed 与 interrupted 都保留状态。v2 只处理本 location 的 session，捕获游标存放在插件 storage 中。v2 cleanup 会在 60 分钟无活动、服务停止和本地插件热重载时触发；v2 没有 toast API，只写日志。开场注入每会话尝试一次（[§3.2.3](#_3-2-3-profile-开场注入)）。
 - **配置**：env + ovcli.conf `plugin.opencode` + workspace 文件。
@@ -600,14 +600,14 @@ MCP `write` / REST `content/write` 的三道 guard（`content_write.py`）：可
 
 - **形态**：唯一同进程 Cordis 原生插件（`export function apply`），工具面就是服务端的 MCP 面，经 `@deepseek-ai/dsh-mcp-client` 与共享 stdio 代理接入（以 `mcp__openviking__*` 发布），hook 侧 REST 直连。6 事件：agent/session-start（emit）/ agent/pre-step（waterfall）/ session/event / session/flush / tools/pre-execute / tools/post-execute。版本 0.5.1。
 - **能力亮点**：`ctx.provide("openvikingMemory")` 供其他 Cordis 插件二次开发；pre-step 注入走 user 消息，适配 DSH persona 的 `complete:true` 渲染模式。
-- **行为要点**：统一安装器已覆盖 dsh，默认装到 `web` profile，可用 `--dsh-profile` 指定其他 profile；npm 是该插件唯一的分发渠道，因此除 `dev` 外的模式一律装已发布的包；`dev` 会先把 checkout 打包再装——`dsh plugin` 转发给 pnpm，link 一个源码目录无法解析插件 import 的 dsh peer；teardown commit 3s 无阈值，SIGHUP/二次 Ctrl+C 不触发（[§3.3.3](#_3-3-3-关闭方式-×-harness-终局矩阵)）；compaction 不感知（注入内容随宿主压缩收缩，profile 不重投）；subagent 各自独立会话（[§3.3.5](#_3-3-5-subagent-会话对照)）；工具面即服务端自身的 MCP 面，经与其他集成同一个 stdio 代理接入、以 `mcp__openviking__*` 发布，服务端升级即可增加工具而无需发版；代价是代理每个 profile 只起一个进程，因此工具调用带的是进程级 actor peer、`remember` 也不绑当前会话（召回/捕获/commit 仍按会话解析 peer）；另随包附带共享的 `openviking-memory` 与 `openviking-skills` 两个 skill；uri-guard 先把工具名转成小写再匹配，tools/pre-execute 拒绝路径是 `viking://` URI 的文件工具（针对 skill URI 的 write/edit 会被引导到 `mcp__openviking__add_skill`），bash 命令带 `viking://` URI 时由 tools/post-execute 附加提示（`form: "notice"`）。
+- **行为要点**：统一安装器已覆盖 dsh，默认装到 `web` profile，可用 `--dsh-profile` 指定其他 profile；npm 是该插件唯一的分发渠道，因此除 `dev` 外的模式一律装已发布的包；`dev` 会先把 checkout 打包再装——`dsh plugin` 转发给 pnpm，link 一个源码目录无法解析插件 import 的 dsh peer；teardown commit 3s 无阈值，SIGHUP/二次 Ctrl+C 不触发（[§3.3.3](#_3-3-3-关闭方式-×-harness-终局矩阵)）；compaction 不感知（注入内容随宿主压缩收缩，profile 不重投）；subagent 各自独立会话（[§3.3.5](#_3-3-5-subagent-会话对照)）；工具面即服务端自身的 MCP 面，经与其他集成同一个 stdio 代理接入、以 `mcp__openviking__*` 发布，服务端升级即可增加工具而无需发版；代价是代理每个 profile 只起一个进程，因此工具调用带的是进程级 actor peer、`remember` 也不绑当前会话（召回/捕获/commit 仍按会话解析 peer）；另随包附带共享的 `openviking-memory`、`openviking-skills` 与 `ov-experience-memory` 三个 skill，默认捕获工具结果（`captureToolResults: true`），因此 `ov-experience-memory` 能跑完整 Experience 闭环，关闭后只检索和应用；uri-guard 先把工具名转成小写再匹配，tools/pre-execute 拒绝路径是 `viking://` URI 的文件工具（针对 skill URI 的 write/edit 会被引导到 `mcp__openviking__add_skill`），bash 命令带 `viking://` URI 时由 tools/post-execute 附加提示（`form: "notice"`）。
 - **配置**：env + ovcli.conf `plugin.dsh` + workspace 文件 + cordis patch（行为旋钮的最低层）；凭据是例外，patch 里写的 endpoint / key / account / user / peer 仍然压过凭据链。
 - **维度索引**：工具面 [§1.1](#_1-1-主动工具面-agentic-调用能力) ｜召回 [§3.2](#_3-2-自动召回与注入) ｜commit [§3.3.2](#_3-3-2-常规-commit-触发条件)/[§3.3.3](#_3-3-3-关闭方式-×-harness-终局矩阵) ｜降级 [§3.6](#_3-6-降级与容错)。
 
 ## pi（pi Coding Agent Extension）
 
 - **集成文档**：[pi Coding Agent 扩展](./11-pi.md)
-- **形态**：pi 原生扩展（目录装载，jiti 直译 TS）。扩展使用 `@modelcontextprotocol/client`，把服务端 `tools/list` 的每个描述符注册成名为 `openviking_<tool>` 的 pi 工具，当前 16 个（[§2.1](#_2-1-服务端-mcp-工具面)）。扩展里没有任何工具目录，服务端增删工具，pi 下一次会话即跟上，不需要发插件版本。召回、会话同步、profile 注入与 takeover 仍走 REST。9 事件 + `/viking` 命令；tool_call 拦截路径是 `viking://` URI 的 read/grep/find/ls/write/edit，bash 命令带 `viking://` URI 时，tool_result 在结果末尾追加提示。版本 0.4.1。
+- **形态**：pi 原生扩展（目录装载，jiti 直译 TS）。扩展使用 `@modelcontextprotocol/client`，把服务端 `tools/list` 的每个描述符注册成名为 `openviking_<tool>` 的 pi 工具，当前 16 个（[§2.1](#_2-1-服务端-mcp-工具面)）。扩展里没有任何工具目录，服务端增删工具，pi 下一次会话即跟上，不需要发插件版本。召回、会话同步、profile 注入与 takeover 仍走 REST。9 事件 + `/viking` 命令；tool_call 拦截路径是 `viking://` URI 的 read/grep/find/ls/write/edit，bash 命令带 `viking://` URI 时，tool_result 在结果末尾追加提示。经 `resources_discover` 附带 3 个 skill（`openviking-memory`、`openviking-skills`、`ov-experience-memory`），`mcpEnabled` 为 `false` 时不加入。版本 0.4.1。
 - **能力亮点**：takeover 压缩接管（默认开，[§3.4.2](#_3-4-2-pi-takeover)）；两段式召回（before_agent_start 排队 + context 事件同步检索，当前轮 prompt 拿当前轮记忆）；statusline；`session_shutdown` 在所有关闭方式下都触发且被 await。
 - **行为要点**：默认 takeover 下退出不 commit（handler 持久化本地状态，归档靠下次续跑攒满阈值或 `/viking commit`，[§3.3.3](#_3-3-3-关闭方式-×-harness-终局矩阵)）；takeover 阈值 30000 token + 保留 3 轮（keep 3，服务端按消息条数解释）；非 takeover 阈值 20000/keep 10、退出无条件 commit；工具注册需 health、ensureSession 与 `/mcp` 握手三项前置（[§1.1](#_1-1-主动工具面-agentic-调用能力)），ROOT 角色的 API key 访问 `/mcp` 会被 403 拒绝，凭据链最终落到 `ov.conf` 的 `server.root_api_key` 时本次会话就没有工具——0.4.0 之前是 REST 工具照常注册、每次调用静默返回 "No results found."；`openviking_remember` 走 MCP 面，即自建一次性会话并立即提交，不再并入 pi 的会话（[§2.1](#_2-1-服务端-mcp-工具面)）；`openviking_add_resource` 可直接摄取远端 URL，本地路径则由服务端返回一条上传指引，需要模型用 `bash` 把文件 POST 上去，与其他 MCP harness 一致；`openviking_read` 只返回全文，目录 URI 会得到 `Cannot render …: URI points to a directory`，旧的 `level="abstract"/"overview"` 两档在 MCP 面没有对应工具，替代路径是 `openviking_search(mode="context", detail="overview")` 或 `openviking_tree(include_abstract=true)`，takeover 的归档 overview 仍由扩展自己经 REST 注入；单次工具调用受共享的 `timeoutMs` 约束（15000ms，`OPENVIKING_TIMEOUT_MS` 可调），`write`/`edit` 带 `wait=true` 或 `add_resource` 同步 ingest 有可能超过，而超时或 ESC 只让本地调用失败，已经发出的请求会跑完，写入仍可能已经生效；从 0.3.x 升级时全部工具改名且没有别名期，`--tools` / `--exclude-tools` 白名单里写死的 `viking_*` 必须手工替换，否则工具会静默消失；非 takeover 模式下 `pi -c` 续跑会重新上报整条 branch。
 - **配置**：env + ovcli.conf `plugin.pi` + workspace 文件（凭据统一走凭据链，[§3.1.3](#_3-1-3-凭据体系)）；bypass 走共享 `isBypassed` 的 glob 匹配，键名 `bypassSessionPatterns`（旧名 `bypassPatterns` 仍可读）；共享键 `mcpEnabled: false` 现在对 pi 也生效：不发起桥接、不注册工具，`/viking` 标注成配置而非故障。
