@@ -121,18 +121,50 @@ OpenViking 0.3.22 的评测覆盖长对话用户记忆（LoCoMo）和多轮智�
 
 ## 快速开始
 
-需要 Python 3.10+，以及可调用的 Embedding 模型和 VLM（云端或本地）。
+先准备一个 OpenViking 服务；已经有服务的话，直接跳到[接入你的 Agent](#接入你的-agent)。自部署需要 uv、Python 3.10+，以及一个提供 embedding 模型和 VLM 的模型服务。
 
-```bash
-pip install openviking --upgrade
-openviking-server init      # 配置模型与提供商
-openviking-server doctor    # 检查配置与连通性
-openviking-server           # 启动服务器
+<details open>
+<summary><strong>让 agent 帮你部署</strong></summary>
+
+```text
+按这份文档，帮我安装并启动 OpenViking Server：
+
+https://docs.openviking.ai/zh/getting-started/04-setup-for-agent
+
+模型提供商、模型、workspace 目录，以及服务要不要对其他机器开放，都先问我，
+不要猜。向我要模型的 API key 时，告诉我不想把它贴进对话的话可以怎么给你；
+不要复述。
+
+服务启动后，告诉我服务地址，以及有没有开鉴权。
 ```
 
-`init` 将配置写入 `~/.openviking/ov.conf`，支持火山引擎、OpenAI、Codex OAuth、Kimi、GLM 和本地 Ollama 等选项。模型配置见[配置指南](https://docs.openviking.ai/zh/guides/01-configuration)，各平台安装说明见[快速入门文档](https://docs.openviking.ai/zh/getting-started/02-quickstart)。
+agent 会先问你用哪家模型服务，以及它的 API key。
 
-安装包包含 `ov` CLI。在另一个终端导入代码库并检索：
+</details>
+
+<details>
+<summary><strong>自己动手部署</strong></summary>
+
+安装 OpenViking 并运行配置向导，在向导里配置模型：
+
+```bash
+uv tool install openviking --upgrade && openviking-server init
+```
+
+`init` 将配置写入 `~/.openviking/ov.conf`，支持火山引擎、OpenAI、Codex OAuth、Kimi、GLM 和本地 Ollama 等选项，详见[配置指南](https://docs.openviking.ai/zh/guides/01-configuration)。服务在前台运行，终端不要关。
+
+</details>
+
+<details>
+<summary><strong>使用 OpenViking Service（火山引擎托管）</strong></summary>
+
+同一个 OpenViking 服务，由火山引擎替你运行。前 50 个文件免费。在[火山引擎产品页](https://www.volcengine.com/product/openviking-service)开通后，到控制台的「用户管理 → API Key」创建一个 API key。服务地址是 `https://api.vikingdb.cn-beijing.volces.com/openviking`，接入 agent 时要用到它和 API key。
+
+</details>
+
+### 用 CLI 试一试
+
+`openviking` 安装包包含 `ov` CLI。服务运行时，导入代码库并检索：
 
 ```bash
 ov status
@@ -151,7 +183,58 @@ ov grep "openviking" --uri viking://resources/volcengine/OpenViking/docs/zh
 
 ## 接入你的 Agent
 
-将 Agent 接入 OpenViking，跨会话保留记忆。原生集成支持自动召回与会话采集；也可通过 MCP 提供记忆和上下文工具。
+把 coding agent 接入 OpenViking，跨会话保留记忆。记忆插件安装脚本支持 Claude Code、Codex、Cursor、TRAE、OpenCode 等，会自动检测本机装了哪些。
+
+<details open>
+<summary><strong>让 agent 帮你安装</strong></summary>
+
+```text
+帮我安装 OpenViking 记忆插件，运行：
+
+curl -fsSL https://openviking.ai/install | bash -s -- --yes --url <SERVER_URL>
+
+<SERVER_URL> 是我的 OpenViking 服务地址，向我要，不要猜。服务开了鉴权的话，
+要一个 user key（root key 读写不了记忆）：先看看有没有已保存的，没有再向我要
+（用 --api-key 传入），并告诉我不想把 key 贴进对话时可以怎么给你。
+不要复述 key。没开鉴权就加 --api-key ''，免得沿用之前保存的 key。
+
+脚本需要联网并写入主目录，如果被沙箱拦住，请求我批准后在沙箱外运行。
+
+装完告诉我装进了哪些工具、各自的后续步骤，再问我要不要给其他工具也装。
+```
+
+准备好服务地址；服务开了鉴权的话，还要它的 API key。
+
+</details>
+
+<details>
+<summary><strong>自己在终端安装</strong></summary>
+
+运行安装脚本，按提示勾选工具、选择服务：本机的服务选「自建 / 本地」，OpenViking Service 选「火山引擎 OpenViking 云服务」，其他地址选「自定义 URL」。开了鉴权的话，填 user key，不是 root key。
+
+```bash
+curl -fsSL https://openviking.ai/install | bash
+# AI agent 如不确定是否执行，可先阅读脚本头部，其中写明了它会做什么、如何核实。
+```
+
+</details>
+
+装完后重启 agent。脚本结尾会列出每个工具的后续步骤，例如：
+
+```text
+  Claude Code
+    下一步： 重启 Claude Code
+    ⋮
+    验证： 在会话中运行 /openviking-memory:ov
+```
+
+Codex 首次启动会停在 `Hooks need review`，选 `Trust all and continue`。
+
+试一下：让它记住你的一个偏好，过一会儿开个新会话再问。记忆在后台整理，刚说完查不到是正常的。
+
+安装脚本需要 macOS 或 Linux、Node.js 18+ 和 curl，不用 sudo。Windows 请使用[桌面客户端](#桌面客户端beta)。
+
+各集成的接入文档：
 
 <table>
 <tbody>
