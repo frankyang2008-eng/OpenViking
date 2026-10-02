@@ -1,0 +1,169 @@
+diff --git a/openviking/session/working_memory.py b/openviking/session/working_memory.py
+index b0b8b127e..e6e5f6ab5 100644
+--- a/openviking/session/working_memory.py
++++ b/openviking/session/working_memory.py
+@@ -738,7 +738,10 @@ def wm_enforce_key_facts_consolidation(op: Any, old_content: str) -> Dict[str, A
+             return op
+         append_items = op.get("items") or []
+         if not append_items:
+-            raw = (op.get("content") or "").strip()
++            # content may also arrive as a non-string from a schema-loose backend;
++            # coerce before extracting fallback APPEND items (same class as the
++            # UPDATE normalization — review finding A-1).
++            raw = _wm_content_to_text(op.get("content")).strip()
+             append_items = wm_extract_bullet_items(raw)
+         append_items = [str(it) for it in append_items if it]
+         old_lower = (old_content or "").lower()
+@@ -953,6 +956,26 @@ def wm_enforce_open_issues_resolved(op: Any, old_content: str) -> Dict[str, Any]
+     return {"op": "UPDATE", "content": merged}
+ 
+ 
++def _wm_content_to_text(value: Any) -> str:
++    """Coerce an UPDATE op ``content`` to plain text.
++
++    The WM schema requires ``content`` to be a string, but a schema-loose VLM
++    backend can forward the LLM's JSON array (content emitted as a list of
++    lines) or object straight through json decoding. Normalize once at the
++    merge entry point so every per-section guard and the final apply treat
++    content as text instead of crashing on ``(content or "").strip()``.
++    """
++    if value is None:
++        return ""
++    if isinstance(value, str):
++        return value
++    if isinstance(value, list):
++        return "\n".join(_wm_content_to_text(item) for item in value)
++    if isinstance(value, dict):
++        return json.dumps(value, ensure_ascii=False)
++    return str(value)
++
++
+ def merge_wm_sections(old_wm: str, ops: Dict[str, Any]) -> str:
+     """Merge LLM per-section ops into a new Working Memory document.
+ 
+@@ -988,6 +1011,21 @@ def merge_wm_sections(old_wm: str, ops: Dict[str, Any]) -> str:
+     )
+     old_sections = parse_wm_sections(old_wm)
+ 
++    # Normalize UPDATE content once before any guard runs. A schema-loose
++    # backend may deliver content as a JSON array (the LLM emitting content
++    # as a list of lines); without this, the guards' ``(content or "").strip()``
++    # raises AttributeError and fails the whole post-commit extraction
++    # (observed 2026-09-27/28 in phase2 archive_summary).
++    normalized_ops: Dict[str, Any] = {}
++    for header, op in (ops or {}).items():
++        if isinstance(op, dict) and (op.get("op") or "").upper() == "UPDATE":
++            fixed = dict(op)
++            fixed["content"] = _wm_content_to_text(op.get("content"))
++            normalized_ops[header] = fixed
++        else:
++            normalized_ops[header] = op
++    ops = normalized_ops
++
+     parts: List[str] = ["# Working Memory", ""]
+     for header in WM_SEVEN_SECTIONS:
+         full_header = f"## {header}"
+diff --git a/tests/unit/session/test_wm_v2_guards.py b/tests/unit/session/test_wm_v2_guards.py
+index 0b24d234b..57b232a31 100644
+--- a/tests/unit/session/test_wm_v2_guards.py
++++ b/tests/unit/session/test_wm_v2_guards.py
+@@ -599,6 +599,99 @@ class TestAppendNonStringItems:
+         assert "Existing issue" in merged
+ 
+ 
++class TestUpdateNonStringContent:
++    """UPDATE content delivered as a non-string (schema-loose backend)
++    must be coerced to text, not crash the guards' .strip() calls."""
++
++    def test_update_with_list_content_joins_lines(self):
++        old_wm = _make_wm(current_state="Old State")
++        ops = {
++            "Session Title": {"op": "KEEP"},
++            "Current State": {"op": "UPDATE", "content": ["line one", "line two"]},
++            "Task & Goals": {"op": "KEEP"},
++            "Key Facts & Decisions": {"op": "KEEP"},
++            "Files & Context": {"op": "KEEP"},
++            "Errors & Corrections": {"op": "KEEP"},
++            "Open Issues": {"op": "KEEP"},
++        }
++        merged = wm.merge_wm_sections(old_wm, ops)
++        assert "line one" in merged
++        assert "line two" in merged
++
++    def test_open_issues_update_list_does_not_crash(self):
++        # Regression: this guard's (content or "").strip() was the actual
++        # AttributeError crash point in phase2 archive_summary (2026-09-27/28).
++        old_wm = _make_wm(open_issues="- Existing issue")
++        ops = {
++            "Session Title": {"op": "KEEP"},
++            "Current State": {"op": "KEEP"},
++            "Task & Goals": {"op": "KEEP"},
++            "Key Facts & Decisions": {"op": "KEEP"},
++            "Files & Context": {"op": "KEEP"},
++            "Errors & Corrections": {"op": "KEEP"},
++            "Open Issues": {
++                "op": "UPDATE",
++                "content": ["- issue A", "- issue B"],
++            },
++        }
++        merged = wm.merge_wm_sections(old_wm, ops)
++        assert "issue A" in merged
++
++    def test_update_content_list_with_mixed_types(self):
++        old_wm = _make_wm(current_state="Old")
++        ops = {
++            "Session Title": {"op": "KEEP"},
++            "Current State": {
++                "op": "UPDATE",
++                "content": ["plain text", 42, {"k": "v"}, None],
++            },
++            "Task & Goals": {"op": "KEEP"},
++            "Key Facts & Decisions": {"op": "KEEP"},
++            "Files & Context": {"op": "KEEP"},
++            "Errors & Corrections": {"op": "KEEP"},
++            "Open Issues": {"op": "KEEP"},
++        }
++        merged = wm.merge_wm_sections(old_wm, ops)
++        assert "plain text" in merged
++
++    def test_append_content_list_oversized_does_not_crash(self):
++        # Review finding A-1: APPEND op with no items falls back to reading
++        # `content`; with an oversized old Key Facts section a list content
++        # crashed at (content or "").strip(). Needs >25 old bullets to reach
++        # the APPEND-throttle branch.
++        old_body = "\n".join(f"- old fact {i}" for i in range(26))
++        old_wm = _make_wm(key_facts_and_decisions=old_body)
++        ops = {
++            "Session Title": {"op": "KEEP"},
++            "Current State": {"op": "KEEP"},
++            "Task & Goals": {"op": "KEEP"},
++            "Key Facts & Decisions": {
++                "op": "APPEND",
++                "items": [],
++                "content": ["- brand new fact XYZ"],
++            },
++            "Files & Context": {"op": "KEEP"},
++            "Errors & Corrections": {"op": "KEEP"},
++            "Open Issues": {"op": "KEEP"},
++        }
++        merged = wm.merge_wm_sections(old_wm, ops)
++        assert "brand new fact XYZ" in merged
++
++    def test_update_content_none_is_empty(self):
++        old_wm = _make_wm(current_state="Old")
++        ops = {
++            "Session Title": {"op": "KEEP"},
++            "Current State": {"op": "UPDATE", "content": None},
++            "Task & Goals": {"op": "KEEP"},
++            "Key Facts & Decisions": {"op": "KEEP"},
++            "Files & Context": {"op": "KEEP"},
++            "Errors & Corrections": {"op": "KEEP"},
++            "Open Issues": {"op": "KEEP"},
++        }
++        merged = wm.merge_wm_sections(old_wm, ops)
++        assert isinstance(merged, str)
++
++
+ # =======================================================================
+ # _merge_wm_sections edge cases
+ # =======================================================================

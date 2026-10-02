@@ -2,6 +2,10 @@
 
 OpenViking uses a JSON configuration file (`~/.openviking/ov.conf`) for settings.
 
+Use this page when configuring the server. To connect to an existing server, follow [CLI Setup](../getting-started/05-cli-setup.md); clients do not need model or storage settings.
+
+For a first setup, use the wizard below. For an existing installation, find the relevant section and merge its fields into your JSON configuration; do not replace the whole file with a partial example. Editing `ov.conf` requires a restart. The limited runtime update surface is described below.
+
 For a first-time setup, the recommended flow is:
 
 ```bash
@@ -148,7 +152,8 @@ PATCH uses three states: an omitted field is unchanged, a concrete value sets or
       "provider" : "volcengine",
       "dimension": 1024,
       "model"    : "doubao-embedding-vision-251215",
-      "input": "multimodal"
+      "input": "multimodal",
+      "batch_size": 32
     }
   },
   "vlm": {
@@ -356,7 +361,7 @@ With `input: "multimodal"`, OpenViking can embed text, images (PNG, JPG, etc.), 
 - `voyage`: Voyage AI Embedding API
 - `minimax`: MiniMax Embedding API
 - `cohere`: Cohere Embedding API
-- `gemini`: Google Gemini Embedding API (text-only; requires `google-genai>=1.0.0`)
+- `gemini`: Google Gemini Embedding API (text-only; requires `google-genai>=1.39.0`)
 - `dashscope`: DashScope (Alibaba Tongyi) Embedding API
 - `litellm`: LiteLLM Embedding API
 - `local`: Local GGUF embedding models
@@ -497,21 +502,9 @@ Get your API key at https://jina.ai
 }
 ```
 
-Supported Voyage text embedding models include:
-- `voyage-4-lite`
-- `voyage-4`
-- `voyage-4-large`
-- `voyage-code-3`
-- `voyage-context-3`
-- `voyage-3`
-- `voyage-3.5`
-- `voyage-3.5-lite`
-- `voyage-finance-2`
-- `voyage-law-2`
+Text models include `voyage-4-lite`, `voyage-4`, and `voyage-4-large`. See [Voyage Text Embeddings](https://docs.voyageai.com/docs/embeddings) for available models and output dimensions.
 
-If `dimension` is omitted, OpenViking uses the model's default output dimension when creating the vector schema.
-
-OpenViking also expects dense float vectors throughout storage and retrieval, so Voyage quantized output dtypes are not exposed in config.
+If `dimension` is omitted, OpenViking uses its built-in model table (`voyage-3`, `voyage-3-large`, `voyage-3.5`, `voyage-3.5-lite`, `voyage-4`, `voyage-4-lite`, `voyage-4-large`, `voyage-code-3`, `voyage-context-3`, `voyage-finance-2`, `voyage-law-2`), falling back to 1024 for an unrecognized model. Set a supported output dimension explicitly for a new model. The current adapter sends plain text `input`; it does not send Voyage's `input_type`, expose quantized output, or implement specialized contextual embedding calls.
 
 **Local deployment (GGUF/MLX):** Jina embedding models are open-weight and available in GGUF and MLX formats on [Hugging Face](https://huggingface.co/jinaai). You can run them locally with any OpenAI-compatible server (e.g. llama.cpp, MLX, vLLM) and point the `api_base` to your local endpoint:
 
@@ -531,7 +524,9 @@ OpenViking also expects dense float vectors throughout storage and retrieval, so
 
 **gemini provider example:**
 
-> **Note:** Requires `google-genai>=1.0.0` in the server environment — uv install: `uv tool install openviking --upgrade --with "google-genai>=1.0.0"`; pip install: `pip install "google-genai>=1.0.0"`. For async batching use the extra instead: `uv tool install "openviking[gemini-async]" --upgrade` or `pip install "openviking[gemini-async]"`.
+Version 1.39.0 is the minimum SDK version with the client context managers and close methods used to keep asynchronous embedding requests on their owning event loop. Upgrade older SDK pins before enabling this provider.
+
+> **Note:** Requires `google-genai>=1.39.0` in the server environment — uv install: `uv tool install openviking --upgrade --with "google-genai>=1.39.0"`; pip install: `pip install "google-genai>=1.39.0"`. For async batching use the extra instead: `uv tool install "openviking[gemini-async]" --upgrade` or `pip install "openviking[gemini-async]"`.
 
 ```json
 {
@@ -627,7 +622,7 @@ Supported task types: `RETRIEVAL_QUERY`, `RETRIEVAL_DOCUMENT`, `SEMANTIC_SIMILAR
 
 #### Sparse Embedding
 
-> **Note:** Volcengine sparse embedding is supported starting from model `doubao-embedding-vision-251215`.
+> This example uses `doubao-embedding-vision-251215`. Check sparse text-output support for your selected model in the Ark [embedding documentation](https://docs.volcengine.com/docs/ark/vectorization?lang=zh&redirect=1).
 
 ```json
 {
@@ -668,7 +663,7 @@ Two approaches are supported:
     "hybrid": {
       "provider": "volcengine",
       "api_key": "your-api-key",
-      "model": "doubao-embedding-hybrid",
+      "model": "doubao-embedding-vision-251215",
       "dimension": 1024
     }
   }
@@ -702,6 +697,7 @@ Vision Language Model for semantic extraction (L0/L1 generation).
 ```json
 {
   "vlm": {
+    "provider": "volcengine",
     "api_key": "your-api-key",
     "model": "doubao-seed-2-0-lite-260428",
     "api_base": "https://ark.cn-beijing.volces.com/api/v3",
@@ -755,10 +751,10 @@ Vision Language Model for semantic extraction (L0/L1 generation).
 
 When resources are added, VLM generates:
 
-1. **L0 (Abstract)**: ~100 token summary
-2. **L1 (Overview)**: ~2k token overview with navigation
+1. **L0 (Abstract)**: file or directory summary, with a default limit of 256 characters
+2. **L1 (Overview)**: directory overview with navigation, with a default limit of 4000 characters
 
-If VLM is not configured, L0/L1 will be generated from content directly (less semantic), and multimodal resources may have limited descriptions.
+When the VLM configuration reports `is_available() == false`, generic file summaries are empty and directory overviews fall back to a not-ready placeholder. Paths such as local code-skeleton extraction retain their own behavior. Do not treat this as completed semantic indexing; inspect the model configuration and processing task.
 
 **Supported providers:**
 - `volcengine`: Volcengine VLM API
@@ -789,14 +785,14 @@ For OpenAI-compatible providers (e.g., OpenRouter), you can add custom HTTP head
     "api_base": "https://openrouter.ai/api/v1",
     "extra_headers": {
       "HTTP-Referer": "https://your-site.com",
-      "X-Title": "Your App Name"
+      "X-OpenRouter-Title": "Your App Name"
     }
   }
 }
 ```
 
 Common use cases:
-- **OpenRouter**: Requires `HTTP-Referer` and `X-Title` to identify your application
+- **OpenRouter**: Optional `HTTP-Referer` and `X-OpenRouter-Title` headers provide [app attribution](https://openrouter.ai/docs/app-attribution), not API authentication; `X-Title` remains supported for compatibility
 - **Kimi Coding**: Override or extend the default subscription headers when you need a custom user agent
 - **OpenCode Go** (`https://opencode.ai/zen/go/v1`): Requests without `x-opencode-session` fail with HTTP 400 `MissingSessionID`. Set a fixed id, e.g. `"extra_headers": {"x-opencode-session": "openviking-<your-host>"}`. A fixed id works; OpenCode Go only uses it for routing and prompt-cache hints
 - **Custom proxies**: Add authentication or tracing headers
@@ -804,7 +800,9 @@ Common use cases:
 
 **Custom Request Body**
 
-For OpenAI-compatible providers that accept provider-specific JSON body fields, add them via `extra_request_body`. OpenViking merges these fields into the `extra_body` sent by the OpenAI SDK or LiteLLM:
+Use `extra_request_body` for provider-specific JSON body fields. OpenAI-compatible routes use SDK `extra_body`. LiteLLM Anthropic routes pass native options such as `thinking` and `output_config` directly to LiteLLM, so they reach the top-level request body. LiteLLM still validates model support for these options. On Anthropic routes, LiteLLM control names (including `api_key`, `api_base`, `metadata`, and `mock_response`) and call-owned fields (`model`, `messages`, `tools`, `tool_choice`, `stream`, `timeout`, and headers) are rejected instead of overriding the call. Configure credentials and routing through their dedicated settings.
+
+For example, to disable thinking on Ollama:
 
 ```json
 {
@@ -845,6 +843,8 @@ Audio and video understanding is an optional capability of the configured VLM. I
 }
 ```
 
+`vlm.extra_request_body` also applies to the Ark Responses request for audio/video, for example `{"service_tier": "flex", "thinking": {"type": "disabled"}}`. Use fields supported by the selected model and Responses API. Explicit extra body fields override generated request fields through the SDK, including `store`; response storage defaults to `false` unless you explicitly override it. These fields are not forwarded to file upload, status, or deletion requests.
+
 The VLM `model` value is the corresponding Ark model endpoint ID. `video_fps` applies only to video and controls the frame sampling rate sent to Ark.
 
 The recommended starting models for audio and video understanding are `doubao-seed-2-0-lite-260428` and `doubao-seed-2-0-mini-260428`. These are recommended examples, not an exhaustive compatibility list; Ark continues to update its models and input capabilities. See Ark's official [video input capability list](https://console.volcengine.com/ark/region:cn-beijing/docs/82379/1330310?lang=zh#ff5ef604) and [audio input capability list](https://console.volcengine.com/ark/region:cn-beijing/docs/82379/1330310?lang=zh#9619c0ba) for other supported models. If `model` is an `ep-*` inference endpoint ID, verify that its underlying foundation model supports the corresponding media input. OpenViking does not validate audio or video model capabilities while loading configuration.
@@ -858,7 +858,7 @@ The recommended starting models for audio and video understanding are `doubao-se
 
 Formats outside the understanding column continue to follow the existing parser and storage behavior; OpenViking does not transcode them or send them to the understanding model. When such a file is recognized as an audio or video leaf, an empty media summary is indexed using its filename.
 
-For a supported file, OpenViking uploads the media to the Ark Files API without explicitly setting `expire_at`, so file retention follows Ark's default policy. After processing completes, OpenViking references the file's `file_id` from the Responses API with response storage disabled, then attempts to delete the Ark file under a short cleanup deadline. Remote deletion is best-effort and does not replace an otherwise successful result if cleanup fails; a file whose deletion fails or times out continues to follow Ark's default retention policy. Local temporary files are removed independently even when remote cleanup fails or is cancelled.
+For a supported file, OpenViking uploads the media to the Ark Files API without explicitly setting `expire_at`, so file retention follows Ark's default policy. After processing completes, OpenViking references the file's `file_id` from the Responses API with response storage disabled by default, then attempts to delete the Ark file under a short cleanup deadline. Remote deletion is best-effort and does not replace an otherwise successful result if cleanup fails; a file whose deletion fails or times out continues to follow Ark's default retention policy. Local temporary files are removed independently even when remote cleanup fails or is cancelled.
 
 - A successful summary for a directory containing exactly one audio or video file becomes that directory's L1 directly, with L0 derived through the existing semantic path. No second generic VLM summarization is performed.
 - Media in a mixed directory contributes its summary to the existing generic VLM aggregation.
@@ -868,7 +868,7 @@ Media processing sends file content to the configured external provider. Disable
 
 ### query_planner
 
-Optional lightweight model for retrieval intent analysis and query planning. It uses the same configuration shape as `vlm`, but only affects `search()` intent analysis and query expansion. If `query_planner` is omitted or empty, OpenViking falls back to `vlm` for backward compatibility.
+Optional lightweight model for retrieval intent analysis and query planning. It uses the same configuration shape as `vlm` for `search()` intent analysis, query expansion, and optional server recall-digest rewriting. If `query_planner` is omitted or empty, OpenViking falls back to `vlm` for backward compatibility.
 
 > In `openviking-server init` you can optionally enable a local lightweight query planner; the wizard pulls the Ollama model and writes the `query_planner` config for you. For recognized query-planner models, `search()` selects the matching bundled prompt at runtime. Models not in the mapping keep using `retrieval.intent_analysis`.
 
@@ -899,7 +899,7 @@ Then add the following to your OpenViking configuration:
 
 For `ollama/guoxuter/ov_intent_analysis_sft:v7_q8` (and `v4_q8`), OpenViking automatically uses the matching bundled prompt during search (`retrieval.ov_intent_analysis_sft_v7` and `retrieval.ov_intent_analysis_sft_v4` respectively). No prompt file replacement or `prompts.templates_dir` override is required. If you use an unmapped model, OpenViking keeps the default `retrieval.intent_analysis` prompt.
 
-This lets a small model handle retrieval planning with lower latency, while keeping a stronger `vlm` for semantic extraction, memory extraction, and multimodal processing.
+This lets a smaller model handle retrieval planning while a stronger `vlm` handles semantic extraction, memory extraction, and multimodal processing. Measure latency with your model, hardware, and request load.
 
 ### feishu
 
@@ -937,7 +937,7 @@ The remaining `code` configuration fields are for remote code resource network g
 
 #### Remote resource network guard
 
-When ingesting a resource from a URL, OpenViking rejects loopback, link-local, private, and other non-public destinations, plus any host not on the code-hosting allowlist, raising `PermissionDeniedError`. To ingest code from self-hosted GitHub Enterprise / GitLab / Azure DevOps, add the host to the matching allowlist under `code`:
+For URL ingestion, the default network check rejects destinations resolving to non-public addresses. Ordinary public URLs do not need to be on the code-hosting allowlist; trusted code hosts on that list bypass the address-range check. Add self-hosted GitHub Enterprise, GitLab, or Azure DevOps hosts to the corresponding platform list under `code`:
 
 | Field | Type | Description | Default |
 |-------|------|-------------|---------|
@@ -946,11 +946,11 @@ When ingesting a resource from a URL, OpenViking rejects loopback, link-local, p
 | `azure_devops_domains` | list[str] | Allowed Azure DevOps hosts | `["dev.azure.com", "ssh.dev.azure.com", "vs-ssh.visualstudio.com"]` |
 | `code_hosting_domains` | list[str] | Allowed generic code-hosting hosts | `["github.com", "gitlab.com", "gitcode.com", "gitee.com", "bitbucket.org", "codeberg.org", "gitea.com", "atomgit.com", "git.sr.ht"]` |
 
-To ingest from private/internal network addresses (e.g. an internal mirror), set the top-level `allow_private_networks` to `true` (disabled by default, so only public addresses are allowed):
+To allow other private-network targets, such as internal mirrors, set the top-level `allow_private_networks` to `true`. It is disabled by default; local hostnames such as `localhost` and its subdomains remain rejected. This example enables private-network access and registers a code host:
 
 ```json
 {
-  "allow_private_networks": false,
+  "allow_private_networks": true,
   "code": {
     "github_domains": ["github.com", "github.example.com"]
   }
@@ -1067,10 +1067,21 @@ Notes for Vercel:
 - `api_base` must include the `/typesafe` suffix. `https://ai-gateway.vercel.sh/v1`
   is Vercel's own evaluate protocol and is not supported by the adapter.
 
-The Jev adapter sends the query and candidate documents as structured System One
-`state`, then asks one independent Noul relevance question per candidate. Each returned
-yes probability becomes that document's rerank score. All questions are evaluated in
-parallel in one request, and scores do not compete or have to sum to 1.
+The Jev adapter sends the query and candidate documents as shared System One `state`
+and supports two modes:
+
+- `noul` (default): one independent relevance question per document, using its returned yes
+  probability as the score. All questions are sent in one HTTP request, and document
+  scores do not have to sum to 1.
+- `choice`: one question compares all candidate documents, with `candidate_{index}`
+  mapped to input indices. Scores come from `probabilities` in document order.
+
+Select the mode with `rerank.mode`; omitting it or setting it to `null` keeps the
+default `noul` behavior. Choice scores are relative probabilities summing to 1 within
+the candidate pool, not absolute relevance probabilities, so they are unsuitable for
+absolute score filtering. When enabling Choice, set `"threshold": 0`. The MCP `find`
+and `search` `min_score` argument overrides that setting, so pass `min_score=0` when
+using Choice through MCP.
 
 **LLM score provider (e.g. Volcengine Ark):**
 
@@ -1110,6 +1121,7 @@ rubric suggests). Doubao-family thinking models (e.g. `doubao-seed-2.0-mini`) ne
 | `api_key` | str | API key (for `openai`, `cohere`, or `jev` providers) |
 | `api_base` | str | Endpoint URL (for `openai` or `jev`; Jev defaults to `https://api.typesafe.ai`, Vercel uses `https://ai-gateway.vercel.sh/typesafe`) |
 | `model` | str | Model name for OpenAI-compatible, LiteLLM, or Jev providers |
+| `mode` | `"noul"`, `"choice"`, or `null` | Jev rerank mode. `null` and omission use `"noul"` |
 | `timeout` | float | HTTP request timeout in seconds for HTTP rerank providers, including Jev. Default: `30.0` |
 | `max_input_tokens` | int | Maximum estimated raw-text tokens in each query-document pair sent to the reranker. Oversized inputs retain their beginning and end. `0` disables. Default: `0` |
 | `log_payloads` | bool | Log complete rerank request and response payloads. May expose query and document content. Default: `false` |
@@ -1125,20 +1137,19 @@ rubric suggests). Doubao-family thinking models (e.g. `doubao-seed-2.0-mini`) ne
 - `cohere`: Cohere Rerank API
 - `openai`: OpenAI-compatible Rerank API
 - `litellm`: LiteLLM Rerank API
-- `jev`: Jev (TypeSafe System One) structured-decision API; each document receives an independent Noul relevance score
+- `jev`: Jev (TypeSafe System One) structured-decision API with Choice comparison and independent Noul scoring
 - `llm_score`: Chat-model pointwise scoring via OpenAI-compatible `/chat/completions` (e.g. Volcengine Ark). Quality is below dedicated rerank models; absolute scores drift across queries
 
 If rerank is not configured, search uses vector similarity only.
 
 ### retrieval
 
-Retrieval ranking configuration for final search scores.
+Configuration for session intent analysis and context assembly timeouts.
 
 ```json
 {
   "retrieval": {
-    "hotness_alpha": 0.0,
-    "score_propagation_alpha": 1.0,
+    "enable_intent": true,
     "recall_intent_timeout_s": 5.0,
     "recall_rewrite_timeout_s": 30.0
   }
@@ -1147,10 +1158,7 @@ Retrieval ranking configuration for final search scores.
 
 | Parameter | Type | Description | Default |
 |-----------|------|-------------|---------|
-| `hotness_alpha` | float | Weight for blending hotness into final retrieval scores. `0.0` disables the hotness boost and keeps scores equal to semantic similarity; `1.0` uses only hotness. Valid range: `0.0` to `1.0`. | `0.0` |
-| `score_propagation_alpha` | float | Weight for each child result's own score when blending with its parent score during hierarchical retrieval. `1.0` ignores the parent score (semantic similarity only); `0.5` is an equal blend with the parent score; `0.0` uses only the parent score. Valid range: `0.0` to `1.0`. | `1.0` |
-
-Keep `hotness_alpha` at `0.0` when you need scores to reflect pure vector similarity. Set it above `0.0` only when frequently accessed or recently updated contexts should receive a ranking boost.
+| `enable_intent` | bool | Run intent analysis and query planning when `search()` receives a `session_id`. | `true` |
 
 The `mode="context"` assembly face on `/search` uses two timeout fuses:
 
@@ -1159,7 +1167,7 @@ The `mode="context"` assembly face on `/search` uses two timeout fuses:
 | `recall_intent_timeout_s` | float | Timeout for session-aware query expansion; on timeout the original user query is used | `5.0` |
 | `recall_rewrite_timeout_s` | float | Timeout for the digest rewrite; on timeout `digest` is empty and `rendered` is returned as usual | `30.0` |
 
-Both LLM steps are strictly opt-in: expansion needs a `session_id`, the rewrite needs `rewrite`. Either one failing degrades gracefully and never blocks recall.
+Query expansion requires a `session_id` with content and intent analysis enabled; rewriting requires `rewrite`. Each model call has its own timeout. On failure, retrieval falls back to the original query or the unrevised result.
 
 ### grep
 
@@ -1408,7 +1416,12 @@ Notes:
 - `mode=shared` keeps the historical global queue namespace at `/queue`; `mode=worker` isolates each worker under `/queue/worker-<index|pid>`.
 - `db_path` is only used when QueueFS backend is `sqlite` or `sqlite3`.
 - `backend=cache` automatically binds the global `cache.provider + cache.params` configuration.
-- Redis Cluster slot routing, topology refresh, Sentinel discovery, and reconnects are handled by the Fred RedisProvider.
+- `recover_stale_sec` and `busy_timeout_ms` apply only to SQLite backends.
+- Redis Cluster endpoints are seed nodes, and `db` must be `0`. Slot routing, `MOVED`/`ASK`, topology refresh, and reconnects are handled by Fred RedisProvider.
+- Redis Sentinel endpoints are Sentinel nodes and require a non-empty `master_name`; the provider handles master discovery and reconnects.
+- `username` and `password` authenticate data nodes; `sentinel_username` and `sentinel_password` authenticate Sentinel nodes.
+- All Redis reads go to the primary. Replica reads are not configurable.
+- `tls_insecure_skip_verify=true` requires `rediss://` endpoints.
 - QueueFS cache keys use `{cache_key_prefix}:ov:*`; use different prefixes for deployments or tenants sharing one Redis cluster.
 - Redis backend runs three bounded `recover_stale` sweeps in a dedicated startup recovery thread at startup, 30 seconds, and 60 seconds to cover the heartbeat-expiry window after a container restart; it does not run long-lived periodic recovery.
 - If both `storage.agfs.queuefs.db_path` and legacy `storage.agfs.queue_db_path` are set, `storage.agfs.queuefs.db_path` wins.
@@ -1460,55 +1473,6 @@ Legacy compatibility example:
   }
 }
 ```
-
-##### Session Auto Commit Configuration
-
-`memory.session_auto_commit` controls server-wide automatic session commit behavior.
-
-```json
-{
-  "memory": {
-    "session_auto_commit": {
-      "enabled": false,
-      "check_interval_seconds": 600.0,
-      "scan_rate_limit_files_per_second": 2.0
-    }
-  }
-}
-```
-
-| Parameter | Type | Description | Default |
-|-----------|------|-------------|---------|
-| `enabled` | bool | Master switch for automatic session commits. When enabled, newly created sessions without an explicit `auto_commit_policy` get a default policy, and the idle-timeout background scheduler is started. When disabled, neither happens | `false` |
-| `check_interval_seconds` | float | Minimum interval between two idle scan rounds in seconds. Must be greater than `0` | `600.0` |
-| `scan_rate_limit_files_per_second` | float | Maximum number of session `.meta.json` files read per second during an idle scan. Must be greater than `0`. Bounds background storage IO when the sessions tree is very large | `2.0` |
-
-Notes:
-
-- `memory.session_auto_commit` is a server-wide control surface, not a per-session business policy.
-- Per-session auto-commit behavior is configured through the session-level `auto_commit_policy` (see the table below). Set it when creating a session with `POST /api/v1/sessions`, or partially update it through `PATCH /api/v1/sessions/{session_id}/config`. Omitting `auto_commit_policy` from a PATCH preserves it; sending `null` disables automatic commits. Use `GET /api/v1/sessions/{session_id}` to inspect the effective policy.
-- When `enabled=false`, sessions created without an explicit or `server.user_config_defaults.auto_commit_policy` policy keep auto commit disabled and return `auto_commit_policy: null`; `SessionAutoCommitScheduler` is not started.
-- When `enabled=true`:
-  - Sessions without an explicit or deployment-default policy get the built-in policy below.
-  - `SessionAutoCommitScheduler` starts a scan round immediately, then waits at least `check_interval_seconds` before the next round. If a round already took longer than that interval, the next round starts immediately.
-  - Within a round, session `.meta.json` files are read serially at no more than `scan_rate_limit_files_per_second` to avoid IO spikes.
-  - It does not perform a dedicated startup recovery sweep; idle detection happens only on periodic scans.
-- Token- and message-count auto commit run inline after message writes, do not depend on the scheduler, but still require the session to carry an `auto_commit_policy`.
-
-###### Per-session Auto Commit Policy
-
-When a session carries an `auto_commit_policy`, any field you omit falls back to the recommended default below. Sessions without a stored policy keep auto commit disabled. Values are clamped into `[0, max]`, and unknown keys are rejected with `InvalidArgumentError`. See [Sessions API](../api/05-sessions.md#create-session) for how to set and view it.
-
-| Field | Type | Default | Max | Description |
-|-------|------|---------|-----|-------------|
-| `pending_token_threshold` | int | 150000 | 1000000 | When uncommitted pending tokens exceed this value (strictly greater-than), an auto commit is triggered after a message write. |
-| `message_count_threshold` | int | 100 | 1000 | When the uncommitted live message count exceeds this value (strictly greater-than), an auto commit is triggered after a message write. |
-| `idle_timeout_seconds` | int | 86400 | 604800 | After this many idle seconds, a session with uncommitted content becomes eligible for the server-side idle scheduler. Idle-timeout commits archive the full backlog and ignore `keep_recent_count`. |
-| `keep_recent_count` | int | 0 | 500 | Number of recent live messages to keep (not archived) on a threshold-triggered auto commit. Idle-timeout commits ignore this and commit everything. |
-| `min_commit_interval_seconds` | int | 0 | 604800 | Minimum seconds between two automatic commits (throttle). |
-
-Code entry: `openviking/session/auto_commit_policy.py:AutoCommitPolicy`.
-
 
 ##### S3 Backend Configuration
 
@@ -1746,11 +1710,59 @@ For memory-related settings, add a `memory` section in `ov.conf`:
 | Field | Description | Default |
 |-------|-------------|---------|
 | `version` | Deprecated and ignored. OpenViking always uses the v3 memory extraction pipeline; existing configs that set this field still load without error. | `"v3"` |
-| `custom_templates_dir` | Custom memory templates directory. If set, templates from this directory are loaded in addition to built-in templates. | `""` |
+| `custom_templates_dir` | Custom memory schema directory. Later definitions replace the same `memory_type`; new types are added. See the [Prompt Guide](10-prompt-guide.md). | `""` |
 | `extraction_enabled` | Whether session commit runs long-term memory extraction. | `true` |
 | `session_skill_extraction_enabled` | Whether session commit also extracts reusable skills into the current user's skill directory. | `false` |
 | `link_enabled` | Whether memory extraction writes and resolves memory links. | `false` |
 | `session_auto_commit` | Server-wide automatic session commit controls. This belongs under `memory`, not under `server`; see [Session Auto Commit Configuration](#session-auto-commit-configuration). | See section above |
+
+#### Session Auto Commit Configuration
+
+`memory.session_auto_commit` controls server-wide automatic session commit behavior.
+
+```json
+{
+  "memory": {
+    "session_auto_commit": {
+      "enabled": false,
+      "check_interval_seconds": 600.0,
+      "scan_rate_limit_files_per_second": 2.0
+    }
+  }
+}
+```
+
+| Parameter | Type | Description | Default |
+|-----------|------|-------------|---------|
+| `enabled` | bool | Master switch for automatic session commits. When enabled, newly created sessions without an explicit `auto_commit_policy` get a default policy, and the idle-timeout background scheduler is started. When disabled, neither happens | `false` |
+| `check_interval_seconds` | float | Minimum interval between two idle scan rounds in seconds. Must be greater than `0` | `600.0` |
+| `scan_rate_limit_files_per_second` | float | Maximum number of session `.meta.json` files read per second during an idle scan. Must be greater than `0`. Bounds background storage IO when the sessions tree is very large | `2.0` |
+
+Notes:
+
+- `memory.session_auto_commit` is a server-wide control surface, not a per-session business policy.
+- Per-session auto-commit behavior is configured through the session-level `auto_commit_policy` (see the table below). Set it when creating a session with `POST /api/v1/sessions`, or partially update it through `PATCH /api/v1/sessions/{session_id}/config`. Omitting `auto_commit_policy` from a PATCH preserves it; sending `null` disables automatic commits. Use `GET /api/v1/sessions/{session_id}` to inspect the effective policy.
+- When `enabled=false`, sessions created without an explicit or `server.user_config_defaults.auto_commit_policy` policy keep auto commit disabled and return `auto_commit_policy: null`; `SessionAutoCommitScheduler` is not started.
+- When `enabled=true`:
+  - Sessions without an explicit or deployment-default policy get the built-in policy below.
+  - `SessionAutoCommitScheduler` starts a scan round immediately, then waits at least `check_interval_seconds` before the next round. If a round already took longer than that interval, the next round starts immediately.
+  - Within a round, session `.meta.json` files are read serially at no more than `scan_rate_limit_files_per_second` to avoid IO spikes.
+  - It does not perform a dedicated startup recovery sweep; idle detection happens only on periodic scans.
+- Token- and message-count auto commit run inline after message writes, do not depend on the scheduler, but still require the session to carry an `auto_commit_policy`.
+
+##### Per-session Auto Commit Policy
+
+When a session carries an `auto_commit_policy`, any field you omit falls back to the built-in default below. Sessions without a stored policy keep auto commit disabled. Values are clamped into `[0, max]`, and unknown keys are rejected with `InvalidArgumentError`. See [Sessions API](../api/05-sessions.md#create-session) for how to set and view it.
+
+| Field | Type | Default | Max | Description |
+|-------|------|---------|-----|-------------|
+| `pending_token_threshold` | int | 150000 | 1000000 | When uncommitted pending tokens exceed this value (strictly greater-than), an auto commit is triggered after a message write. |
+| `message_count_threshold` | int | 100 | 1000 | When the uncommitted live message count exceeds this value (strictly greater-than), an auto commit is triggered after a message write. |
+| `idle_timeout_seconds` | int | 86400 | 604800 | After this many idle seconds, a session with uncommitted content becomes eligible for the server-side idle scheduler. Idle-timeout commits archive the full backlog and ignore `keep_recent_count`. |
+| `keep_recent_count` | int | 0 | 500 | Number of recent live messages to keep (not archived) on a threshold-triggered auto commit. Idle-timeout commits ignore this and commit everything. |
+| `min_commit_interval_seconds` | int | 0 | 604800 | Minimum seconds between two automatic commits (throttle). |
+
+Code entry: `openviking/session/auto_commit_policy.py:AutoCommitPolicy`.
 
 ### ovcli.conf
 
@@ -1777,7 +1789,8 @@ Config file for the HTTP client (`SyncHTTPClient` / `AsyncHTTPClient`) and CLI t
 | Field | Description | Default |
 |-------|-------------|---------|
 | `url` | Server address | (required) |
-| `api_key` | API key for authentication (root key or user key) | `null` (no auth) |
+| `api_key` | Normally a user/admin key for data access. A root key here only works for admin APIs in API Key mode | `null` (no auth) |
+| `root_api_key` | Root key used by the `ov` CLI with `--sudo`, or as a fallback when `api_key` is unset. The Python HTTP SDK does not use this fallback | `null` |
 | `account` | Optional trusted-mode account identity header value | `null` |
 | `user` | Optional trusted-mode user identity header value | `null` |
 | `profile` | Whether to append `profile=1` to HTTP requests by default. Applies to both the Python HTTP client and the `ov` CLI; `ov --profile` can enable it per invocation. Actual effect still depends on the server enabling `server.profile_enabled`. | `false` |
@@ -1865,6 +1878,12 @@ Explicit `auth_mode: "api_key"` requires a non-empty `root_api_key`, including o
 
 `user_config_defaults` provides deployment defaults for add targets and memory extraction. For add operations, explicit request targets still win: `add_resource.to` / `add_resource.parent` take precedence over user defaults, and `add_skill.target_uri` takes precedence over user defaults. Memory policy precedence is Session policy > User `settings/user_config.json` policy > `server.user_config_defaults.memory_policy` > kernel default. `server.agent_evolution.enabled` supplies the startup default. Runtime resolution is Account override > Cluster runtime override > that startup value. Use the Admin settings APIs for changes without restarting; editing `ov.conf` directly takes effect after restart.
 
+Supported add target URIs:
+
+- `resource_uri` is used as the default `add_resource` parent directory, equivalent to `parent=<uri>, create_parent=true`. It must be a writable resource directory URI for the request user. Supported forms are `viking://resources` or `viking://resources/...`, `viking://~/resources` or `viking://~/resources/...`, `viking://user/{user_id}/resources` or `viking://user/{user_id}/resources/...`, and `viking://user/{user_id}/peers/{peer_id}/resources` or `viking://user/{user_id}/peers/{peer_id}/resources/...`. The `viking://~/...` home alias resolves per request user.
+- `skill_uri` is used as the default `add_skill` target root. In v1, only `viking://~/skills` and `viking://agent/skills` are accepted; explicit `viking://user/{user_id}/skills` is not accepted.
+- Legacy spellings: `viking://user/resources` and `viking://user/skills` written in earlier configs are auto-normalized to `viking://~/resources` and `viking://~/skills` when the config is loaded, and the server logs an info message. Prefer the `viking://~/...` form in new configs — outside `add_targets`, the uid-less spelling is rejected at the request boundary.
+
 ### Usage Reporter
 
 The optional Usage Reporter extracts memory usage events from committed session tool parts. The built-in file log sink writes each event as one flat JSON object to a dedicated hourly rotating file:
@@ -1905,12 +1924,6 @@ Each line has the following form:
 ```
 
 `event_time` is UTC. `tenant_id` combines the deployment resource ID, event account, user, and Experience URI. `memory.recalled` maps to `experience.recall.count`, while `memory.injected` maps to `experience.inject.count`. `object_id` is the stable Usage Event ID. Downstream consumers must deduplicate by the composite `(tenant_id, object_id)` key rather than by `object_id` globally. Aggregate usage with `sum(count)` after filtering by `tenant_id`, `event_name`, and the desired `event_time` range. File collection and downstream delivery remain best-effort.
-
-Supported add target URIs:
-
-- `resource_uri` is used as the default `add_resource` parent directory, equivalent to `parent=<uri>, create_parent=true`. It must be a writable resource directory URI for the request user. Supported forms are `viking://resources` or `viking://resources/...`, `viking://~/resources` or `viking://~/resources/...`, `viking://user/{user_id}/resources` or `viking://user/{user_id}/resources/...`, and `viking://user/{user_id}/peers/{peer_id}/resources` or `viking://user/{user_id}/peers/{peer_id}/resources/...`. The `viking://~/...` home alias resolves per request user.
-- `skill_uri` is used as the default `add_skill` target root. In v1, only `viking://~/skills` and `viking://agent/skills` are accepted; explicit `viking://user/{user_id}/skills` is not accepted.
-- Legacy spellings: `viking://user/resources` and `viking://user/skills` written in earlier configs are auto-normalized to `viking://~/resources` and `viking://~/skills` when the config is loaded, and the server logs an info message. Prefer the `viking://~/...` form in new configs — outside `add_targets`, the uid-less spelling is rejected at the request boundary.
 
 For startup and deployment details see [Deployment](./03-deployment.md), for authentication see [Authentication](./04-authentication.md).
 
@@ -1955,7 +1968,7 @@ For details on the lock mechanism, see [Path Locks and Crash Recovery](../concep
 
 ## Task Tracker Persistence
 
-The task tracker records async task state for endpoints that return a `task_id` (task types include `session_commit`, `add_resource`, `add_skill`, and `admin_reindex`). Task records are always persisted in AGFS, so a `task_id` returned by one instance can be looked up from another instance and task history survives a restart.
+The task tracker records async task state for endpoints that return a `task_id` (task types include `session_commit`, `add_resource`, `add_skill`, and `admin_reindex`). Task records are written to AGFS. Instances sharing the same persistent storage can query the same `task_id`, and task history survives a restart subject to retention cleanup. Records on the `memory` filesystem backend do not survive a process restart.
 
 No `storage.task_tracker` configuration is required. If an older configuration still includes `storage.task_tracker`, OpenViking logs a warning and ignores it.
 
@@ -1969,7 +1982,7 @@ Task record files are stored under the owning account's system directory:
 
 ## encryption Section
 
-Enable at-rest data encryption to ensure data security and isolation in multi-tenant environments. Encryption is completely transparent to users with no API changes.
+At-rest encryption protects newly written files with account-specific keys through the existing APIs. Existing plaintext files are not encrypted automatically; migrate or rewrite them separately.
 
 ```json
 {
@@ -2060,7 +2073,9 @@ Suitable for Volcengine cloud deployments:
 
 For detailed encryption explanations, see [Data Encryption](../concepts/10-encryption.md). For complete usage instructions, see [Encryption Guide](./08-encryption.md).
 
-## Full Schema
+## Configuration Structure
+
+This illustrates the main sections, not a complete runnable configuration or JSON Schema. Replace `string` and `|`-separated options with actual values; see the module sections for fields omitted here.
 
 ```json
 {
@@ -2099,8 +2114,7 @@ For detailed encryption explanations, see [Data Encryption](../concepts/10-encry
     "extra_headers": {}
   },
   "retrieval": {
-    "hotness_alpha": 0.0,
-    "score_propagation_alpha": 1.0
+    "enable_intent": true
   },
   "encryption": {
     "enabled": false,
@@ -2125,10 +2139,11 @@ For detailed encryption explanations, see [Data Encryption](../concepts/10-encry
     "workspace": "string",
     "agfs": {
       "backend": "local|s3|memory",
-      "timeout": 10
-    },
-    "transaction": {
-      "lock_expire": 300.0
+      "timeout": 10,
+      "pathlock": {
+        "provider": "filesystem",
+        "lock_expire_secs": 30.0
+      }
     },
     "vectordb": {
       "backend": "local|cuvs|http|volcengine|vikingdb",
@@ -2184,7 +2199,7 @@ Error: VLM request timeout
 Error: Rate limit exceeded
 ```
 
-Volcengine has rate limits. Consider batch processing with delays or upgrading your plan.
+Check the provider error to determine whether the limit applies to request count, token usage, or account quota, then adjust request pacing or request the corresponding quota.
 - Lower `embedding.max_concurrent` / `vlm.max_concurrent` first
 - Keep a small `max_retries` value for occasional `429`s; set it to `0` if you prefer fail-fast behavior
 

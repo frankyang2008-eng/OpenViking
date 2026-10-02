@@ -20,6 +20,7 @@ def _ctx() -> RequestContext:
 def _make_viking_fs(*, enable_intent: bool) -> VikingFS:
     fs = VikingFS.__new__(VikingFS)
     fs.agfs = MagicMock()
+    fs.acl_manager = None
     fs.query_embedder = MagicMock(name="embedder")
     fs.rerank_config = None
     fs.retrieval_config = RetrievalConfig(enable_intent=enable_intent)

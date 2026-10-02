@@ -322,12 +322,12 @@ class MemorySearchTool(MemoryTool):
             # L2 files only: L0/L1 summaries previously flooded the candidate pool and
             # starved the usable top-n (step-2 replay: usable=2/5 with rerank on), and
             # the +10 over-fetch existed only to compensate for them. level filters
-            # collection, not navigation — the retriever still recurses through L0/L1
-            # directories to find these files.
+            # collection, not navigation — the global recall still spans all
+            # levels to find these files.
             # A (phase-1 verdict + labeling adjudication, 2026-09-25): prefetch skips
             # the LLM rerank via the rerank=False capability parameter — never by
             # withholding the client, which would degrade retrieval to flat QUICK.
-            # Measured on this workspace: rerank scores steer the recursive expansion
+            # Measured on this workspace: rerank scores steer the candidate ordering
             # toward LESS relevant files (blind dual-judge: OFF picks 1.569 vs ON
             # 1.091) while costing ~87k prompt tok/query + 45.7s wall clock.
             with bind_telemetry_stage(f"search_{consumer}"):

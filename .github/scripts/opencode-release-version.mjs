@@ -1,5 +1,5 @@
-import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
-import { pathToFileURL } from "node:url";
+import { appendFileSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 export function resolveRelease(metadata, sourceCommit, date) {
   if (
@@ -72,5 +72,13 @@ async function main() {
   );
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href)
-  await main();
+function isDirectRun() {
+  if (!process.argv[1]) return false;
+  try {
+    return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return import.meta.url === pathToFileURL(process.argv[1]).href;
+  }
+}
+
+if (isDirectRun()) await main();

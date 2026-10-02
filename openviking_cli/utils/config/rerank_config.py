@@ -12,9 +12,9 @@ class RerankConfig(BaseModel):
         default=True,
         description=(
             "Master switch for rerank. False withholds the rerank client, which also "
-            "degrades retrieval to the flat QUICK strategy (no hierarchical recursion, "
-            "no hotness mixing) — it is not a scoring-only switch. To keep the recursive "
-            "strategy while skipping LLM scores, pass rerank=False per call instead. A "
+            "degrades retrieval to the flat QUICK strategy (no candidate reranking) — "
+            "it is not a scoring-only switch. To keep the global-recall strategy while "
+            "skipping LLM scores, pass rerank=False per call instead. A "
             "disabled-but-configured block still supplies its threshold to the vector "
             "path; provider credentials may stay configured."
         ),
@@ -47,6 +47,10 @@ class RerankConfig(BaseModel):
     model: Optional[str] = Field(
         default=None,
         description="Model name for OpenAI-compatible, LiteLLM, Jev, or llm_score providers",
+    )
+    mode: Optional[str] = Field(
+        default="noul",
+        description="Jev rerank mode: 'noul' or 'choice'",
     )
 
     extra_headers: Optional[Dict[str, str]] = Field(
@@ -158,6 +162,11 @@ class RerankConfig(BaseModel):
             raise ValueError("Rerank max_input_tokens must be 0 or at least 128")
 
         provider = self._effective_provider()
+        if provider == "jev" and self.mode is not None:
+            self.mode = self.mode.strip().lower()
+            if self.mode not in ("noul", "choice"):
+                raise ValueError("Jev rerank mode must be one of ['noul', 'choice']")
+
         if provider and provider not in [
             "vikingdb",
             "cohere",
