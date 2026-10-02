@@ -327,7 +327,7 @@ Normal `ov` commands, plus `ov config show` and `ov config validate`, resolve th
 ~/.openviking/ovcli.conf
 ```
 
-The interactive manager and `ov config list`, `switch`, `add`, `edit`, and `delete` always manage the default store. Named configurations in that store live next to the default active file:
+The interactive manager and `ov config list`, `switch`, `add`, `edit`, and `delete` use the same effective path. Named configurations live next to that active file. Without an override, their paths are:
 
 ```text
 ~/.openviking/ovcli.conf.<name>
@@ -353,6 +353,6 @@ ov config validate
 ov config show
 ```
 
-`ov config switch <name>` copies the named configuration to the default active file. If `OPENVIKING_CLI_CONFIG_FILE` remains set, normal `ov` commands continue to use the environment-selected file; unset it to use the switched default. New `ov` commands reread the effective file, while already-running Agent clients must restart before reading changes.
+`ov config switch <name>` copies the named configuration to the effective active file, including the path selected by `OPENVIKING_CLI_CONFIG_FILE`. This overwrites the selected file; unset the variable first if you intend to switch the default `~/.openviking/ovcli.conf` instead. A directly selected `ovcli.conf.<name>` is shown as active even when another profile has identical contents, and cannot be deleted or renamed while selected. New `ov` commands reread the effective file, while already-running Agent clients must restart before reading changes.
 
 See [OpenViking CLI Setup](../getting-started/05-cli-setup.md) for interactive and agent-assisted configuration workflows.

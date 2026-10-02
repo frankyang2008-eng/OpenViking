@@ -324,7 +324,7 @@ Agent 插件读取 `OPENVIKING_AUTO_RECALL`、`OPENVIKING_RECALL_LIMIT`、`OPENV
 ~/.openviking/ovcli.conf
 ```
 
-交互式管理器以及 `ov config list`、`switch`、`add`、`edit`、`delete` 始终管理默认配置仓库。该仓库中的命名配置与默认 Active 文件位于同一目录：
+交互式管理器以及 `ov config list`、`switch`、`add`、`edit`、`delete` 使用相同的实际配置路径。命名配置与 Active 文件位于同一目录；未设置覆盖路径时为：
 
 ```text
 ~/.openviking/ovcli.conf.<name>
@@ -350,6 +350,6 @@ ov config validate
 ov config show
 ```
 
-`ov config switch <name>` 会把命名配置复制为默认 Active 文件。如果仍设置了 `OPENVIKING_CLI_CONFIG_FILE`，普通 `ov` 命令会继续读取环境变量指定的文件；需要取消该变量后才会使用刚切换的默认配置。新的 `ov` 命令会重新读取实际配置文件；已经运行的 Agent 客户端需要重启后才会读取变更。
+`ov config switch <name>` 会把命名配置复制到实际 Active 文件，包括 `OPENVIKING_CLI_CONFIG_FILE` 指定的路径。这会覆盖所选文件；如果要切换默认的 `~/.openviking/ovcli.conf`，请先取消该环境变量。直接选中的 `ovcli.conf.<name>` 会显示为当前配置，即使另一个配置的内容完全相同；选中期间不能删除或重命名该文件。新的 `ov` 命令会重新读取实际配置文件；已经运行的 Agent 客户端需要重启后才会读取变更。
 
 交互式配置和 Agent 辅助配置步骤见[OpenViking CLI 配置指南](../getting-started/05-cli-setup.md)。
