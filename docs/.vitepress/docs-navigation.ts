@@ -13,8 +13,7 @@ const sectionNames: Record<string, string> = {
   'context-compilation': 'Context Compilation',
   api: 'API Reference',
   faq: 'FAQ',
-  about: 'About',
-  design: 'Design Notes'
+  about: 'About'
 }
 
 const zhSectionNames: Record<string, string> = {
@@ -26,8 +25,7 @@ const zhSectionNames: Record<string, string> = {
   'context-compilation': '上下文编译',
   api: 'API 参考',
   faq: '常见问题',
-  about: '关于',
-  design: '设计文档'
+  about: '关于'
 }
 
 export function titleFromMarkdown(filePath: string): string {
@@ -674,11 +672,6 @@ export function localizedAboutSidebarItems(locale: 'en' | 'zh'): DefaultTheme.Si
   const labels = locale === 'zh' ? zhSectionNames : sectionNames
   return [sidebarSection(`${locale}/about`, labels.about, false)]
 }
-
-export const designSidebar: DefaultTheme.SidebarItem[] = [
-  sidebarSection('design', sectionNames.design, false)
-]
-
 
 // The homepage map uses the same entries, labels and order as article sidebars.
 export function documentationSections(locale: 'en' | 'zh') {
