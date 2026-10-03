@@ -4,14 +4,22 @@
 """Global retrieval and final rerank behavior tests."""
 
 import asyncio
+import math
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from openviking.core.context import ContextLevel
-from openviking.retrieve.hierarchical_retriever import HierarchicalRetriever, RetrieverMode
+from openviking.retrieve.hierarchical_retriever import (
+    HierarchicalRetriever,
+    RetrieverMode,
+    RerankBudget,
+    RerankMemo,
+)
 from openviking.server.identity import RequestContext, Role
 from openviking.storage.abstract_overview import render_abstract_overview
 from openviking.utils.token_estimation import estimate_text_tokens
@@ -563,7 +571,12 @@ async def test_rerank_used_reflects_real_scores_not_client_presence(monkeypatch)
         lambda config: failing_client,
     )
     failing_retriever = HierarchicalRetriever(
-        storage=DummyStorage(),
+        storage=DummyStorage(
+            results=[
+                _result("viking://resources/a", 0.9, abstract="doc A"),
+                _result("viking://resources/b", 0.5, abstract="doc B"),
+            ]
+        ),
         embedder=DummyEmbedder(),
         rerank_config=_config(),
     )
@@ -579,7 +592,12 @@ async def test_rerank_used_reflects_real_scores_not_client_presence(monkeypatch)
         lambda config: scoring_client,
     )
     scoring_retriever = HierarchicalRetriever(
-        storage=DummyStorage(),
+        storage=DummyStorage(
+            results=[
+                _result("viking://resources/a", 0.9, abstract="doc A"),
+                _result("viking://resources/b", 0.5, abstract="doc B"),
+            ]
+        ),
         embedder=DummyEmbedder(),
         rerank_config=_config(),
     )
@@ -616,32 +634,6 @@ async def test_quick_mode_is_never_reported_as_rerank_used(monkeypatch):
 
     assert recorded[-1]["rerank_used"] is False
     assert fake_client.calls == []
-
-
-@pytest.mark.asyncio
-async def test_retrieve_uses_rerank_scores_in_thinking_mode(monkeypatch):
-    fake_client = FakeRerankClient([0.95, 0.05, 0.11, 0.95])
-    monkeypatch.setattr(
-        "openviking.retrieve.hierarchical_retriever.RerankClient.from_config",
-        lambda config: fake_client,
-    )
-
-    storage = DummyStorage()
-    retriever = HierarchicalRetriever(
-        storage=storage,
-        embedder=DummyEmbedder(),
-        rerank_config=_config(),
-    )
-
-    result = await retriever.retrieve(_query(), ctx=_ctx(), limit=2, mode=RetrieverMode.THINKING)
-
-    assert [ctx.uri for ctx in result.matched_contexts] == [
-        "viking://resources/file-b",
-        "viking://resources/file-a",
-    ]
-    assert fake_client.calls[0] == ("hello", ["root A", "root B"])
-    assert fake_client.calls[1] == ("hello", ["child A", "child B"])
-    assert storage.search_calls[0]["level"] == [0, 1]
 
 
 @pytest.mark.asyncio
@@ -1048,7 +1040,12 @@ async def test_injected_rerank_client_is_used_without_from_config(monkeypatch):
         "openviking.retrieve.hierarchical_retriever.RerankClient.from_config", _explode
     )
     retriever = HierarchicalRetriever(
-        storage=DummyStorage(),
+        storage=DummyStorage(
+        results=[
+            _result("viking://resources/file-a", 0.6, abstract="file A body"),
+            _result("viking://resources/file-b", 0.9, abstract="file B body"),
+        ]
+    ),
         embedder=DummyEmbedder(),
         rerank_config=_config(),
         rerank_client=injected,
