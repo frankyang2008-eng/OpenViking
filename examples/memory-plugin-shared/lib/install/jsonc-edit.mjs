@@ -318,6 +318,18 @@ function setPropertyInObject(s, objectRange, name, value) {
   return `${s.slice(0, insertAt)}${insertion}${s.slice(objectRange.end)}`;
 }
 
+/** Set a top-level property on the config text, bootstrapping an empty file
+ *  into `{\n}\n` first. The omp and OpenCode splices above anchor after the
+ *  last member; this wrapper just guarantees an object exists to anchor in. */
+function setTopLevelProperty(s, name, value) {
+  let objectRange = findTopLevelObject(s);
+  if (!objectRange) {
+    s = "{\n}\n";
+    objectRange = findTopLevelObject(s);
+  }
+  return setPropertyInObject(s, objectRange, name, value);
+}
+
 function setNestedObjectProperty(s, parentName, childName, childValue, fallbackParentValue) {
   let objectRange = findTopLevelObject(s);
   if (!objectRange) {
