@@ -24,6 +24,19 @@ afterEach(async () => {
   );
 });
 
+test("runtime uses a portable OpenViking id for DSH IM sessions", () => {
+  const runtime = new OpenVikingRuntime({}, config(), { debug() {} });
+  const state = runtime.stateFor({
+    id: "im:weixin_fixture:dm:1790750070550:chat_fixture@im.wechat",
+    header: { cwd: "/workspace" },
+  });
+
+  assert.equal(
+    state.ovSessionId,
+    "dsh-im_weixin_fixture_dm_1790750070550_chat_fixture@im.wechat__eb8b3dae7d74",
+  );
+});
+
 test("capture queues retryable failures but drops permanent client errors", async () => {
   for (const [status, expectedPending] of [
     [400, 0],

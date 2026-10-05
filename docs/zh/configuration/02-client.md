@@ -1,4 +1,4 @@
-# ovcli 配置
+# 客户端配置字段
 
 `ovcli.conf` 是 `ov` CLI 的客户端配置文件，用于保存服务端连接、鉴权身份和命令默认行为。
 
@@ -217,6 +217,8 @@ export OPENVIKING_CLI_CONFIG_FILE=/path/to/ovcli.conf
 peer 是用户空间下的一段路径前缀——`viking://user/<you>/peers/<peer>/memories`——把一个项目的记忆归拢在一起。默认只有 git 仓库会有 peer：优先用归一化后的 `origin` URL，其次是仓库根路径。不在 git 仓库中的目录不发送任何 peer，在那里记下的内容进入用户级空间 `viking://user/<you>/memories`。这样，每个任务新建临时目录的应用就不会为每个目录创建一个空 peer。
 
 规则由 `peer.source` 决定。同一项配置在环境变量中写作 `OPENVIKING_PEER_SOURCE`，在 `ovcli.conf` 中写作 `plugin.peerSource` 或 `plugin.<harness>.peerSource`。
+
+远端身份只取 `origin`，不回退到 `upstream`，避免添加 upstream 时悄悄改变记忆空间。也不使用 root-commit SHA：Fork 共享祖先，浅克隆或新拉取的历史又会改变可见的根提交。Git 仓库没有 `origin` 时使用仓库根路径。需要多个仓库共享记忆，或希望移动目录后身份不变时，应显式配置 `peer.id`。非 Git 目录默认仍不派生 peer。
 
 #### 让一个目录拥有独立记忆
 

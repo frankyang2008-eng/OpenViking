@@ -1,4 +1,4 @@
-# ovcli Configuration
+# Client configuration fields
 
 `ovcli.conf` is the client configuration file for the `ov` CLI. It stores the server connection, authentication identity, and command defaults.
 
@@ -220,6 +220,8 @@ An out-of-range number is clamped to the nearest bound and reported; an unrecogn
 A peer is a path prefix under your own user space — `viking://user/<you>/peers/<peer>/memories` — that keeps one project's memories together. By default only a git repository gets one: the normalized `origin` URL, else the repository root path. A directory that is not a repository sends no peer at all, and what is remembered there goes to your user-level space at `viking://user/<you>/memories` instead. That is deliberate: an application that opens a fresh directory for every task would otherwise mint a fresh, empty peer for every task.
 
 `peer.source` decides the rule. The same setting is spelled `OPENVIKING_PEER_SOURCE` in the environment and `plugin.peerSource` or `plugin.<harness>.peerSource` in `ovcli.conf`.
+
+Remote identity comes only from `origin`; there is no fallback to `upstream`, because adding an upstream remote must not silently change the memory namespace. Root-commit hashes are not used either: forks share ancestry, and shallow clones or newly fetched histories can change which roots are visible. Without `origin`, a Git repository uses its root path. Use an explicit `peer.id` when repositories should share memories or when path-based identity must survive a move. Non-Git directories still have no derived peer by default.
 
 #### Give a Directory Its Own Peer
 
