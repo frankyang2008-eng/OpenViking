@@ -137,7 +137,7 @@ test("evaluateAgyUriGuard denies viking:// URIs in view_file and allows local pa
   assert.equal(allowedResult.decision, "allow");
 });
 
-test("evaluateAgyUriGuard denies viking:// in run_command", () => {
+test("evaluateAgyUriGuard lets run_command carrying a viking URI through with a notice", () => {
   const shellCall = {
     toolCall: {
       name: "run_command",
@@ -147,8 +147,25 @@ test("evaluateAgyUriGuard denies viking:// in run_command", () => {
     },
   };
   const result = evaluateAgyUriGuard(shellCall);
+  assert.equal(result.decision, "allow");
+  assert.match(result.reason, /URI guard/);
+  assert.match(result.reason, /ignore this notice/);
+});
+
+test("evaluateAgyUriGuard denies viking:// in replace_file_content with the edit hint", () => {
+  const writeCall = {
+    toolCall: {
+      name: "replace_file_content",
+      args: {
+        AbsolutePath: "viking://user/skills/build.md",
+        OldString: "old",
+        NewString: "new",
+      },
+    },
+  };
+  const result = evaluateAgyUriGuard(writeCall);
   assert.equal(result.decision, "deny");
-  assert.match(result.reason, /viking:\/\//);
+  assert.match(result.reason, /OpenViking MCP edit/);
 });
 
 test("sanitizeCapturedText completely strips <openviking-context> blocks", () => {

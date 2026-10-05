@@ -4,7 +4,7 @@
 
 import { readFileSync, realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { evaluateUriGuard } from "../../memory-plugin-shared/lib/uri-guard.mjs";
+import { evaluateUriGuard, evaluateUriNotice } from "../../memory-plugin-shared/lib/uri-guard.mjs";
 
 function readInput() {
   try {
@@ -17,8 +17,11 @@ function readInput() {
 
 function mapAgyToolName(rawName) {
   const name = String(rawName || "").toLowerCase().replace(/[_-]/g, "");
-  if (name === "viewfile" || name === "replacefilecontent" || name === "multireplacefilecontent") {
+  if (name === "viewfile") {
     return "read";
+  }
+  if (name === "replacefilecontent" || name === "multireplacefilecontent") {
+    return "edit";
   }
   if (name === "runcommand") {
     return "runcommand";
@@ -41,6 +44,17 @@ export function evaluateAgyUriGuard(payload = {}) {
     return {
       decision: "deny",
       reason: decision.reason || "Viking URIs (viking://) cannot be read via local file tools. Use OpenViking MCP tools instead.",
+    };
+  }
+
+  // Shell tools are never denied: a viking:// URI in a command line is as often
+  // intentional data (an `ov` argument, an HTTP payload) as a mistaken path.
+  // The command still runs; the notice tells the model which MCP tool to use.
+  const notice = evaluateUriNotice(mappedToolName, args);
+  if (notice) {
+    return {
+      decision: "allow",
+      reason: notice.reason,
     };
   }
 
