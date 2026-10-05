@@ -2629,7 +2629,9 @@ NODE
     && [ ! -d "$OV_HOME/agent-integrations/trae-cn" ] \
     && [ ! -d "$OV_HOME/agent-integrations/trae-cli" ] \
     && [ ! -d "$OV_HOME/agent-integrations/zcode" ] \
-    && [ ! -d "$OV_HOME/agent-integrations/kimicode" ]; then
+    && [ ! -d "$OV_HOME/agent-integrations/kimicode" ] \
+    && [ ! -d "$OV_HOME/agent-integrations/agy" ] \
+    && [ ! -d "$OV_HOME/agent-integrations/omp" ]; then
     rm -rf "$OV_HOME/agent-integrations/memory-plugin-shared"
   fi
   if contains_harness cli; then
@@ -3626,12 +3628,12 @@ const hooks = {
       {
         "type": "command",
         "command": `${nodeBin} "${path.join(root, "scripts/stop.mjs")}"`,
-        "timeout": 5
+        "timeout": 30
       }
     ],
     "PreToolUse": [
       {
-        "matcher": "view_file|replace_file_content|run_command",
+        "matcher": "view_file|replace_file_content|multi_replace_file_content|write_to_file|grep_search|run_command",
         "hooks": [
           {
             "type": "command",

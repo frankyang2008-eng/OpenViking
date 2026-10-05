@@ -278,6 +278,7 @@ export async function recallForPrompt(fetchJSON, cfg, prompt, cwd, log = () => {
     // and the cross-turn dedup ledger for these thin harnesses.
     sessionId: options.sessionId || "",
     log,
+    excludeUris: cfg.recallExcludeUris,
   });
 }
 

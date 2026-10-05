@@ -11,6 +11,13 @@ const DEFAULT_URI_KEYS = [
   "uri",
   "target_uri",
   "targetUri",
+  "TargetFile",
+  "target_file",
+  "targetFile",
+  "AbsolutePath",
+  "absolute_path",
+  "SearchPath",
+  "search_path",
 ];
 
 export function normalizeToolName(value) {
@@ -36,6 +43,15 @@ const DEFAULT_CONTENT_KEYS = [
   "file_text",
   "insert_line",
   "replacement",
+  "CodeContent",
+  "code_content",
+  "codeContent",
+  "TargetContent",
+  "target_content",
+  "targetContent",
+  "ReplacementContent",
+  "replacement_content",
+  "replacementContent",
 ];
 
 export function findVikingUri(args = {}, keys = DEFAULT_URI_KEYS, contentKeys = DEFAULT_CONTENT_KEYS) {

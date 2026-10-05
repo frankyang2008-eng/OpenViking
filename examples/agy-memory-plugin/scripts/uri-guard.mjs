@@ -23,6 +23,9 @@ function mapAgyToolName(rawName) {
   if (name === "replacefilecontent" || name === "multireplacefilecontent") {
     return "edit";
   }
+  if (name === "writetofile") {
+    return "write";
+  }
   if (name === "runcommand") {
     return "runcommand";
   }

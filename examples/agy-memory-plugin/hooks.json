@@ -11,12 +11,12 @@
       {
         "type": "command",
         "command": "node ./scripts/stop.mjs",
-        "timeout": 5
+        "timeout": 30
       }
     ],
     "PreToolUse": [
       {
-        "matcher": "view_file|replace_file_content|run_command",
+        "matcher": "view_file|replace_file_content|multi_replace_file_content|write_to_file|grep_search|run_command",
         "hooks": [
           {
             "type": "command",

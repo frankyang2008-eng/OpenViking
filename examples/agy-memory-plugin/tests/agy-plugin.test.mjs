@@ -168,6 +168,51 @@ test("evaluateAgyUriGuard denies viking:// in replace_file_content with the edit
   assert.match(result.reason, /OpenViking MCP edit/);
 });
 
+test("evaluateAgyUriGuard denies viking:// in multi_replace_file_content with the edit hint", () => {
+  const editCall = {
+    toolCall: {
+      name: "multi_replace_file_content",
+      args: {
+        TargetFile: "viking://user/memories/preferences.md",
+        ReplacementChunks: [],
+      },
+    },
+  };
+  const result = evaluateAgyUriGuard(editCall);
+  assert.equal(result.decision, "deny");
+  assert.match(result.reason, /OpenViking MCP edit/);
+});
+
+test("evaluateAgyUriGuard denies viking:// in write_to_file with the write or add_skill hint", () => {
+  const writeCall = {
+    toolCall: {
+      name: "write_to_file",
+      args: {
+        TargetFile: "viking://user/skills/my-skill/SKILL.md",
+        CodeContent: "# My Skill",
+      },
+    },
+  };
+  const result = evaluateAgyUriGuard(writeCall);
+  assert.equal(result.decision, "deny");
+  assert.match(result.reason, /OpenViking MCP (?:write|add_skill)/);
+});
+
+test("evaluateAgyUriGuard denies viking:// in grep_search with the grep hint", () => {
+  const grepCall = {
+    toolCall: {
+      name: "grep_search",
+      args: {
+        SearchPath: "viking://user/memories",
+        Query: "something",
+      },
+    },
+  };
+  const result = evaluateAgyUriGuard(grepCall);
+  assert.equal(result.decision, "deny");
+  assert.match(result.reason, /OpenViking MCP (?:grep|search)/);
+});
+
 test("sanitizeCapturedText completely strips <openviking-context> blocks", () => {
   const dirtyText = `Here is my answer.\n\n<openviking-context source="recall">\n* [viking://user/skills/git](viking://user/skills/git): Git workflow\n</openviking-context>\n\nProceeding with task.`;
   const clean = sanitizeCapturedText(dirtyText);
