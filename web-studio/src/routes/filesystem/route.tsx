@@ -48,21 +48,21 @@ import {
   ContextExplorerHeader,
   ContextTree,
   PanelTab,
-  PlaygroundResizeHandle,
+  FilesystemResizeHandle,
 } from './-components/context-explorer'
 import { TerminalPanel } from './-components/terminal-panel'
 import {
   ROOT_URI,
-  PLAYGROUND_LEFT_WIDTH,
-  PLAYGROUND_LEFT_WIDTH_STORAGE_KEY,
-  PLAYGROUND_MAIN_MIN_WIDTH,
-  PLAYGROUND_RIGHT_COLLAPSED_STORAGE_KEY,
-  PLAYGROUND_RIGHT_WIDTH,
-  PLAYGROUND_RIGHT_WIDTH_STORAGE_KEY,
+  FILESYSTEM_LEFT_WIDTH,
+  FILESYSTEM_LEFT_WIDTH_STORAGE_KEY,
+  FILESYSTEM_MAIN_MIN_WIDTH,
+  FILESYSTEM_RIGHT_COLLAPSED_STORAGE_KEY,
+  FILESYSTEM_RIGHT_WIDTH,
+  FILESYSTEM_RIGHT_WIDTH_STORAGE_KEY,
 } from './-lib/constants'
 import type {
-  PlaygroundPanel,
-  PlaygroundSearch,
+  FilesystemPanel,
+  FilesystemSearch,
   ResourceOpenHandler,
 } from './-lib/types'
 import {
@@ -73,15 +73,15 @@ import {
   getAncestorUris,
   isDirectoryLevelFile,
   mergeExpanded,
-  normalizePlaygroundResourceUri,
-  readPlaygroundExpandedUris,
+  normalizeFilesystemResourceUri,
+  readFilesystemExpandedUris,
   readStoredNumber,
   visibleContextEntries,
-  writePlaygroundExpandedUris,
+  writeFilesystemExpandedUris,
 } from './-lib/utils'
 
-export const Route = createFileRoute('/playground')({
-  validateSearch: (search: Record<string, unknown>): PlaygroundSearch => ({
+export const Route = createFileRoute('/filesystem')({
+  validateSearch: (search: Record<string, unknown>): FilesystemSearch => ({
     file: typeof search.file === 'string' ? search.file : undefined,
     panel:
       search.panel === 'agent' || search.panel === 'terminal'
@@ -91,19 +91,19 @@ export const Route = createFileRoute('/playground')({
     upload: search.upload === true || search.upload === 'true',
     uri: typeof search.uri === 'string' ? search.uri : undefined,
   }),
-  component: PlaygroundRoute,
+  component: FilesystemRoute,
 })
 
-function PlaygroundRoute() {
+function FilesystemRoute() {
   return (
     <ResourceUploadProvider>
-      <PlaygroundWorkbench />
+      <FilesystemWorkbench />
     </ResourceUploadProvider>
   )
 }
 
-function PlaygroundWorkbench() {
-  const { t } = useTranslation(['playground', 'resources'])
+function FilesystemWorkbench() {
+  const { t } = useTranslation(['filesystem', 'resources'])
   const { identityScopeKey } = useAppConnection()
   const search = Route.useSearch()
   const navigate = useNavigate({ from: Route.fullPath })
@@ -125,15 +125,15 @@ function PlaygroundWorkbench() {
   selectedFileRef.current = selectedFile
   const [expandedKeys, setExpandedKeys] = useState<Set<string>>(() =>
     mergeExpanded(
-      new Set(readPlaygroundExpandedUris(identityScopeKey)),
+      new Set(readFilesystemExpandedUris(identityScopeKey)),
       getAncestorUris(initialCurrentUri),
     ),
   )
-  const [activePanel, setActivePanel] = useState<PlaygroundPanel>(
+  const [activePanel, setActivePanel] = useState<FilesystemPanel>(
     search.panel ?? 'agent',
   )
   const [actionPanelOpen, setActionPanelOpen] = useState(false)
-  const isCompactLayout = useIsCompactPlaygroundLayout()
+  const isCompactLayout = useIsCompactFilesystemLayout()
   const [uploadDialogOpen, setUploadDialogOpen] = useState(
     () => search.upload ?? false,
   )
@@ -143,18 +143,18 @@ function PlaygroundWorkbench() {
   const layoutRef = useRef<HTMLDivElement>(null)
   const [leftWidth, setLeftWidth] = useState(() =>
     readStoredNumber(
-      PLAYGROUND_LEFT_WIDTH_STORAGE_KEY,
-      PLAYGROUND_LEFT_WIDTH.default,
-      PLAYGROUND_LEFT_WIDTH.min,
-      PLAYGROUND_LEFT_WIDTH.max,
+      FILESYSTEM_LEFT_WIDTH_STORAGE_KEY,
+      FILESYSTEM_LEFT_WIDTH.default,
+      FILESYSTEM_LEFT_WIDTH.min,
+      FILESYSTEM_LEFT_WIDTH.max,
     ),
   )
   const [rightWidth, setRightWidth] = useState(() =>
     readStoredNumber(
-      PLAYGROUND_RIGHT_WIDTH_STORAGE_KEY,
-      PLAYGROUND_RIGHT_WIDTH.default,
-      PLAYGROUND_RIGHT_WIDTH.min,
-      PLAYGROUND_RIGHT_WIDTH.max,
+      FILESYSTEM_RIGHT_WIDTH_STORAGE_KEY,
+      FILESYSTEM_RIGHT_WIDTH.default,
+      FILESYSTEM_RIGHT_WIDTH.min,
+      FILESYSTEM_RIGHT_WIDTH.max,
     ),
   )
   const [resizingPane, setResizingPane] = useState<'context' | 'action' | null>(
@@ -163,14 +163,14 @@ function PlaygroundWorkbench() {
   const [rightCollapsed, setRightCollapsed] = useState(
     () =>
       typeof window !== 'undefined' &&
-      window.localStorage.getItem(PLAYGROUND_RIGHT_COLLAPSED_STORAGE_KEY) ===
+      window.localStorage.getItem(FILESYSTEM_RIGHT_COLLAPSED_STORAGE_KEY) ===
         '1',
   )
   const toggleRightCollapsed = useCallback(
     () =>
       setRightCollapsed((collapsed) => {
         window.localStorage.setItem(
-          PLAYGROUND_RIGHT_COLLAPSED_STORAGE_KEY,
+          FILESYSTEM_RIGHT_COLLAPSED_STORAGE_KEY,
           collapsed ? '0' : '1',
         )
         return !collapsed
@@ -201,7 +201,7 @@ function PlaygroundWorkbench() {
   const syncSearch = useCallback(
     (next: {
       file?: string
-      panel?: PlaygroundPanel
+      panel?: FilesystemPanel
       session?: string
       upload?: boolean
       uri?: string
@@ -222,7 +222,7 @@ function PlaygroundWorkbench() {
   useEffect(() => {
     setExpandedKeys(
       mergeExpanded(
-        new Set(readPlaygroundExpandedUris(identityScopeKey)),
+        new Set(readFilesystemExpandedUris(identityScopeKey)),
         getAncestorUris(initialCurrentUri),
       ),
     )
@@ -244,7 +244,7 @@ function PlaygroundWorkbench() {
   const handleExpandedKeysChange = useCallback(
     (next: Set<string>) => {
       setExpandedKeys(next)
-      writePlaygroundExpandedUris(identityScopeKey, next)
+      writeFilesystemExpandedUris(identityScopeKey, next)
     },
     [identityScopeKey],
   )
@@ -277,7 +277,7 @@ function PlaygroundWorkbench() {
       if (!cleaned) return
 
       setOpeningUri(cleaned)
-      const targetUri = normalizePlaygroundResourceUri(cleaned)
+      const targetUri = normalizeFilesystemResourceUri(cleaned)
       try {
         const stat = await fetchFsStat(targetUri, { throwOnError: true })
         const isDir = stat.isDir || targetUri.endsWith('/')
@@ -365,7 +365,7 @@ function PlaygroundWorkbench() {
   )
 
   const handlePanelChange = useCallback(
-    (panel: PlaygroundPanel) => {
+    (panel: FilesystemPanel) => {
       setActivePanel(panel)
       syncSearch({ panel })
     },
@@ -373,7 +373,7 @@ function PlaygroundWorkbench() {
   )
 
   const handleOpenActionPanel = useCallback(
-    (panel: PlaygroundPanel) => {
+    (panel: FilesystemPanel) => {
       handlePanelChange(panel)
       setActionPanelOpen(true)
     },
@@ -450,8 +450,8 @@ function PlaygroundWorkbench() {
   const layoutStyle = useMemo(
     () =>
       ({
-        '--playground-left-width': `${leftWidth}px`,
-        '--playground-right-width': `${rightWidth}px`,
+        '--filesystem-left-width': `${leftWidth}px`,
+        '--filesystem-right-width': `${rightWidth}px`,
       }) as CSSProperties,
     [leftWidth, rightWidth],
   )
@@ -474,20 +474,20 @@ function PlaygroundWorkbench() {
       ) => {
         if (!layoutRect) {
           return side === 'left'
-            ? PLAYGROUND_LEFT_WIDTH.max
-            : PLAYGROUND_RIGHT_WIDTH.max
+            ? FILESYSTEM_LEFT_WIDTH.max
+            : FILESYSTEM_RIGHT_WIDTH.max
         }
 
         const hardMax =
           side === 'left'
-            ? PLAYGROUND_LEFT_WIDTH.max
-            : PLAYGROUND_RIGHT_WIDTH.max
+            ? FILESYSTEM_LEFT_WIDTH.max
+            : FILESYSTEM_RIGHT_WIDTH.max
         const availableMax =
-          layoutRect.width - currentOppositeWidth - PLAYGROUND_MAIN_MIN_WIDTH
+          layoutRect.width - currentOppositeWidth - FILESYSTEM_MAIN_MIN_WIDTH
         return Math.max(
           side === 'left'
-            ? PLAYGROUND_LEFT_WIDTH.min
-            : PLAYGROUND_RIGHT_WIDTH.min,
+            ? FILESYSTEM_LEFT_WIDTH.min
+            : FILESYSTEM_RIGHT_WIDTH.min,
           Math.min(hardMax, availableMax),
         )
       }
@@ -497,12 +497,12 @@ function PlaygroundWorkbench() {
         if (pane === 'context') {
           const nextWidth = clampNumber(
             startLeftWidth + deltaX,
-            PLAYGROUND_LEFT_WIDTH.min,
+            FILESYSTEM_LEFT_WIDTH.min,
             getMaxWidth('left', rightWidthRef.current),
           )
           setLeftWidth(nextWidth)
           window.localStorage.setItem(
-            PLAYGROUND_LEFT_WIDTH_STORAGE_KEY,
+            FILESYSTEM_LEFT_WIDTH_STORAGE_KEY,
             String(nextWidth),
           )
           return
@@ -510,12 +510,12 @@ function PlaygroundWorkbench() {
 
         const nextWidth = clampNumber(
           startRightWidth - deltaX,
-          PLAYGROUND_RIGHT_WIDTH.min,
+          FILESYSTEM_RIGHT_WIDTH.min,
           getMaxWidth('right', leftWidthRef.current),
         )
         setRightWidth(nextWidth)
         window.localStorage.setItem(
-          PLAYGROUND_RIGHT_WIDTH_STORAGE_KEY,
+          FILESYSTEM_RIGHT_WIDTH_STORAGE_KEY,
           String(nextWidth),
         )
       }
@@ -556,7 +556,7 @@ function PlaygroundWorkbench() {
         className="flex min-h-0 flex-1 flex-col bg-background lg:flex-row"
         style={layoutStyle}
       >
-        <aside className="flex min-h-[180px] min-w-0 shrink-0 basis-[36%] flex-col border-b bg-muted/20 lg:min-h-0 lg:w-[var(--playground-left-width)] lg:min-w-[var(--playground-left-width)] lg:basis-auto lg:border-b-0">
+        <aside className="flex min-h-[180px] min-w-0 shrink-0 basis-[36%] flex-col border-b bg-muted/20 lg:min-h-0 lg:w-[var(--filesystem-left-width)] lg:min-w-[var(--filesystem-left-width)] lg:basis-auto lg:border-b-0">
           <ContextExplorerHeader
             activeTaskCount={activeTaskCount}
             hasActiveTasks={hasActiveTasks}
@@ -581,7 +581,7 @@ function PlaygroundWorkbench() {
             />
           </div>
         </aside>
-        <PlaygroundResizeHandle
+        <FilesystemResizeHandle
           active={resizingPane === 'context'}
           label={t('resizeContext')}
           onPointerDown={(event) => handleResizeStart('context', event)}
@@ -661,7 +661,7 @@ function PlaygroundWorkbench() {
           </div>
         </main>
         {!rightCollapsed ? (
-          <PlaygroundResizeHandle
+          <FilesystemResizeHandle
             active={resizingPane === 'action'}
             label={t('resizeAction')}
             onPointerDown={(event) => handleResizeStart('action', event)}
@@ -669,8 +669,8 @@ function PlaygroundWorkbench() {
         ) : null}
 
         {!isCompactLayout && !rightCollapsed ? (
-          <aside className="hidden min-h-0 min-w-0 flex-col bg-muted/15 lg:flex lg:w-[var(--playground-right-width)] lg:min-w-[var(--playground-right-width)]">
-            <PlaygroundActionPanel
+          <aside className="hidden min-h-0 min-w-0 flex-col bg-muted/15 lg:flex lg:w-[var(--filesystem-right-width)] lg:min-w-[var(--filesystem-right-width)]">
+            <FilesystemActionPanel
               activePanel={activePanel}
               currentUri={currentUri}
               entries={entries}
@@ -689,7 +689,7 @@ function PlaygroundWorkbench() {
       </div>
 
       {isCompactLayout ? (
-        <PlaygroundMobileActionScreen
+        <FilesystemMobileActionScreen
           activePanel={activePanel}
           currentUri={currentUri}
           entries={entries}
@@ -744,7 +744,7 @@ function PlaygroundWorkbench() {
   )
 }
 
-function useIsCompactPlaygroundLayout() {
+function useIsCompactFilesystemLayout() {
   const [isCompact, setIsCompact] = useState(() =>
     typeof window !== 'undefined' && typeof window.matchMedia === 'function'
       ? window.matchMedia('(max-width: 1023px)').matches
@@ -765,7 +765,7 @@ function useIsCompactPlaygroundLayout() {
   return isCompact
 }
 
-function PlaygroundActionPanel({
+function FilesystemActionPanel({
   activePanel,
   currentUri,
   entries,
@@ -777,25 +777,25 @@ function PlaygroundActionPanel({
   openingUri,
   sessionId,
 }: {
-  activePanel: PlaygroundPanel
+  activePanel: FilesystemPanel
   currentUri: string
   entries: VikingFsEntry[]
   onCollapse: () => void
   onOpenAddResource: () => void
   onOpenResource: ResourceOpenHandler
-  onPanelChange: (panel: PlaygroundPanel) => void
+  onPanelChange: (panel: FilesystemPanel) => void
   onSessionChange: (sessionId: string) => void
   openingUri: string | null
   sessionId?: string
 }) {
-  const { t } = useTranslation('playground')
+  const { t } = useTranslation('filesystem')
   const [toolbarContainer, setToolbarContainer] =
     useState<HTMLDivElement | null>(null)
 
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex h-14 shrink-0 items-center gap-2 border-b px-3">
-        <PlaygroundActionTabs
+        <FilesystemActionTabs
           activePanel={activePanel}
           onPanelChange={onPanelChange}
         />
@@ -816,7 +816,7 @@ function PlaygroundActionPanel({
         </Button>
       </div>
 
-      <PlaygroundActionContent
+      <FilesystemActionContent
         activePanel={activePanel}
         currentUri={currentUri}
         entries={entries}
@@ -831,7 +831,7 @@ function PlaygroundActionPanel({
   )
 }
 
-function PlaygroundMobileActionScreen({
+function FilesystemMobileActionScreen({
   activePanel,
   currentUri,
   entries,
@@ -844,19 +844,19 @@ function PlaygroundMobileActionScreen({
   openingUri,
   sessionId,
 }: {
-  activePanel: PlaygroundPanel
+  activePanel: FilesystemPanel
   currentUri: string
   entries: VikingFsEntry[]
   onClose: () => void
   onOpenAddResource: () => void
   onOpenResource: ResourceOpenHandler
-  onPanelChange: (panel: PlaygroundPanel) => void
+  onPanelChange: (panel: FilesystemPanel) => void
   onSessionChange: (sessionId: string) => void
   open: boolean
   openingUri: string | null
   sessionId?: string
 }) {
-  const { t } = useTranslation(['playground', 'resources'])
+  const { t } = useTranslation(['filesystem', 'resources'])
   const [toolbarContainer, setToolbarContainer] =
     useState<HTMLDivElement | null>(null)
 
@@ -877,7 +877,7 @@ function PlaygroundMobileActionScreen({
         >
           <ArrowLeftIcon className="size-4" />
         </Button>
-        <PlaygroundActionTabs
+        <FilesystemActionTabs
           activePanel={activePanel}
           onPanelChange={onPanelChange}
         />
@@ -887,7 +887,7 @@ function PlaygroundMobileActionScreen({
         />
       </div>
       <div className="min-h-0 flex-1">
-        <PlaygroundActionContent
+        <FilesystemActionContent
           activePanel={activePanel}
           currentUri={currentUri}
           entries={entries}
@@ -903,14 +903,14 @@ function PlaygroundMobileActionScreen({
   )
 }
 
-function PlaygroundActionTabs({
+function FilesystemActionTabs({
   activePanel,
   onPanelChange,
 }: {
-  activePanel: PlaygroundPanel
-  onPanelChange: (panel: PlaygroundPanel) => void
+  activePanel: FilesystemPanel
+  onPanelChange: (panel: FilesystemPanel) => void
 }) {
-  const { t } = useTranslation('playground')
+  const { t } = useTranslation('filesystem')
 
   return (
     <div className="inline-flex rounded-lg border bg-background p-1">
@@ -930,7 +930,7 @@ function PlaygroundActionTabs({
   )
 }
 
-function PlaygroundActionContent({
+function FilesystemActionContent({
   activePanel,
   currentUri,
   entries,
@@ -941,7 +941,7 @@ function PlaygroundActionContent({
   sessionId,
   toolbarContainer,
 }: {
-  activePanel: PlaygroundPanel
+  activePanel: FilesystemPanel
   currentUri: string
   entries: VikingFsEntry[]
   onOpenAddResource: () => void

@@ -2,7 +2,7 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { AgentPanel } from './agent-panel'
-import { registerPlaygroundAgentSessionId } from '../-lib/utils'
+import { registerFilesystemAgentSessionId } from '../-lib/utils'
 
 const m = vi.hoisted(() => ({
   create: vi.fn(),
@@ -72,7 +72,7 @@ function setup() {
         reject = rej
       }),
   )
-  registerPlaygroundAgentSessionId('B', 'test')
+  registerFilesystemAgentSessionId('B', 'test')
   const toolbar = document.createElement('div')
   document.body.append(toolbar)
   const url = vi.fn()

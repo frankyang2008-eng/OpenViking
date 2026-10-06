@@ -29,7 +29,7 @@ vi.mock('@tanstack/react-router', async (importOriginal) => {
     ...actual,
     createFileRoute: () => (options: Record<string, unknown>) => ({
       ...options,
-      fullPath: '/playground',
+      fullPath: '/filesystem',
       options,
       useSearch: () => mocks.search,
     }),
@@ -77,7 +77,7 @@ vi.mock('./-components/context-explorer', () => ({
   ),
   ContextTree: () => null,
   PanelTab: () => null,
-  PlaygroundResizeHandle: () => null,
+  FilesystemResizeHandle: () => null,
 }))
 
 vi.mock('./-components/agent-panel', () => ({ AgentPanel: () => null }))
@@ -86,16 +86,16 @@ vi.mock('#/routes/resources/-components/find-palette', () => ({
   FindPalette: () => null,
 }))
 
-const PlaygroundRoute = Route.options.component as ComponentType & {
+const FilesystemRoute = Route.options.component as ComponentType & {
   preload?: () => Promise<void>
 }
 const firstFile = 'viking://user/default/memories/first.md'
 const secondFile = 'viking://user/default/memories/second.md'
 const parentDirectory = 'viking://user/default/memories/'
 
-describe('playground context tree refresh', () => {
+describe('filesystem context tree refresh', () => {
   beforeAll(async () => {
-    await PlaygroundRoute.preload?.()
+    await FilesystemRoute.preload?.()
   })
 
   afterEach(cleanup)
@@ -109,7 +109,7 @@ describe('playground context tree refresh', () => {
 
   it('clears a deleted selected file from the preview and URL search', async () => {
     mocks.fetchFsStat.mockRejectedValue({ statusCode: 404 })
-    render(<PlaygroundRoute />)
+    render(<FilesystemRoute />)
 
     await userEvent.click(
       await screen.findByRole('button', { name: mocks.refreshLabel }),
@@ -135,7 +135,7 @@ describe('playground context tree refresh', () => {
         rejectStat = reject
       }),
     )
-    const { rerender } = render(<PlaygroundRoute />)
+    const { rerender } = render(<FilesystemRoute />)
 
     await userEvent.click(
       await screen.findByRole('button', { name: mocks.refreshLabel }),
@@ -145,7 +145,7 @@ describe('playground context tree refresh', () => {
     })
 
     mocks.search = { file: secondFile, uri: parentDirectory }
-    rerender(<PlaygroundRoute />)
+    rerender(<FilesystemRoute />)
     await waitFor(() => {
       expect(screen.getByTestId('preview').textContent).toBe(secondFile)
     })

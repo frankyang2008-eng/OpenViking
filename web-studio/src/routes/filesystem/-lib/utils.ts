@@ -11,8 +11,8 @@ import { cleanVikingUri } from '#/lib/viking-uri'
 
 import {
   ROOT_URI,
-  PLAYGROUND_AGENT_SESSIONS_STORAGE_KEY,
-  PLAYGROUND_EXPANDED_URIS_STORAGE_KEY,
+  FILESYSTEM_AGENT_SESSIONS_STORAGE_KEY,
+  FILESYSTEM_EXPANDED_URIS_STORAGE_KEY,
 } from './constants'
 import type { ResourceRef } from './types'
 
@@ -109,12 +109,12 @@ export function createIdentityStorageKey(
   return `${key}.${encodeURIComponent(identityScopeKey)}`
 }
 
-export function readPlaygroundAgentSessionIds(
+export function readFilesystemAgentSessionIds(
   identityScopeKey: string,
 ): string[] {
   return readStoredJsonArray(
     createIdentityStorageKey(
-      PLAYGROUND_AGENT_SESSIONS_STORAGE_KEY,
+      FILESYSTEM_AGENT_SESSIONS_STORAGE_KEY,
       identityScopeKey,
     ),
     (sessionId) =>
@@ -124,24 +124,24 @@ export function readPlaygroundAgentSessionIds(
   )
 }
 
-export function registerPlaygroundAgentSessionId(
+export function registerFilesystemAgentSessionId(
   sessionId: string,
   identityScopeKey: string,
 ): string[] {
   const trimmed = sessionId.trim()
   if (typeof window === 'undefined') return trimmed ? [trimmed] : []
-  if (!trimmed) return readPlaygroundAgentSessionIds(identityScopeKey)
+  if (!trimmed) return readFilesystemAgentSessionIds(identityScopeKey)
 
   const next = [
     trimmed,
-    ...readPlaygroundAgentSessionIds(identityScopeKey).filter(
+    ...readFilesystemAgentSessionIds(identityScopeKey).filter(
       (item) => item !== trimmed,
     ),
   ].slice(0, 50)
 
   writeStoredJson(
     createIdentityStorageKey(
-      PLAYGROUND_AGENT_SESSIONS_STORAGE_KEY,
+      FILESYSTEM_AGENT_SESSIONS_STORAGE_KEY,
       identityScopeKey,
     ),
     next,
@@ -150,10 +150,10 @@ export function registerPlaygroundAgentSessionId(
   return next
 }
 
-export function readPlaygroundExpandedUris(identityScopeKey: string): string[] {
+export function readFilesystemExpandedUris(identityScopeKey: string): string[] {
   return readStoredJsonArray(
     createIdentityStorageKey(
-      PLAYGROUND_EXPANDED_URIS_STORAGE_KEY,
+      FILESYSTEM_EXPANDED_URIS_STORAGE_KEY,
       identityScopeKey,
     ),
     (uri) =>
@@ -164,13 +164,13 @@ export function readPlaygroundExpandedUris(identityScopeKey: string): string[] {
   )
 }
 
-export function writePlaygroundExpandedUris(
+export function writeFilesystemExpandedUris(
   identityScopeKey: string,
   uris: Iterable<string>,
 ): void {
   writeStoredJson(
     createIdentityStorageKey(
-      PLAYGROUND_EXPANDED_URIS_STORAGE_KEY,
+      FILESYSTEM_EXPANDED_URIS_STORAGE_KEY,
       identityScopeKey,
     ),
     [...uris],
@@ -223,7 +223,7 @@ export function isDirectoryLevelFile(uri: string): boolean {
   return name === '_abstract.md' || name === '_overview.md'
 }
 
-export function normalizePlaygroundResourceUri(uri: string): string {
+export function normalizeFilesystemResourceUri(uri: string): string {
   const normalized = uri.endsWith('/')
     ? normalizeDirUri(uri)
     : normalizeFileUri(uri)

@@ -1,9 +1,9 @@
-export type PlaygroundPanel = 'agent' | 'terminal'
+export type FilesystemPanel = 'agent' | 'terminal'
 
-export type PlaygroundSearch = {
+export type FilesystemSearch = {
   uri?: string
   file?: string
-  panel?: PlaygroundPanel
+  panel?: FilesystemPanel
   session?: string
   upload?: boolean
 }
@@ -49,7 +49,7 @@ export type TerminalCommandSuggestion = {
   command: string
   examples?: string[]
   group: TerminalCommandGroup
-  /** i18n subkey under `playground.terminal.commands`. */
+  /** i18n subkey under `filesystem.terminal.commands`. */
   key: string
   insertText: string
   parameters?: TerminalCommandParameterKey[]

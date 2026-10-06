@@ -40,8 +40,8 @@ import { MessageList } from '#/routes/sessions/-components/message-list'
 import type { ResourceOpenHandler } from '../-lib/types'
 import {
   getErrorMessage,
-  readPlaygroundAgentSessionIds,
-  registerPlaygroundAgentSessionId,
+  readFilesystemAgentSessionIds,
+  registerFilesystemAgentSessionId,
 } from '../-lib/utils'
 
 export function AgentPanel({
@@ -55,7 +55,7 @@ export function AgentPanel({
   onSessionChange: (sessionId: string) => void
   toolbarContainer: HTMLDivElement | null
 }) {
-  const { t } = useTranslation('playground')
+  const { t } = useTranslation('filesystem')
   const { identityScopeKey } = useAppConnection()
   const [sessionId, setSessionId] = useState(
     initialSessionId ?? createVikingBotWebSessionId(),
@@ -78,13 +78,13 @@ export function AgentPanel({
   const { data: sessions, isLoading: isLoadingSessions } =
     useSessionListByRecency()
   const { getTitle, removeTitle } = useSessionTitles(identityScopeKey)
-  const [playgroundSessionIds, setPlaygroundSessionIds] = useState<string[]>(
-    () => readPlaygroundAgentSessionIds(identityScopeKey),
+  const [filesystemSessionIds, setFilesystemSessionIds] = useState<string[]>(
+    () => readFilesystemAgentSessionIds(identityScopeKey),
   )
   useDefaultConversationTitles(
     identityScopeKey,
     sessions
-      .filter((session) => isVikingBotWebSession(session, playgroundSessionIds))
+      .filter((session) => isVikingBotWebSession(session, filesystemSessionIds))
       .map((session) => session.session_id),
   )
   const { data: historyMessages } = useSessionMessages(historySessionId)
@@ -118,8 +118,8 @@ export function AgentPanel({
       creationStartedRef.current = false
       setSessionError(null)
       setIsCreatingSession(false)
-      setPlaygroundSessionIds(
-        registerPlaygroundAgentSessionId(nextSessionId, identityScopeKey),
+      setFilesystemSessionIds(
+        registerFilesystemAgentSessionId(nextSessionId, identityScopeKey),
       )
       setHistorySessionId(nextSessionId)
       setPersistedSessionId(nextSessionId)
@@ -133,8 +133,8 @@ export function AgentPanel({
   // Only publish IDs that exist on the server; drafts must not survive in the URL.
   useEffect(() => {
     if (persistedSessionId) {
-      setPlaygroundSessionIds(
-        registerPlaygroundAgentSessionId(persistedSessionId, identityScopeKey),
+      setFilesystemSessionIds(
+        registerFilesystemAgentSessionId(persistedSessionId, identityScopeKey),
       )
     }
   }, [identityScopeKey, persistedSessionId])
@@ -186,9 +186,9 @@ export function AgentPanel({
     sessionTitle === sessionId ? t('agent.newSessionTitle') : sessionTitle
   const reversedSessions = useMemo(() => {
     return sessions.filter((session) =>
-      isVikingBotWebSession(session, playgroundSessionIds),
+      isVikingBotWebSession(session, filesystemSessionIds),
     )
-  }, [sessions, playgroundSessionIds])
+  }, [sessions, filesystemSessionIds])
 
   return (
     <>
@@ -326,7 +326,7 @@ export function AgentPanel({
                         title={title}
                         onDeleted={() => {
                           removeTitle(session.session_id)
-                          setPlaygroundSessionIds((ids) =>
+                          setFilesystemSessionIds((ids) =>
                             ids.filter((id) => id !== session.session_id),
                           )
                           if (session.session_id === sessionId) {
@@ -433,7 +433,7 @@ export function BotModePrompt({
   detail: string
   onRetry: () => void
 }) {
-  const { t } = useTranslation('playground')
+  const { t } = useTranslation('filesystem')
   return (
     <div className="flex h-full items-center justify-center">
       <div className="grid max-w-md gap-4 rounded-xl border border-primary/25 bg-primary/5 p-5 text-sm">
@@ -476,7 +476,7 @@ export function AgentEmptyState({
 }: {
   onSend: (message: string) => void
 }) {
-  const { t } = useTranslation('playground')
+  const { t } = useTranslation('filesystem')
   const prompts = t('agent.empty.prompts', {
     returnObjects: true,
   }) as string[]

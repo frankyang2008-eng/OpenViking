@@ -19,7 +19,7 @@ vi.mock('#/routes/resources/-hooks/viking-fm', () => ({
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (key: string, options?: { name?: string }) => {
-      if (key === 'explorer.title') return 'Context tree'
+      if (key === 'explorer.title') return 'Filesystem'
       if (key === 'explorer.expandDirectory') {
         return `Expand ${options?.name}`
       }
@@ -111,7 +111,7 @@ describe('ContextTree keyboard semantics', () => {
       selectedFileUri: file.uri,
     })
 
-    const rootList = screen.getByRole('list', { name: 'Context tree' })
+    const rootList = screen.getByRole('list', { name: 'Filesystem' })
     const disclosure = screen.getByRole('button', {
       name: 'Collapse resources',
     })
