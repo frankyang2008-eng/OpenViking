@@ -26,7 +26,7 @@ type ContextEngineInfo = {
   id: string;
   name: string;
   version?: string;
-  ownsCompaction: true;
+  ownsCompaction: boolean;
   /** OpenClaw >=2026.8.1: without both declarations (and commitTurn) the engine is degraded to "legacy" every turn. */
   transcriptSemantics: {
     currentTurnFence: "before-current-turn-entry-v1";
@@ -415,7 +415,7 @@ export function createMemoryOpenVikingContextEngine(params: {
       id,
       name,
       version,
-      ownsCompaction: true,
+      ownsCompaction: cfg.contextManagementMode === "openviking",
       transcriptSemantics: {
         currentTurnFence: "before-current-turn-entry-v1",
         turnAdvancementIdempotency: "atomic-idempotent-v1",
@@ -552,6 +552,7 @@ export function createMemoryOpenVikingContextEngine(params: {
       const tokenBudget =
         validTokenBudget(compactParams.tokenBudget) ?? 128_000;
       return compactOpenVikingSession({
+        contextManagementMode: cfg.contextManagementMode,
         sessionId: compactParams.sessionId,
         sessionKey: resolveSessionKey(compactParams),
         tokenBudget,

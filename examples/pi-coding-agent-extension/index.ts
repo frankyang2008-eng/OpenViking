@@ -63,10 +63,7 @@ export default async function (pi: ExtensionAPI) {
     debugLogPath: config.debugLogPath,
   });
   const takeover = createTakeoverManager({
-    pi,
-    client,
-    sync,
-    config,
+    pi, client, sync, config,
     log: (message: string) => logger.log("takeover", message),
   });
 
@@ -202,13 +199,9 @@ export default async function (pi: ExtensionAPI) {
       // Profile injection
       profileBlock = await buildSessionProfileBlock(client, config);
 
-      if (!config.takeoverEnabled && sync.sessionId) {
+      if (!config.takeoverEnabled && config.resumeArchiveInject && sync.sessionId) {
         // Resume rehydration — fetch archive overview if session was previously committed.
-        archiveOverview = await fetchArchiveOverview(
-          client,
-          sync.sessionId,
-          config,
-        );
+        archiveOverview = await fetchArchiveOverview(client, sync.sessionId, config);
       }
 
       // Join the handshake and publish whatever the server listed (also needed
@@ -219,10 +212,7 @@ export default async function (pi: ExtensionAPI) {
 
       started = true;
       if (config.logLevel === "info") {
-        ctx.ui.notify(
-          `OpenViking connected (${piSessionId.slice(0, 8)}...)`,
-          "info",
-        );
+        ctx.ui.notify(`OpenViking connected (${piSessionId.slice(0, 8)}...)`, "info");
       }
     })().finally(() => {
       startPromise = null;
@@ -285,11 +275,7 @@ export default async function (pi: ExtensionAPI) {
     // Compose system prompt additions
     const parts: string[] = [];
     if (profileBlock) parts.push(profileBlock);
-    if (
-      !config.takeoverEnabled &&
-      archiveOverview &&
-      (compacted || archiveOverview.trim())
-    ) {
+    if (!config.takeoverEnabled && config.resumeArchiveInject && archiveOverview && (compacted || archiveOverview.trim())) {
       parts.push(archiveOverview);
     }
     // Generated from what actually registered, so it can never name a tool the
@@ -315,37 +301,27 @@ export default async function (pi: ExtensionAPI) {
     // still receives current-query memory, without blocking user-message UI.
     await recall.searchPending();
 
-    // The context hook omits persisted entry ids, but its user messages are a
-    // deep copy of the active SessionManager context. Associate those objects
-    // with stable ids before takeover may filter the array; retained messages
-    // keep object identity through that transform.
-    const sm = ctx.sessionManager as {
-      buildContextEntries?: () => Array<{
-        type: string;
-        id: string;
-        message?: { role: string };
-      }>;
-      getBranch?: () => Array<{
-        type: string;
-        id: string;
-        message?: { role: string };
-      }>;
-    };
-    // pi exposes buildContextEntries; omp (fork) predates it — getBranch is the
-    // compatible fallback (ledger keys carry a content hash, so a stale id only
-    // costs a cache miss, never context pollution).
-    const contextEntries =
-      typeof sm.buildContextEntries === "function"
-        ? sm.buildContextEntries()
-        : typeof sm.getBranch === "function"
-          ? sm.getBranch()
-          : [];
-    const userEntryIds = contextEntries
-      .filter(
-        (entry) => entry?.type === "message" && entry.message?.role === "user",
-      )
+    // The entry IDs are an optional optimization for replaying the recall
+    // ledger. Compatible hosts may omit buildContextEntries(), so fail closed
+    // to nullable IDs rather than guessing from another SessionManager API.
+    const sessionManager = ctx.sessionManager;
+    const entries = typeof sessionManager?.buildContextEntries === "function"
+      ? sessionManager.buildContextEntries()
+      : [];
+    const userEntryIds = entries
+      .filter((entry: unknown): entry is { id?: unknown; type: "message"; message: { role: "user" } } => {
+        if (!entry || typeof entry !== "object") return false;
+        if (!("type" in entry) || !("message" in entry)) return false;
+        const type = entry.type;
+        const message = entry.message;
+        return type === "message" &&
+          !!message &&
+          typeof message === "object" &&
+          "role" in message &&
+          message.role === "user";
+      })
       .map((entry): string | undefined =>
-        typeof entry.id === "string" ? entry.id : undefined,
+        typeof entry.id === "string" ? entry.id : undefined
       );
     const messageIds = new WeakMap<object, string>();
     let userIndex = 0;
@@ -362,7 +338,7 @@ export default async function (pi: ExtensionAPI) {
     const afterTakeover = config.takeoverEnabled
       ? takeover.transformContext(
           event.messages as any,
-          typeof sm.getBranch === "function" ? sm.getBranch() : [],
+          typeof sessionManager?.getBranch === "function" ? sessionManager.getBranch() : [],
         )
       : event.messages;
     const messages = recall.injectRecall(
@@ -422,11 +398,9 @@ export default async function (pi: ExtensionAPI) {
     compacted = true;
 
     // Cache archive overview for rehydration after compaction
-    if (archiveId && sync.sessionId) {
+    if (config.resumeArchiveInject && archiveId && sync.sessionId) {
       archiveOverview = await fetchArchiveOverview(
-        client,
-        sync.sessionId,
-        config,
+        client, sync.sessionId, config,
       );
     }
     // Return nothing → pi proceeds with default compaction
@@ -467,8 +441,7 @@ export default async function (pi: ExtensionAPI) {
   // ================================================================
 
   pi.registerCommand("viking", {
-    description:
-      "OpenViking status and manual operations. Use 'commit' to force a sync.",
+    description: "OpenViking status and manual operations. Use 'commit' to force a sync.",
     handler: async (args, ctx) => {
       if (!connected) {
         ctx.ui.notify("OpenViking: not connected", "warning");
@@ -493,9 +466,7 @@ export default async function (pi: ExtensionAPI) {
         } else if (ok) {
           ctx.ui.notify(
             "OpenViking: committed successfully" +
-              (commitResult?.trace_id
-                ? ` (trace_id=${commitResult.trace_id})`
-                : ""),
+              (commitResult?.trace_id ? ` (trace_id=${commitResult.trace_id})` : ""),
             "info",
           );
         } else {
@@ -537,8 +508,7 @@ export default async function (pi: ExtensionAPI) {
 
 /** Build the <openviking-context> profile block. */
 async function buildSessionProfileBlock(
-  client: OVClient,
-  config: OVConfig,
+  client: OVClient, config: OVConfig,
 ): Promise<string> {
   try {
     const profile = await buildProfileBlock(
@@ -560,15 +530,10 @@ async function buildSessionProfileBlock(
 
 /** Fetch archive overview for rehydration using the session context API. */
 async function fetchArchiveOverview(
-  client: OVClient,
-  sessionId: string,
-  config: OVConfig,
+  client: OVClient, sessionId: string, config: OVConfig,
 ): Promise<string> {
   try {
-    const ctx = await client.getSessionContext(
-      sessionId,
-      config.resumeContextBudget,
-    );
+    const ctx = await client.getSessionContext(sessionId, config.resumeContextBudget);
     if (!ctx || !ctx.latest_archive_overview) return "";
 
     return [

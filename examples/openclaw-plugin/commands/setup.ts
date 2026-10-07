@@ -70,6 +70,7 @@ const PLUGIN_VERSION = readPluginVersion();
 const { min: COMPATIBLE_SERVER_MIN, max: COMPATIBLE_SERVER_MAX } =
   readCompatRangeFromManifest();
 const CONFIG_KEYS_TO_PRESERVE = [
+  "contextManagementMode",
   "targetUri",
   "headers",
   "timeoutMs",

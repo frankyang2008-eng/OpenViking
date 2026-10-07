@@ -143,6 +143,7 @@ type CompactClient = Pick<
 >;
 
 export type CompactOpenVikingSessionParams = {
+  contextManagementMode?: "native" | "openviking";
   sessionId: string;
   sessionKey?: string;
   tokenBudget: number;
@@ -188,6 +189,7 @@ export type AfterTurnOpenVikingSessionParams = {
   runtimeContext?: Record<string, unknown>;
   cfg: {
     autoCapture: boolean;
+    contextManagementMode?: "native" | "openviking";
     commitTokenThresholdRatio: number;
     commitKeepRecentCount: number;
     commitRetentionMode?: "message_count" | "turn_budget";
@@ -751,6 +753,10 @@ async function assembleSessionContext(
     }
   }
 
+  if (cfg.contextManagementMode !== "openviking") {
+    return assemblePassthrough({ diag, ovSessionId, reason: "native_context", liveMessages: messages, originalTokens });
+  }
+
   try {
     const client = await getClient();
     const ctx = await client.getSessionContext(ovSessionId, tokenBudget);
@@ -759,6 +765,15 @@ async function assembleSessionContext(
     const hasArchives =
       !!ctx?.latest_archive_overview || preAbstracts.length > 0;
     const activeCount = ctx?.messages?.length ?? 0;
+
+    // A completed WM-off archive can leave a non-empty active tail. That tail
+    // alone cannot replace the host's earlier history in explicit OV mode.
+    if (!hasArchives && (ctx?.stats?.totalArchives ?? 0) > 0) {
+      logger.warn?.("openviking: archived context has no summary; keeping native history");
+      return assemblePassthrough({
+        diag, ovSessionId, reason: "archive_summary_missing", liveMessages: messages, originalTokens,
+      });
+    }
 
     if (!ctx || (!hasArchives && activeCount === 0)) {
       return assemblePassthrough({
@@ -1165,6 +1180,7 @@ export async function afterTurnOpenVikingSession({
 
     const commitResult = await client.commitSession(ovSessionId, {
       wait: false,
+      ...(cfg.contextManagementMode === "openviking" ? { enableWorkingMemory: true } : {}),
       ...(cfg.commitRetentionMode === "turn_budget"
         ? { retentionMode: "turn_budget" as const }
         : { keepRecentCount: cfg.commitKeepRecentCount }),
@@ -1176,6 +1192,7 @@ export async function afterTurnOpenVikingSession({
     );
 
     diag("afterTurn_commit", ovSessionId, {
+      effectiveEnableWorkingMemory: commitResult.effective_enable_working_memory,
       pendingTokens,
       commitTokenThreshold,
       commitTokenThresholdRatio: cfg.commitTokenThresholdRatio,
@@ -1241,6 +1258,7 @@ function compactFailureResult(
 }
 
 export async function compactOpenVikingSession({
+  contextManagementMode = "native",
   sessionId,
   sessionKey,
   tokenBudget,
@@ -1291,6 +1309,13 @@ export async function compactOpenVikingSession({
     };
   }
 
+  if (contextManagementMode === "native") {
+    return await runtimeCompact?.() ?? compactFailureResult(
+      "native_compaction_unavailable", validTokenCount(currentTokenCount) ?? -1,
+      { message: "Upgrade OpenClaw to a version with runtime compaction delegation." },
+    );
+  }
+
   const client = await getClient();
   const agentId = resolveAgentId(sessionId, sessionKey, ovSessionId);
   const tokensBeforeOriginal = validTokenCount(currentTokenCount);
@@ -1321,6 +1346,7 @@ export async function compactOpenVikingSession({
     const commitResult = await client.commitSession(ovSessionId, {
       wait: true,
       keepRecentCount: 0,
+      enableWorkingMemory: true,
     });
     const memCount = totalExtractedMemories(commitResult.memories_extracted);
 
@@ -1395,6 +1421,10 @@ export async function compactOpenVikingSession({
       };
     }
 
+    if (commitResult.effective_enable_working_memory !== true) {
+      return await runtimeCompact?.() ?? compactFailureResult("working_memory_disabled", tokensBefore, { commit: commitResult });
+    }
+
     let summary = "";
     const firstKeptEntryId = commitResult.archive_uri?.split("/").pop() ?? "";
     let tokensAfter: number | undefined;
@@ -1467,6 +1497,10 @@ export async function compactOpenVikingSession({
         `tokensBefore=${tokensBefore}, tokensAfter=${tokensAfter ?? "unknown"}, ` +
         `latestArchiveId=${firstKeptEntryId || "none"}`,
     );
+
+    if (!summary) {
+      return await runtimeCompact?.() ?? compactFailureResult("archive_summary_missing", tokensBefore, { commit: commitResult });
+    }
 
     diag("compact_result", ovSessionId, {
       ok: true,
