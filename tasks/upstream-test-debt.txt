@@ -1,0 +1,167 @@
+# upstream-test-debt.txt — 已知上游测试债对账清单
+# 生成: 2026-10-07 | 基线: upstream/main 87de989c5 (merge 后 ov-dev-opt 实测)
+# 用途: 同步后跑 tests/{server,misc,client,session}，FAILED 集合与本清单差集
+#       即"新增失败"(疑似合并引入)；差集为空 = 零回归。工具: tasks/check-regressions.sh
+# 账目: 146 条 = 134 遗留(两侧一致) + 12 上游测试债(main+mock修复后同样fail) + 0 合并回归
+# 债类: [mock-agfs] mock_agfs 异常类型与 file_source.py 不匹配(纯main上41 errors挡路,本地已顺手修)
+#       [account-vlm] 上游 AccountVLMProvider 后 mock 打点失效(session_commit 3 + retention 4)
+#       [threshold] api_sessions 期望 message_count_threshold=50, 上游代码默认=100
+#       [host-config-leak] network_guard 未 mock 配置读取, 宿主 allow_private_networks=true 泄入
+#       [legacy] 其余两侧一致遗留
+# 注意: 本地修复某条债或上游改名后,清单条目会失配——只会多报(提示人工确认),不会漏报
+# === tests/misc (24) ===
+# [host-config-leak] network_guard — 配置泄入, 上游测试设计缺陷
+tests/misc/test_network_guard.py::TestEnsurePublicRemoteTarget::test_rejects_non_public_resolved_addresses[http://evil.attacker.com/path-::1]
+tests/misc/test_network_guard.py::TestEnsurePublicRemoteTarget::test_rejects_non_public_resolved_addresses[http://evil.attacker.com/path-::ffff:10.0.0.1]
+tests/misc/test_network_guard.py::TestEnsurePublicRemoteTarget::test_rejects_non_public_resolved_addresses[http://evil.attacker.com/path-::ffff:127.0.0.1]
+tests/misc/test_network_guard.py::TestEnsurePublicRemoteTarget::test_rejects_non_public_resolved_addresses[http://evil.attacker.com/path-0.0.0.0]
+tests/misc/test_network_guard.py::TestEnsurePublicRemoteTarget::test_rejects_non_public_resolved_addresses[http://evil.attacker.com/path-10.0.0.1]
+tests/misc/test_network_guard.py::TestEnsurePublicRemoteTarget::test_rejects_non_public_resolved_addresses[http://evil.attacker.com/path-127.0.0.1]
+tests/misc/test_network_guard.py::TestEnsurePublicRemoteTarget::test_rejects_non_public_resolved_addresses[http://evil.attacker.com/path-169.254.169.254]
+tests/misc/test_network_guard.py::TestEnsurePublicRemoteTarget::test_rejects_non_public_resolved_addresses[http://evil.attacker.com/path-172.16.0.1]
+tests/misc/test_network_guard.py::TestEnsurePublicRemoteTarget::test_rejects_non_public_resolved_addresses[http://evil.attacker.com/path-192.168.1.1]
+tests/misc/test_network_guard.py::TestEnsurePublicRemoteTarget::test_rejects_non_public_resolved_addresses[http://evil.attacker.com/path-fe80::1]
+tests/misc/test_network_guard.py::TestEnsurePublicRemoteTarget::test_rejects_when_any_resolved_address_is_non_public
+# [legacy] 其余
+tests/misc/test_docker_workflow_native_multiarch.py::test_docker_workflows_normalize_image_names_to_lowercase
+tests/misc/test_docker_workflow_native_multiarch.py::test_release_docker_workflow_uses_native_parallel_multiarch_jobs
+tests/misc/test_docker_workflow_native_multiarch.py::test_release_workflow_tracks_registry_specific_digests_for_manifests
+tests/misc/test_mkdir.py::TestMkdir::test_mkdir_calls_agfs_mkdir
+tests/misc/test_mkdir.py::TestMkdir::test_mkdir_ensures_parents_first
+tests/misc/test_mkdir.py::TestMkdir::test_mkdir_exist_ok_false_default
+tests/misc/test_mkdir.py::TestMkdir::test_mkdir_exist_ok_false_raises_on_existing
+tests/misc/test_mkdir.py::TestMkdir::test_mkdir_exist_ok_true_existing
+tests/misc/test_mkdir.py::TestMkdir::test_mkdir_exist_ok_true_not_existing
+tests/misc/test_mkdir.py::TestMkdir::test_mkdir_exist_ok_true_propagates_non_exists_error
+tests/misc/test_mkdir.py::TestMkdir::test_mkdir_propagates_backend_error
+tests/misc/test_root_docker_image_packaging.py::test_openviking_package_includes_console_static_assets
+tests/misc/test_root_docker_image_packaging.py::test_root_build_system_includes_maturin_for_isolated_builds
+# === tests/client + tests/session (45) ===
+# [account-vlm] retention_integration 4 — AccountVLMProvider 后 mock 打点失效
+tests/session/test_session_retention_integration.py::test_wm_creation_detects_language_from_multiline_user_message
+tests/session/test_session_retention_integration.py::test_wm_creation_passes_configured_output_language_to_prompt
+tests/session/test_session_retention_integration.py::test_wm_creation_returns_two_products_in_one_model_call
+tests/session/test_session_retention_integration.py::test_wm_update_returns_two_products_in_one_model_call
+# [account-vlm] session_commit 3 — AccountVLMProvider 后 mock 打点失效
+tests/session/test_session_commit.py::TestCommit::test_commit_extracts_memories
+tests/session/test_session_commit.py::TestCommit::test_commit_uses_latest_archive_overview_for_summary_and_extraction
+tests/session/test_session_commit.py::TestCommit::test_phase2_splits_with_the_committed_auto_commit_policy
+# [legacy] 其余
+tests/client/test_http_client_compact.py::test_add_resource_keeps_explicit_args
+tests/client/test_http_client_compact.py::test_add_resource_keeps_explicit_no_split_mode
+tests/client/test_http_client_compact.py::test_find_keeps_explicit_tags
+tests/client/test_http_client_config.py::test_async_http_client_find_does_not_send_peer_id
+tests/client/test_http_client_config.py::test_async_http_client_find_sends_context_type
+tests/client/test_http_client_config.py::test_async_http_client_loads_missing_fields_from_ovcli_config
+tests/client/test_http_client_config.py::test_async_http_client_search_does_not_send_peer_id
+tests/client/test_http_client_config.py::test_async_http_client_search_sends_context_type
+tests/session/memory/test_patch_merge_context_provider.py::test_patch_merge_context_provider_detects_language_from_patch_content
+tests/session/memory/test_patch_merge_context_provider.py::test_patch_merge_context_provider_empty_patches_fallback_to_english
+tests/session/memory/test_patch_merge_context_provider.py::test_patch_merge_context_provider_ignores_before_file_language
+tests/session/test_compressor_v3.py::test_train_from_extracted_cases_submits_streaming_rollout
+tests/session/test_compressor_v3.py::test_v3_extract_trains_only_canonical_case_after_patch_merge
+tests/session/test_compressor_v3.py::test_v3_extract_uses_patch_merge_without_directory_lock
+tests/session/test_compressor_v3.py::test_v3_initializes_only_allowed_memory_files
+tests/session/train/test_policy_optimization_real_llm_e2e.py::test_experience_gradient_estimator_real_config_llm_generates_gradient
+tests/session/train/test_policy_optimization_real_llm_e2e.py::test_policy_optimization_pipeline_real_config_llm_e2e_writes_updated_experience
+tests/session/train/test_rollout_executor_component.py::test_tau2_final_answer_is_appended_for_native_evaluation
+tests/session/train/test_rollout_executor_component.py::test_tau2_native_env_records_communication_as_assistant_text
+tests/session/train/test_rollout_executor_component.py::test_tau2_native_env_reward_handles_required_id_and_tool_call_ids
+tests/session/train/test_rollout_executor_component.py::test_tau2_native_rollout_resolves_non_empty_llms
+tests/session/train/test_rollout_executor_component.py::test_tau2_native_rollout_uses_env_llm_when_options_omit_model
+tests/session/train/test_rollout_executor_component.py::test_tau2_reward_info_is_json_safe_in_rollout_messages_and_evaluation
+tests/session/train/test_rollout_executor_component.py::test_tau2_run_agent_force_loads_experience_loader_skill_before_task_actions
+tests/session/train/test_train_framework.py::test_batch_policy_trainer_trains_from_rollout_batch
+tests/session/train/test_train_framework.py::test_default_policy_optimization_pipeline_runs_one_batch
+tests/session/train/test_train_framework.py::test_offline_policy_optimization_pipeline_epoch_hook_can_stop_training
+tests/session/train/test_train_framework.py::test_offline_policy_optimization_pipeline_supports_train_and_eval
+tests/session/train/test_train_framework.py::test_pipeline_lifecycle_hooks_receive_report_events
+tests/session/train/test_train_framework.py::test_policy_optimization_pipeline_trains_from_external_rollouts_without_executor
+tests/session/train/test_train_framework.py::test_streaming_policy_trainer_chunks_multiple_target_gradients_by_count
+tests/session/train/test_train_framework.py::test_streaming_policy_trainer_mixes_categories_in_chunks
+tests/session/train/test_train_framework.py::test_streaming_policy_trainer_scopes_concurrent_submit_results_by_source_trajectory
+tests/session/train/test_train_framework.py::test_streaming_policy_trainer_splits_flush_by_gradient_count
+tests/session/train/test_train_framework.py::test_train_epoch_eval_uses_configured_split_metadata
+tests/session/train/test_train_framework.py::test_train_runs_test_eval_after_each_epoch_when_configured
+tests/session/train/test_train_framework.py::test_train_trials_expands_training_cases_per_epoch
+tests/session/train/test_train_framework.py::test_training_updates_execution_metadata_epoch_each_epoch
+# === tests/server (77) ===
+# [threshold] api_sessions 5 — 测试期望50 vs 上游代码默认100
+tests/server/test_api_sessions.py::test_auto_created_session_uses_default_policy_when_server_default_enabled
+tests/server/test_api_sessions.py::test_create_session_applies_config_and_fills_defaults
+tests/server/test_api_sessions.py::test_create_session_clamps_config_above_bounds
+tests/server/test_api_sessions.py::test_create_session_uses_default_policy_when_server_default_enabled
+tests/server/test_api_sessions.py::test_legacy_session_uri_alias_reads_current_user_session
+# [legacy] 其余
+tests/server/oauth/test_auth_integration.py::test_oauth_user_role_rejects_account_override
+tests/server/test_api_key_manager.py::test_refresh_account_users_from_store_is_atomic_on_invalid_data
+tests/server/test_api_local_input_security.py::test_add_resource_rejects_loopback_remote_url
+tests/server/test_api_local_input_security.py::test_add_resource_rejects_private_git_ssh_url
+tests/server/test_api_local_input_security.py::test_url_detector_request_validator_blocks_loopback_head
+tests/server/test_api_resources.py::test_add_resource_with_telemetry_includes_resource_breakdown
+tests/server/test_api_search_context.py::test_context_and_list_default_limit_is_ten
+tests/server/test_api_search_context.py::test_list_mode_response_is_unchanged
+tests/server/test_api_skills.py::test_mcp_skill_import_and_vector_rebuild_preserve_l1_frontmatter
+tests/server/test_api_snapshot.py::test_restore_acl_and_reindex_identity
+tests/server/test_api_webdav.py::test_webdav_get_content_length_uses_delivered_body_size
+tests/server/test_auth.py::test_admin_key_cannot_switch_account_via_header
+tests/server/test_auth.py::test_admin_key_cannot_switch_effective_user_within_account
+tests/server/test_auth.py::test_trusted_mode_looks_up_role_from_api_key_manager
+tests/server/test_auth.py::test_user_key_resolves_to_key_user_and_cannot_switch_user
+tests/server/test_bot_proxy_auth.py::test_compile_api_client_session_protocol_retry_and_cancellation[empty-args-cancel]
+tests/server/test_bot_proxy_auth.py::test_compile_api_client_session_protocol_retry_and_cancellation[empty-args-complete]
+tests/server/test_bot_proxy_auth.py::test_compile_api_client_session_protocol_retry_and_cancellation[empty-args-poll_failure]
+tests/server/test_bot_proxy_auth.py::test_compile_api_client_session_protocol_retry_and_cancellation[empty-args-restart_cancel]
+tests/server/test_bot_proxy_auth.py::test_compile_api_client_session_protocol_retry_and_cancellation[empty-args-restart]
+tests/server/test_bot_proxy_auth.py::test_compile_api_client_session_protocol_retry_and_cancellation[empty-key-cancel]
+tests/server/test_bot_proxy_auth.py::test_compile_api_client_session_protocol_retry_and_cancellation[empty-key-complete]
+tests/server/test_bot_proxy_auth.py::test_compile_api_client_session_protocol_retry_and_cancellation[empty-key-poll_failure]
+tests/server/test_bot_proxy_auth.py::test_compile_api_client_session_protocol_retry_and_cancellation[empty-key-restart_cancel]
+tests/server/test_bot_proxy_auth.py::test_compile_api_client_session_protocol_retry_and_cancellation[empty-key-restart]
+tests/server/test_bot_proxy_auth.py::test_compile_api_client_session_protocol_retry_and_cancellation[full-args-cancel]
+tests/server/test_bot_proxy_auth.py::test_compile_api_client_session_protocol_retry_and_cancellation[full-args-complete]
+tests/server/test_bot_proxy_auth.py::test_compile_api_client_session_protocol_retry_and_cancellation[full-args-poll_failure]
+tests/server/test_bot_proxy_auth.py::test_compile_api_client_session_protocol_retry_and_cancellation[full-args-restart_cancel]
+tests/server/test_bot_proxy_auth.py::test_compile_api_client_session_protocol_retry_and_cancellation[full-args-restart]
+tests/server/test_bot_proxy_auth.py::test_compile_api_client_session_protocol_retry_and_cancellation[no-args-cancel]
+tests/server/test_bot_proxy_auth.py::test_compile_api_client_session_protocol_retry_and_cancellation[no-args-complete]
+tests/server/test_bot_proxy_auth.py::test_compile_api_client_session_protocol_retry_and_cancellation[no-args-poll_failure]
+tests/server/test_bot_proxy_auth.py::test_compile_api_client_session_protocol_retry_and_cancellation[no-args-restart_cancel]
+tests/server/test_bot_proxy_auth.py::test_compile_api_client_session_protocol_retry_and_cancellation[no-args-restart]
+tests/server/test_bot_proxy_auth.py::test_compile_api_client_session_protocol_retry_and_cancellation[private-only-cancel]
+tests/server/test_bot_proxy_auth.py::test_compile_api_client_session_protocol_retry_and_cancellation[private-only-complete]
+tests/server/test_bot_proxy_auth.py::test_compile_api_client_session_protocol_retry_and_cancellation[private-only-poll_failure]
+tests/server/test_bot_proxy_auth.py::test_compile_api_client_session_protocol_retry_and_cancellation[private-only-restart_cancel]
+tests/server/test_bot_proxy_auth.py::test_compile_api_client_session_protocol_retry_and_cancellation[private-only-restart]
+tests/server/test_content_write_service.py::test_memory_create_refreshes_nested_schema_overview
+tests/server/test_error_envelope_status_codes.py::test_debug_vector_count_no_vikingdb_returns_503
+tests/server/test_error_envelope_status_codes.py::test_debug_vector_scroll_no_vikingdb_returns_503
+tests/server/test_error_envelope_status_codes.py::test_stats_session_not_found_returns_404
+tests/server/test_error_scenarios.py::test_not_found_resource_returns_structured_error
+tests/server/test_http_client_sdk.py::test_sdk_add_resource
+tests/server/test_http_client_sdk.py::test_sdk_batch_add_messages_and_commit_keep_recent_count
+tests/server/test_http_client_sdk.py::test_sdk_find
+tests/server/test_http_client_sdk.py::test_sdk_find_accepts_tags
+tests/server/test_http_client_sdk.py::test_sdk_find_summary_only_telemetry
+tests/server/test_http_client_sdk.py::test_sdk_find_telemetry
+tests/server/test_http_client_sdk.py::test_sdk_full_workflow
+tests/server/test_http_client_sdk.py::test_sdk_mkdir_with_description_sets_abstract
+tests/server/test_http_client_sdk.py::test_sdk_search_accepts_tags
+tests/server/test_http_client_sdk.py::test_sdk_set_tags_accepts_tags
+tests/server/test_mcp_endpoint.py::test_forget_directory_without_recursive_fails
+tests/server/test_mcp_endpoint.py::test_write_append_missing_file_fails
+tests/server/test_openviking_assets.py::test_resolver_rejects_invalid_asset_target[https://example.com/repo-unsupported URI scheme]
+tests/server/test_request_wait_tracking.py::test_content_write_wait_uses_request_tracker
+tests/server/test_request_wait_tracking.py::test_content_write_wait_uses_request_tracker_when_telemetry_disabled
+tests/server/test_server_health.py::test_initialize_runtime_state_loads_api_key_manager
+tests/server/test_server_health.py::test_lifespan_shutdown_ignores_cancelled_service_close
+tests/server/test_server_health.py::test_openviking_error_handler
+tests/server/test_skill_failure_accounting.py::test_failed_skill_files_do_not_break_global_wait_or_followup_work
+tests/server/test_skill_failure_accounting.py::test_update_with_multiple_file_failures_restores_package_and_settles_queue
+tests/server/test_temp_scope_acl.py::test_legacy_temp_trees_remain_accessible_for_same_account_users
+tests/server/test_temp_scope_acl.py::test_non_root_cannot_delete_temp_root_recursively
+tests/server/test_temp_scope_acl.py::test_temp_root_destructive_operations_are_blocked_for_non_root_users
+tests/server/test_temp_scope_acl.py::test_temp_root_listing_only_shows_callers_own_entries
+tests/server/test_temp_scope_acl.py::test_temp_scope_isolated_between_users_in_same_account
+tests/server/test_temp_scope_acl.py::test_temp_scope_user_id_matching_legacy_pattern_stays_isolated
+tests/server/test_temp_upload_store_async_io.py::test_save_local_offloads_cleanup_writes_and_metadata
