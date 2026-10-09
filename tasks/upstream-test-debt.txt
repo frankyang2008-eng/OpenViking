@@ -169,3 +169,20 @@ tests/server/test_temp_upload_store_async_io.py::test_save_local_offloads_cleanu
 # === tests/storage (1, 2026-10-08 第18次同步补录: pre-sync worktree 对照证实, 上游 mock 过时) ===
 # [stale-mock] tests/storage/mock_backend.py 的 MockCollection 缺 update_data 抽象方法, 上游接口演进未跟上
 tests/storage/test_vectordb_adaptor.py::TestAdapterLoading::test_dynamic_loading_mock_adapter
+
+# === tests/session 挂起测试 (2026-10-08 第18次同步补录) ===
+# [upstream-wm-default-hang] 上游 #5696 把 working_memory 默认改 off, 但未同步更新该测试:
+#   测试 monkeypatch _generate_archive_summary_async 等 phase1_done, WM=off 时 commit 不再调用它 → 永久挂起
+#   铁证: 纯 upstream/main 76511554e worktree 挂死(>200s), pre-sync-20261008 worktree 1.25s PASS
+#   处置: 对账时 --deselect 跳过 (上游 CI 不跑 tests/session 故未发现), 待提上游 PR
+#       对账命令: pytest tests/session --deselect tests/session/test_session_commit_race.py::TestCommitRace::test_message_added_during_commit_not_lost
+# [order-dependent] compressor_v3 factory 单测: 依赖此前测试初始化的 VikingFS 单例, standalone 即 fail
+# 铁证: pre-sync-20261008 worktree standalone 同样 2 failed (2026-10-08 实测), 非合并引入
+tests/session/test_compressor_v3.py::test_factory_defaults_to_v3
+tests/session/test_compressor_v3.py::test_factory_ignores_deprecated_memory_version
+# [upstream-wm-default] 上游 #5696 把 working_memory 默认改 off + MemoryPolicy.to_dict 恒写 working_memory 键,
+#   但未更新 server 测试期望 (上游 CI 不跑 tests/server 故未发现)。纯 main worktree 实测同败 (2026-10-08)。
+tests/server/test_admin_api.py::test_user_memory_policy_can_be_initialized_and_hot_updated
+tests/server/test_admin_api.py::test_user_memory_policy_uses_server_default_without_user_override
+tests/server/test_agent_evolution_global_setting.py::test_server_default_memory_policy_is_configured_on_session_service
+tests/server/test_http_client_sdk.py::test_sdk_get_session_archive

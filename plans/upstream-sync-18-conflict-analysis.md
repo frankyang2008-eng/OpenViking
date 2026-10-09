@@ -50,3 +50,33 @@
 - tests/{server,misc,client,session} + 对账脚本
 - doubao-seed-2.0-mini 活体 rerank
 - ov doctor
+
+## 测试验证与回归归因（2026-10-08 补全）
+
+- 构建：0.4.24.dev265，make build 全通过（C++ ext + maturin + web-studio + editable）
+- 环境：uv pip check 280 packages 全兼容；AST 扫描 1533 文件 0 语法错误，0 坏 import（19 条 openviking_sdk/live_auth 为扫描器误报，实际均可导入）
+- ov doctor：9/10 PASS；Embedding FAIL 为宿主 ov.conf 10-07 晚用户自改（local/doubao-embedding-vision），非合并引入
+- openclaw 插件 tsc --noEmit：0 error
+- rerank 活体验证：doubao-seed-2.0-mini (llm_score)，1.31s，相关文档 0.85/0.5/0.25 全高于噪声 0.0，噪声≤阈值 0.05 → PASS（plans/rerank-mini-verification/live-18th-sync.json）
+- rerank 相关单测 54 passed；queue_manager 冲突决议单测 16 passed（含上游新增 loop-scoped client 测试）
+
+### 对账结果（tests/{misc,client,session,server} + retrieve/storage 补充）
+| 套件 | 失败 | 新增 | 归因 |
+|---|---|---|---|
+| misc | 24 | 0 | 全豁免 |
+| client | 8 | 0 | 全豁免 |
+| session | 32 | 2 | 上游 #5696（详见下） |
+| retrieve+storage | 1 | 1 | 上游 stale-mock（已入账） |
+| server | 81 | 4 | 上游 #5696（详见下） |
+| **合并引入回归** | — | **0** | — |
+
+### 上游 #5696（WM 默认 off）连锁债 —— 5 条，全部铁证归因
+1. test_session_commit_race::test_message_added_during_commit_not_lost：**永久挂起**（非失败）。WM=off 时 commit 不再调用 _generate_archive_summary_async，测试 monkeypatch 等 phase1_done 永不触发。铁证：纯 upstream/main 76511554e worktree 挂死 >200s；pre-sync worktree 1.25s PASS。对账需 --deselect。
+2-3. test_compressor_v3 factory 2 条：order-dependent（依赖此前测试初始化的 VikingFS 单例），pre-sync worktree standalone 同败。
+4-5. server 3 条 memory-policy 断言 + test_sdk_get_session_archive：#5696 改 MemoryPolicy.to_dict 恒写 working_memory 键 + 默认 off，server 测试期望未跟上；纯 main worktree 实测 agent_evolution 1 条同败，SDK 测试空 overview 由 session.py:2038 WM-off 早退直接导致。
+
+**上游债共性**：#5696 改默认值但上游 CI 全部 workflow 不跑 tests/{server,session,misc,client}（17th sync 已定位的 CI 盲区），破损直接合入 main。建议打包提上游 PR：修 5 个测试期望 + commit_race 测试加 working_memory 显式 opt-in。
+
+### 账目
+- 债清单：153 条（146 基线 + 7 新入账：1 storage stale-mock + 1 session 挂起 + 2 order-dependent + 3 server WM 断言；SDK 测试与 agent_evolution 重叠计入 server 4 条中的 2 条独立 id）
+- 已提交：ddc978f53（merge）、0511fb09a（报告+债账+rerank 证据）
