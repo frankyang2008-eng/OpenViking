@@ -165,3 +165,7 @@ tests/server/test_temp_scope_acl.py::test_temp_root_listing_only_shows_callers_o
 tests/server/test_temp_scope_acl.py::test_temp_scope_isolated_between_users_in_same_account
 tests/server/test_temp_scope_acl.py::test_temp_scope_user_id_matching_legacy_pattern_stays_isolated
 tests/server/test_temp_upload_store_async_io.py::test_save_local_offloads_cleanup_writes_and_metadata
+
+# === tests/storage (1, 2026-10-08 第18次同步补录: pre-sync worktree 对照证实, 上游 mock 过时) ===
+# [stale-mock] tests/storage/mock_backend.py 的 MockCollection 缺 update_data 抽象方法, 上游接口演进未跟上
+tests/storage/test_vectordb_adaptor.py::TestAdapterLoading::test_dynamic_loading_mock_adapter
